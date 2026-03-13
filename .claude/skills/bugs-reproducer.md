@@ -391,3 +391,5 @@ These are areas where bugs tend to cluster, based on the architecture:
 **Turbo reconnection** — The `<lexxy-editor>` watches its `connected` attribute. Rapid Turbo morphs can stack reconnections. `valueBeforeDisconnect` can be null if timing is wrong.
 
 **Upload lifecycle** — `ActionTextAttachmentUploadNode.createDOM()` starts the upload as a side effect. Lexical can call `createDOM()` multiple times (history restore). Guard logic prevents re-upload but can falsely block.
+
+**Event propagation from non-Lexical elements** — The caption `<textarea>` in `ActionTextAttachmentNode` lives inside the Lexical root element but is outside Lexical's content model. Keyboard and clipboard events from it bubble up to the root, where Lexical's handlers intercept them (e.g., `Ctrl+A` triggers `SELECT_ALL_COMMAND`, `Ctrl+X` triggers `CUT_COMMAND`). Any non-Lexical interactive element inside the root must `stopPropagation()` on `keydown`, `copy`, `cut`, and `paste` events to prevent Lexical from hijacking them.
