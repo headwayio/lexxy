@@ -382,7 +382,7 @@ These are areas where bugs tend to cluster, based on the architecture:
 
 **Gallery transforms** — `ImageGalleryNode` auto-collapses adjacent images, splits around non-image children, and unwraps when left with a single child. The transform runs per-pass, so multiple non-images embedded may need multiple passes.
 
-**Paste handling edge cases** — The clipboard handler has separate code paths for: only plain text, HTML with attachments, URLs (including Safari's `text/uri-list`), markdown, files, and content inside code blocks (bypasses Lexxy entirely). Bugs often appear at the boundary between these paths.
+**Paste handling edge cases** — The clipboard handler has separate code paths for: only plain text, HTML with attachments, URLs (including Safari's `text/uri-list`), markdown, files, and content inside code blocks (bypasses Lexxy entirely). Bugs often appear at the boundary between these paths. Cross-app paste (Trix → Lexxy) is a key variant: Trix stores raw HTML in the `content` attribute of `<action-text-attachment>`, while Lexxy stores JSON-stringified HTML. Any code that parses `content` must handle both formats.
 
 **Highlight style sync** — The `HighlightExtension` keeps Lexical's `highlight` format bit in sync with inline CSS styles. Two TextNode transforms run on every mutation: one for sync, one for canonical palette enforcement. Infinite loop risk if the sync logic disagrees with Lexical's internal state.
 
