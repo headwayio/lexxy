@@ -391,3 +391,5 @@ These are areas where bugs tend to cluster, based on the architecture:
 **Turbo reconnection** — The `<lexxy-editor>` watches its `connected` attribute. Rapid Turbo morphs can stack reconnections. `valueBeforeDisconnect` can be null if timing is wrong.
 
 **Upload lifecycle** — `ActionTextAttachmentUploadNode.createDOM()` starts the upload as a side effect. Lexical can call `createDOM()` multiple times (history restore). Guard logic prevents re-upload but can falsely block.
+
+**External drag-and-drop** — When files are dragged from the OS file manager, the browser does NOT update the DOM selection to the drop coordinates. The drag caret is purely visual. Drop handlers must use `document.caretRangeFromPoint(event.clientX, event.clientY)` to determine the correct insertion point. Playwright's synthetic DragEvent DOES move the DOM selection, masking this class of bugs. To reproduce, intercept the drop event, restore the stale DOM selection, and call the drop logic with the event coordinates.
