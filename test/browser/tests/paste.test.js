@@ -113,4 +113,29 @@ test.describe("Paste", () => {
     await editor.paste("Hello **there**")
     await assertEditorHtml(editor, "<p>Hello **there**</p>")
   })
+
+  test("paste Trix mention HTML without crashing", async ({ page, editor }) => {
+    await page.goto("/")
+    await editor.waitForConnected()
+
+    const mentionHtml = [
+      '<action-text-attachment',
+      ' content-type="application/vnd.actiontext.mention"',
+      ' sgid="test-sgid-123"',
+      ' content="&lt;span class=&quot;person person--inline&quot;&gt;&lt;img src=&quot;/avatar.png&quot; class=&quot;person--avatar&quot; alt=&quot;&quot;&gt;&lt;span class=&quot;person--name&quot;&gt;Michael Berger&lt;/span&gt;&lt;/span&gt;"',
+      '>Michael Berger</action-text-attachment>'
+    ].join("")
+
+    const errors = []
+    page.on("pageerror", (error) => errors.push(error.message))
+
+    await editor.paste("Michael Berger", { html: mentionHtml })
+    await page.waitForTimeout(500)
+
+    expect(errors).toHaveLength(0)
+
+    await assertEditorContent(editor, async (content) => {
+      await expect(content.locator("action-text-attachment")).toHaveCount(1)
+    })
+  })
 })
