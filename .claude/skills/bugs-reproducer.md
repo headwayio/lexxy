@@ -388,6 +388,8 @@ These are areas where bugs tend to cluster, based on the architecture:
 
 **Trix HTML import** — The `TrixContentExtension` converts Trix's HTML output (`<em>`, `<del>`, `<span style>`, `<pre language>`) to Lexxy's model. Bugs here affect every migrated document.
 
+**Nested editor.update() in command handlers** — Command handlers in `CommandDispatcher` are invoked during the toolbar's `editor.update()` context. If a handler wraps its body in another `editor.update()`, the inner callback is queued (not inlined) via `editor._updates`. While Lexical's `$processNestedUpdates` processes the queue within the same commit, the extra nesting is unnecessary and inconsistent with other handlers (e.g., `dispatchBold` dispatches directly). Prefer removing the wrapper so the command executes in the caller's update context.
+
 **Turbo reconnection** — The `<lexxy-editor>` watches its `connected` attribute. Rapid Turbo morphs can stack reconnections. `valueBeforeDisconnect` can be null if timing is wrong.
 
 **Upload lifecycle** — `ActionTextAttachmentUploadNode.createDOM()` starts the upload as a side effect. Lexical can call `createDOM()` multiple times (history restore). Guard logic prevents re-upload but can falsely block.
