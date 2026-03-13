@@ -35,7 +35,7 @@ export class CustomActionTextAttachmentNode extends DecoratorNode {
 
             nodes.push(new CustomActionTextAttachmentNode({
               sgid: attachment.getAttribute("sgid"),
-              innerHtml: JSON.parse(attachment.getAttribute("content")),
+              innerHtml: parseContent(attachment.getAttribute("content")),
               contentType: attachment.getAttribute("content-type")
             }))
 
@@ -110,5 +110,15 @@ export class CustomActionTextAttachmentNode extends DecoratorNode {
 
   decorate() {
     return null
+  }
+}
+
+// Lexxy exports the content attribute as a JSON string (via JSON.stringify),
+// but Trix/ActionText stores it as raw HTML. Try JSON first, fall back to raw.
+function parseContent(content) {
+  try {
+    return JSON.parse(content)
+  } catch {
+    return content
   }
 }
