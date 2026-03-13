@@ -698,12 +698,24 @@ export default class Contents {
 
   // During an external file drag (from the OS file manager), the browser shows
   // a visual drag caret but does NOT update the DOM selection. This method uses
-  // caretRangeFromPoint to position the caret at the drop coordinates so the
-  // subsequent upload inserts at the correct location.
+  // caretRangeFromPoint/caretPositionFromPoint to position the caret at the drop
+  // coordinates so the subsequent upload inserts at the correct location.
   #moveSelectionToPoint(clientX, clientY) {
     if (clientX == null || clientY == null) return
 
-    const range = document.caretRangeFromPoint(clientX, clientY)
+    let range
+
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(clientX, clientY)
+    } else if (document.caretPositionFromPoint) {
+      const position = document.caretPositionFromPoint(clientX, clientY)
+      if (position) {
+        range = document.createRange()
+        range.setStart(position.offsetNode, position.offset)
+        range.collapse(true)
+      }
+    }
+
     if (!range) return
 
     const domSelection = window.getSelection()
