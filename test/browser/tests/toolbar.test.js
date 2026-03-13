@@ -4,6 +4,22 @@ import { assertEditorHtml } from "../helpers/assertions.js"
 
 const HELLO_EVERYONE = "<p>Hello everyone</p>"
 
+async function placeCaretAtEndOfInlineCode(editor) {
+  await editor.content.evaluate((content) => {
+    const code = content.querySelector("code")
+    const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT)
+    const textNode = walker.nextNode()
+    const range = document.createRange()
+
+    range.setStart(textNode, textNode.textContent.length)
+    range.collapse(true)
+
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+}
+
 test.describe("Toolbar", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
@@ -121,6 +137,41 @@ test.describe("Toolbar", () => {
     await editor.select("everyone")
     await page.getByRole("button", { name: "Code" }).click()
     await assertEditorHtml(editor, "<p>Hello everyone</p>")
+  })
+
+  test("typing after moving the caret out of inline code inserts plain text", async ({
+    page,
+    editor,
+  }) => {
+    await editor.setValue("<p>Hello <code>code</code></p>")
+
+    const codeButton = page.getByRole("button", { name: "Code" })
+
+    await editor.content.locator("code").click()
+    await expect(codeButton).toHaveAttribute("aria-pressed", "true")
+
+    await placeCaretAtEndOfInlineCode(editor)
+    await editor.send("ArrowRight")
+    await editor.send("!")
+
+    await assertEditorHtml(editor, "<p>Hello <code>code</code>!</p>")
+    await expect(codeButton).toHaveAttribute("aria-pressed", "false")
+  })
+
+  test("clicking plain text after inline code clears the active code state", async ({
+    page,
+    editor,
+  }) => {
+    await editor.setValue("<p>Hello <code>code</code> world</p>")
+
+    const codeButton = page.getByRole("button", { name: "Code" })
+
+    await editor.content.locator("code").click()
+    await expect(codeButton).toHaveAttribute("aria-pressed", "true")
+
+    await editor.content.getByText("world").click()
+
+    await expect(codeButton).toHaveAttribute("aria-pressed", "false")
   })
 
   test("toggle code for block", async ({ page, editor }) => {
