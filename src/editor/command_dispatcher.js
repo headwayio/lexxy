@@ -268,7 +268,7 @@ export class CommandDispatcher {
     const files = Array.from(dataTransfer.files)
     if (!files.length) return
 
-    this.contents.uploadFiles(files, { selectLast: true })
+    this.contents.dropFiles(files, { clientX: event.clientX, clientY: event.clientY })
 
     this.editor.focus()
   }
