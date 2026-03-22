@@ -1,11 +1,11 @@
-import { $addUpdateTag, $createParagraphNode, $getRoot, $isElementNode, $isLineBreakNode, $isTextNode, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, SKIP_DOM_SELECTION_TAG, TextNode } from "lexical"
+import { $addUpdateTag, $createParagraphNode, $getRoot, $isElementNode, $isLineBreakNode, $isParagraphNode, $isTextNode, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, SKIP_DOM_SELECTION_TAG, TextNode } from "lexical"
 import { buildEditorFromExtensions } from "@lexical/extension"
 import { ListItemNode, ListNode, registerList } from "@lexical/list"
 import { AutoLinkNode, LinkNode } from "@lexical/link"
 import { registerPlainText } from "@lexical/plain-text"
 import { HeadingNode, QuoteNode, registerRichText } from "@lexical/rich-text"
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html"
-import { CodeHighlightNode, CodeNode, registerCodeHighlighting } from "@lexical/code"
+import { $createCodeNode, CodeHighlightNode, CodeNode, registerCodeHighlighting } from "@lexical/code"
 import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
 import { createEmptyHistoryState, registerHistory } from "@lexical/history"
@@ -397,6 +397,7 @@ export class LexicalEditorElement extends HTMLElement {
 
   #registerCodeHiglightingComponents() {
     registerCodeHighlighting(this.editor)
+    registerCodeFenceShortcut(this.editor)
     this.codeLanguagePicker = createElement("lexxy-code-language-picker")
     this.append(this.codeLanguagePicker)
   }
@@ -553,6 +554,24 @@ export class LexicalEditorElement extends HTMLElement {
 }
 
 export default LexicalEditorElement
+
+const CODE_FENCE_REGEX = /^`{3,}([\w-]*)$/
+
+function registerCodeFenceShortcut(editor) {
+  return editor.registerNodeTransform(TextNode, (textNode) => {
+    const parent = textNode.getParent()
+    if (!$isParagraphNode(parent)) return
+    if (parent.getChildrenSize() !== 1) return
+
+    const text = textNode.getTextContent()
+    if (!text.match(CODE_FENCE_REGEX)) return
+
+    const language = text.replace(/^`+/, "") || undefined
+    const codeNode = $createCodeNode(language)
+    parent.replace(codeNode)
+    codeNode.select()
+  })
+}
 
 // Like $getRoot().getTextContent() but uses readable text for custom attachment nodes
 // (e.g., mentions) instead of their single-character cursor placeholder.
