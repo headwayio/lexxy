@@ -399,6 +399,53 @@
   min-block-size: var(--lexxy-editor-rows);
   outline: 0;
   padding: var(--lexxy-editor-padding);
+
+  /* Code blocks in editor */
+  code, pre {
+    background-color: var(--lexxy-color-code-bg, var(--lexxy-color-ink-lightest));
+    border-radius: var(--lexxy-radius);
+    color: var(--lexxy-color-code-text, var(--lexxy-color-ink));
+    font-family: var(--lexxy-font-mono);
+    font-size: 0.9em;
+    padding: 0.25ch 0.5ch;
+
+    &:is(pre),
+    &[data-language] {
+      display: block;
+      hyphens: none;
+      margin-block: 0 var(--lexxy-content-margin, 1rem);
+      overflow-x: auto;
+      padding: 1ch;
+      padding-block-start: 2.5em;
+      tab-size: 2;
+      text-wrap: nowrap;
+      white-space: pre;
+      word-break: break-word;
+    }
+  }
+
+  /* Syntax highlighting token colors */
+  .code-token__attr { color: var(--lexxy-color-code-token-att); }
+  .code-token__property { color: var(--lexxy-color-code-token-property); }
+  .code-token__selector { color: var(--lexxy-color-code-token-selector); }
+  .code-token__comment { color: var(--lexxy-color-code-token-comment); font-style: italic; }
+  .code-token__operator { color: var(--lexxy-color-code-token-operator); }
+  .code-token__function { color: var(--lexxy-color-code-token-function); }
+  .code-token__variable { color: var(--lexxy-color-code-token-variable); }
+  .code-token__punctuation { color: var(--lexxy-color-code-token-punctuation); }
+
+  /* Blockquotes in editor */
+  blockquote {
+    border-inline-start: 3px solid var(--lexxy-color-ink-lighter);
+    color: var(--lexxy-color-ink-medium);
+    margin-block: 0 var(--lexxy-content-margin, 1rem);
+    margin-inline: 0;
+    padding: 0.25lh 2ch;
+
+    p:last-child {
+      margin-block-end: 0;
+    }
+  }
 }
 
 :where(.lexxy-editor--drag-over) {
