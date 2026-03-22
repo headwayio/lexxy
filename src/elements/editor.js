@@ -31,6 +31,7 @@ import { TrixContentExtension } from "../extensions/trix_content_extension"
 import { TablesExtension } from "../extensions/tables_extension"
 import { AttachmentsExtension } from "../extensions/attachments_extension.js"
 import { FormatEscapeExtension } from "../extensions/format_escape_extension.js"
+import { SlashCommandsExtension } from "../extensions/slash_commands_extension.js"
 
 
 export class LexicalEditorElement extends HTMLElement {
@@ -124,7 +125,8 @@ export class LexicalEditorElement extends HTMLElement {
       TrixContentExtension,
       TablesExtension,
       AttachmentsExtension,
-      FormatEscapeExtension
+      FormatEscapeExtension,
+      SlashCommandsExtension
     ]
   }
 
@@ -243,6 +245,7 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFocusEvents()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.extensions.initializeEditors()
     this.#loadInitialValue()
     this.#resetBeforeTurboCaches()
   }

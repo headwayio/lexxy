@@ -1057,24 +1057,20 @@
   inset-block-start: var(--lexxy-prompt-offset-y);
   inset-inline-start: var(--lexxy-prompt-offset-x);
   margin: 0;
-  max-block-size: 200px;
-  max-inline-size: min(20ch, calc(100% - var(--lexxy-prompt-offset-x)));
+  max-block-size: 80vh;
+  max-inline-size: 20ch;
   min-inline-size: 20ch;
   overflow: auto;
   padding: var(--lexxy-prompt-padding);
-  position: absolute;
+  position: fixed;
   visibility: hidden;
   z-index: var(--lexxy-z-popup);
 
-  &[data-clipped-at-right] {
-    inset-inline-start: unset;
-    inset-inline-end: 1ch;
-  }
+}
 
-  &[data-clipped-at-bottom] {
-    inset-block-start: unset;
-    inset-block-end: var(--lexxy-prompt-offset-y);
-  }
+/* Override browser default ul padding-inline-start: 40px which beats :where() specificity */
+.lexxy-prompt-menu {
+  padding-inline-start: var(--lexxy-prompt-padding);
 }
 
 :where(.lexxy-prompt-menu--visible) {
@@ -1113,6 +1109,25 @@
 :where(.lexxy-prompt-menu__item--empty) {
   color: var(--lexxy-color-ink-medium);
   padding: var(--lexxy-prompt-padding);
+}
+
+/* Slash command items */
+
+:where(.lexxy-slash-command__icon) {
+  align-items: center;
+  color: var(--lexxy-color-ink-medium);
+  display: flex;
+  flex-shrink: 0;
+
+  svg {
+    block-size: 1.125em;
+    fill: currentColor;
+    inline-size: 1.125em;
+  }
+}
+
+:where(.lexxy-slash-command__label) {
+  white-space: nowrap;
 }
 
 

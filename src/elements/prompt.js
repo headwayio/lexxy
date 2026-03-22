@@ -242,25 +242,28 @@ export class LexicalPromptElement extends HTMLElement {
 
   #positionPopover() {
     const { x, y, fontSize } = this.#selection.cursorPosition
-    const editorRect = this.#editorElement.getBoundingClientRect()
-    const contentRect = this.#editorContentElement.getBoundingClientRect()
-    const verticalOffset = contentRect.top - editorRect.top
+    const rootRect = this.#editorContentElement.getBoundingClientRect()
+
+    // Convert editor-relative coords to viewport coords for position: fixed
+    const viewportX = rootRect.left + x
+    const viewportY = rootRect.top + y
 
     if (!this.popoverElement.hasAttribute("data-anchored")) {
-      this.#setPopoverOffsetX(x)
-      this.#setPopoverOffsetY(y + verticalOffset)
+      this.#setPopoverOffsetX(viewportX)
+      this.#setPopoverOffsetY(viewportY)
       this.popoverElement.toggleAttribute("data-anchored", true)
     }
 
     const popoverRect = this.popoverElement.getBoundingClientRect()
 
+    // Clamp to viewport right edge
     if (popoverRect.right > window.innerWidth) {
-      this.popoverElement.toggleAttribute("data-clipped-at-right", true)
+      this.#setPopoverOffsetX(Math.max(8, window.innerWidth - popoverRect.width - 8))
     }
 
+    // Flip above cursor if it would overflow viewport bottom
     if (popoverRect.bottom > window.innerHeight) {
-      this.#setPopoverOffsetY(contentRect.height - y + fontSize)
-      this.popoverElement.toggleAttribute("data-clipped-at-bottom", true)
+      this.#setPopoverOffsetY(viewportY - popoverRect.height - fontSize)
     }
   }
 
@@ -408,14 +411,34 @@ export class LexicalPromptElement extends HTMLElement {
 
     if (!promptItem) { return }
 
-    const templates = Array.from(promptItem.querySelectorAll("template[type='editor']"))
     const stringToReplace = `${this.trigger}${this.#editorContents.textBackUntil(this.trigger)}`
 
-    if (this.hasAttribute("insert-editable-text")) {
-      this.#insertTemplatesAsEditableText(templates, stringToReplace)
+    if (this.hasAttribute("dispatch-command")) {
+      this.#dispatchCommandFromPromptItem(promptItem, stringToReplace)
     } else {
-      this.#insertTemplatesAsAttachments(templates, stringToReplace, promptItem.getAttribute("sgid"))
+      const templates = Array.from(promptItem.querySelectorAll("template[type='editor']"))
+
+      if (this.hasAttribute("insert-editable-text")) {
+        this.#insertTemplatesAsEditableText(templates, stringToReplace)
+      } else {
+        this.#insertTemplatesAsAttachments(templates, stringToReplace, promptItem.getAttribute("sgid"))
+      }
     }
+  }
+
+  #dispatchCommandFromPromptItem(promptItem, stringToReplace) {
+    const command = promptItem.getAttribute("data-command")
+    if (!command) return
+
+    this.#editor.update(() => {
+      this.#editorContents.replaceTextBackUntil(stringToReplace, [ $createTextNode("") ])
+    })
+
+    requestAnimationFrame(() => {
+      this.#editor.update(() => {
+        this.#editor.dispatchCommand(command)
+      })
+    })
   }
 
   #insertTemplatesAsEditableText(templates, stringToReplace) {
@@ -470,7 +493,7 @@ export class LexicalPromptElement extends HTMLElement {
   async #buildPopover() {
     const popoverContainer = createElement("ul", { role: "listbox", id: generateDomId("prompt-popover") }) // Avoiding [popover] due to not being able to position at an arbitrary X, Y position.
     popoverContainer.classList.add("lexxy-prompt-menu")
-    popoverContainer.style.position = "absolute"
+    popoverContainer.style.position = "fixed"
     popoverContainer.setAttribute("nonce", getNonce())
     popoverContainer.append(...await this.source.buildListItems())
     popoverContainer.addEventListener("click", this.#handlePopoverClick)
