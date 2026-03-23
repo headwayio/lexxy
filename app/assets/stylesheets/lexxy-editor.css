@@ -49,7 +49,7 @@
     appearance: none;
     background: var(--lexxy-color-canvas);
     border: none;
-    border-radius: var(--lexxy-radius);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
     cursor: pointer;
     line-height: normal;
     font-size: inherit;
@@ -187,6 +187,7 @@
 
   .attachment {
     background-color: var(--lexxy-color-canvas);
+    position: relative;
 
     progress {
       max-inline-size: 10ch;
@@ -194,6 +195,8 @@
     }
 
     &.attachment--preview {
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+
       progress {
         inset-block-start: 2ch;
         inset-inline-start: 0;
@@ -231,6 +234,97 @@
         padding: 1ch;
         text-align: start;
       }
+    }
+  }
+
+  /* Preview / card toggle for previewable attachments */
+  .attachment--preview .attachment__card-view {
+    display: none;
+  }
+
+  .attachment--preview.attachment--collapsed {
+    background: transparent;
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+
+    .attachment__preview-view {
+      display: none;
+    }
+
+    .attachment__card-view {
+      align-items: center;
+      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+      display: flex;
+      gap: 0.75rem;
+      inline-size: 100%;
+      padding: 0.75rem;
+
+      .attachment__icon {
+        background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+        block-size: 2.5rem;
+        inline-size: 2.5rem;
+        border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+        border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+        box-sizing: border-box;
+        color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+        display: grid;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        overflow: hidden;
+        place-content: center;
+        text-transform: uppercase;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .attachment__caption {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        gap: 0.125rem;
+        min-width: 0;
+        text-align: start;
+      }
+
+      .attachment__name {
+        color: var(--lexxy-color-ink);
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attachment__meta {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+      }
+
+      .attachment__caption-text {
+        color: var(--lexxy-color-text-subtle, #9ca3af);
+        font-size: 0.8125rem;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attachment__subtitle {
+        color: var(--lexxy-color-text-subtle, #9ca3af);
+        font-size: 0.75rem;
+        flex-shrink: 0;
+      }
+    }
+
+    lexxy-node-delete-button {
+      inset-block-start: 50%;
+      inset-inline-end: 1ch;
+      inset-inline-start: unset;
+      transform: translate(0, -50%);
     }
   }
 
@@ -302,12 +396,160 @@
   }
 
   .attachment--file {
+    align-items: center;
+    border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+    display: flex;
+    gap: 0.75rem;
+    inline-size: 100%;
+    padding: 0.75rem;
+
+    .attachment__icon {
+      background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+      block-size: 2.5rem;
+      inline-size: 2.5rem;
+      border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+      box-sizing: border-box;
+      color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+      display: grid;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      place-content: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .attachment__caption {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 0.125rem;
+      min-width: 0;
+      text-align: start;
+    }
+
+    .attachment__name {
+      color: var(--lexxy-color-ink);
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment__meta {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    .attachment__caption-text {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.8125rem;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment__subtitle {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
     lexxy-node-delete-button {
       inset-block-start: 50%;
       inset-inline-end: 1ch;
       inset-inline-start: unset;
       transform: translate(0, -50%);
     }
+  }
+
+  /* File type icon colors — matching the files panel design */
+  .attachment--pdf {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(30% 0.05 27);
+  }
+
+  .attachment--md {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(40% 0 0);
+    --lexxy-attachment-icon-text: oklch(30% 0 0);
+  }
+
+  .attachment--csv,
+  .attachment--numbers {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: oklch(45% 0.15 160);
+  }
+
+  .attachment--xls,
+  .attachment--xlsx {
+    --lexxy-attachment-icon-bg: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--txt,
+  .attachment--rtf {
+    --lexxy-attachment-icon-bg: oklch(55% 0 0);
+    --lexxy-attachment-icon-border: oklch(55% 0 0);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--doc,
+  .attachment--docx,
+  .attachment--pages {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: oklch(45% 0.196 258);
+  }
+
+  .attachment--psd,
+  .attachment--key,
+  .attachment--sketch,
+  .attachment--ai,
+  .attachment--eps,
+  .attachment--indd,
+  .attachment--svg,
+  .attachment--ppt,
+  .attachment--pptx {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 27);
+  }
+
+  .attachment--css,
+  .attachment--php,
+  .attachment--json,
+  .attachment--htm,
+  .attachment--html,
+  .attachment--rb,
+  .attachment--erb,
+  .attachment--ts,
+  .attachment--js {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 305);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 305);
+  }
+
+  .attachment--png,
+  .attachment--jpg,
+  .attachment--jpeg,
+  .attachment--gif,
+  .attachment--webp {
+    --lexxy-attachment-icon-bg: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: white;
   }
 
   /* Image galleries */
@@ -351,7 +593,8 @@
       background: transparent;
       block-size: fit-content;
       border: 0;
-      border-radius: var(--lexxy-radius);
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+      box-shadow: none;
       box-sizing: border-box;
       color: inherit;
       display: block;
@@ -365,7 +608,8 @@
 
       &:focus {
         background: var(--lexxy-color-canvas);
-        outline: 0;
+        box-shadow: none;
+        outline: none;
       }
 
       &:placeholder-shown {
@@ -403,7 +647,7 @@
   /* Code blocks in editor */
   code, pre {
     background-color: var(--lexxy-color-code-bg, var(--lexxy-color-ink-lightest));
-    border-radius: var(--lexxy-radius);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
     color: var(--lexxy-color-code-text, var(--lexxy-color-ink));
     font-family: var(--lexxy-font-mono);
     font-size: 0.9em;
@@ -444,6 +688,76 @@
 
     p:last-child {
       margin-block-end: 0;
+    }
+  }
+
+  /* Mixed list support: CSS counters for per-item bullet/number types */
+  ol, ul:not(.lexxy-prompt-menu) {
+    margin-inline-start: 0;
+    padding-inline-start: 2em;
+    counter-reset: mixed-list;
+    list-style-type: none;
+  }
+
+  li[data-list-item-type="number"],
+  li[data-list-item-type="bullet"] {
+    position: relative;
+    line-height: 1.75;
+
+    &::marker {
+      content: none;
+    }
+
+    &::before {
+      position: absolute;
+      right: 100%;
+      width: 2em;
+      display: inline-block;
+      text-align: center;
+    }
+  }
+
+  li[data-list-item-type="number"]:not(.lexxy-nested-listitem) {
+    counter-increment: mixed-list;
+
+    &::before {
+      content: counter(mixed-list) ".";
+    }
+  }
+
+  li[data-list-item-type="bullet"] {
+    &::before {
+      content: "";
+      transform: none;
+      height: 1lh;
+    }
+  }
+
+  li[data-bullet-depth="1"]::before {
+    background: radial-gradient(circle, currentColor 3px, transparent 3px) center / 6px 6px no-repeat;
+  }
+
+  li[data-bullet-depth="2"]::before {
+    background: radial-gradient(circle, transparent 1.5px, currentColor 1.5px, currentColor 3px, transparent 3px) center / 6px 6px no-repeat;
+  }
+
+  li[data-bullet-depth="3"]::before {
+    background: linear-gradient(currentColor, currentColor) center / 6px 6px no-repeat;
+  }
+
+  /* Tighter indent for nested lists */
+  .lexxy-nested-listitem ol,
+  .lexxy-nested-listitem ul:not(.lexxy-prompt-menu) {
+    padding-inline-start: 2em;
+  }
+
+  li.lexxy-nested-listitem {
+    &::marker {
+      content: none;
+    }
+
+    &::before {
+      content: none;
     }
   }
 }
@@ -500,7 +814,7 @@
     aspect-ratio: 1;
     block-size: var(--lexxy-toolbar-button-size);
     border: 0;
-    border-radius: var(--lexxy-radius);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
     color: currentColor;
     display: grid;
     line-height: inherit;
@@ -710,7 +1024,7 @@
     input[type="url"] {
       background-color: var(--lexxy-color-canvas);
       border: 1px solid var(--lexxy-color-ink-lighter);
-      border-radius: var(--lexxy-radius);
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
       color: var(--lexxy-color-text);
       block-size: var(--lexxy-toolbar-button-size);
       box-sizing: border-box;
@@ -879,6 +1193,8 @@
   .lexxy-floating-controls__group {
     background-color: var(--lexxy-color-ink);
     border-radius: var(--floating-tools-radius);
+    display: flex;
+    flex-direction: row;
     padding: 0.25ch;
   }
 
@@ -985,7 +1301,7 @@
 
 
   /* --------------------------------------------------------------------------
-  /* Attachment delete button */
+  /* Attachment controls (preview, download, delete) */
 
   &:is(lexxy-node-delete-button) {
     inset-block-start: 0;
@@ -996,6 +1312,32 @@
     .node--selected & {
       opacity: 1;
       pointer-events: auto;
+    }
+
+    .lexxy-node-action {
+      align-items: center;
+      aspect-ratio: 1;
+      background: transparent;
+      block-size: var(--button-size);
+      color: var(--lexxy-color-ink-inverted);
+      display: flex;
+      justify-content: center;
+      min-block-size: var(--button-size);
+      min-inline-size: var(--button-size);
+      text-decoration: none;
+
+      svg {
+        block-size: 1.125em;
+        inline-size: 1.125em;
+        fill: currentColor;
+        opacity: 0.8;
+      }
+
+      &:hover {
+        background: var(--lexxy-color-ink-medium);
+
+        svg { opacity: 1; }
+      }
     }
 
     .lexxy-node-delete:hover {
@@ -1020,7 +1362,7 @@
       background-size: 1ch;
       block-size: 1.5lh;
       border: 1px solid var(--lexxy-color-ink-lighter);
-      border-radius: var(--lexxy-radius);
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
       color: var(--lexxy-color-ink);
       font-family: var(--lexxy-font-base);
       font-size: var(--lexxy-text-small);
