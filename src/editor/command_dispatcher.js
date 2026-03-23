@@ -20,7 +20,7 @@ import { $createAutoLinkNode, $toggleLink } from "@lexical/link"
 import { INSERT_TABLE_COMMAND } from "@lexical/table"
 
 import { createElement } from "../helpers/html_helper"
-import { getListType } from "../helpers/lexical_helper"
+import { getListItemNode, getListType } from "../helpers/lexical_helper"
 import { HorizontalDividerNode } from "../nodes/horizontal_divider_node"
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "../extensions/highlight_extension"
 
@@ -123,9 +123,15 @@ export class CommandDispatcher {
     if (!selection) return
 
     const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
 
-    if (this.selection.isInsideList && anchorNode && getListType(anchorNode) === "bullet") {
-      this.contents.applyParagraphFormat()
+    if (this.selection.isInsideList && listItem) {
+      const effectiveType = listItem.getEffectiveListType?.() ?? getListType(anchorNode)
+      if (effectiveType === "bullet") {
+        this.contents.applyParagraphFormat()
+      } else {
+        listItem.setListItemType?.("bullet")
+      }
     } else {
       this.editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
     }
@@ -136,9 +142,15 @@ export class CommandDispatcher {
     if (!selection) return
 
     const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
 
-    if (this.selection.isInsideList && anchorNode && getListType(anchorNode) === "number") {
-      this.contents.applyParagraphFormat()
+    if (this.selection.isInsideList && listItem) {
+      const effectiveType = listItem.getEffectiveListType?.() ?? getListType(anchorNode)
+      if (effectiveType === "number") {
+        this.contents.applyParagraphFormat()
+      } else {
+        listItem.setListItemType?.("number")
+      }
     } else {
       this.editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
     }
