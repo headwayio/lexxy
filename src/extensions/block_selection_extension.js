@@ -5,6 +5,7 @@ import {
   $getRoot,
   $getSelection,
   $isElementNode,
+  $parseSerializedNode,
   $isParagraphNode,
   $isRangeSelection,
   $setSelection,
@@ -28,6 +29,8 @@ export class BlockSelectionExtension extends LexxyExtension {
   #dragAndDrop = null
   #cleanupFns = []
   #wrappedBlockKeys = new Set() // ListItemNode keys created by block movement
+  #blockActionsMenu = null
+  #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
   #deferredPlacement = null
 
   get enabled() {
@@ -96,6 +99,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // -- Selection management ---------------------------------------------------
 
   #selectBlock(nodeKey, extend = false) {
+    this.#deleteNeighbors = null
     if (!extend) {
       this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
       this.#selectedBlockKeys.clear()
@@ -285,6 +289,11 @@ export class BlockSelectionExtension extends LexxyExtension {
         event.stopPropagation()
         if (event.metaKey && event.shiftKey) {
           this.#moveSelectedBlocks("up")
+        } else if (!this.#focusKey && this.#deleteNeighbors) {
+          // After a delete with no selection, pick the block above the deletion
+          const key = this.#deleteNeighbors.prev || this.#deleteNeighbors.next
+          if (key) this.#selectBlock(key)
+          this.#deleteNeighbors = null
         } else {
           const prevKey = this.#getPreviousBlockKey(this.#focusKey)
           if (prevKey) {
@@ -299,6 +308,11 @@ export class BlockSelectionExtension extends LexxyExtension {
         event.stopPropagation()
         if (event.metaKey && event.shiftKey) {
           this.#moveSelectedBlocks("down")
+        } else if (!this.#focusKey && this.#deleteNeighbors) {
+          // After a delete with no selection, pick the block below the deletion
+          const key = this.#deleteNeighbors.next || this.#deleteNeighbors.prev
+          if (key) this.#selectBlock(key)
+          this.#deleteNeighbors = null
         } else {
           const nextKey = this.#getNextBlockKey(this.#focusKey)
           if (nextKey) {
@@ -325,6 +339,22 @@ export class BlockSelectionExtension extends LexxyExtension {
         event.preventDefault()
         event.stopPropagation()
         this.#handleIndentOutdent(event.shiftKey)
+        break
+
+      case "/":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#openBlockActionsMenu()
+        }
+        break
+
+      case "d":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#handleDuplicate()
+        }
         break
 
       case "a":
@@ -383,6 +413,22 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #handleDelete() {
+    // Remember position in the document so arrow keys know where to start.
+    // Find the neighbors BEFORE deleting.
+    const allKeys = this.#getDocumentOrderBlockKeys()
+    const selectedSet = new Set(this.#selectedBlockKeys)
+    let nextKey = null
+    let prevKey = null
+
+    const lastSelectedIdx = Math.max(...[...selectedSet].map(k => allKeys.indexOf(k)))
+    for (let i = lastSelectedIdx + 1; i < allKeys.length; i++) {
+      if (!selectedSet.has(allKeys[i])) { nextKey = allKeys[i]; break }
+    }
+    const firstSelectedIdx = Math.min(...[...selectedSet].map(k => allKeys.indexOf(k)))
+    for (let i = firstSelectedIdx - 1; i >= 0; i--) {
+      if (!selectedSet.has(allKeys[i])) { prevKey = allKeys[i]; break }
+    }
+
     this.editor.update(() => {
       for (const key of this.#selectedBlockKeys) {
         const node = $getNodeByKey(key)
@@ -394,7 +440,15 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     })
 
-    this.#exitBlockSelectMode()
+    // Stay in block select mode with NO selection — the user picks
+    // the direction with arrow keys (like Notion). Store the position
+    // so Up/Down know where to start from.
+    this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
+    this.#selectedBlockKeys.clear()
+    this.#anchorKey = null
+    this.#focusKey = null
+    this.#deleteNeighbors = { next: nextKey, prev: prevKey }
+    this.#syncSelectionClasses()
   }
 
   #handleSelectAll() {
@@ -413,6 +467,132 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#focusKey = topLevelKeys[topLevelKeys.length - 1]
       this.#syncSelectionClasses()
     }
+  }
+
+  #openBlockActionsMenu() {
+    if (!this.#focusKey) return
+
+    const focusedEl = this.editor.getElementByKey(this.#focusKey)
+    if (!focusedEl) return
+
+    // Lazy-create the menu element
+    if (!this.#blockActionsMenu) {
+      this.#blockActionsMenu = document.createElement("lexxy-block-actions")
+      this.#blockActionsMenu.hidden = true
+      this.editorElement.appendChild(this.#blockActionsMenu)
+    }
+
+    const anchorRect = focusedEl.getBoundingClientRect()
+    this.#blockActionsMenu.show({
+      anchorRect,
+      editorElement: this.editorElement,
+      onAction: (action) => this.#handleBlockAction(action),
+      onClose: () => this.root?.focus()
+    })
+
+    this.#blockActionsMenu.focus()
+  }
+
+  #handleBlockAction(action) {
+    switch (action.type) {
+      case "turn-into":
+        this.#withTemporarySelection(() => {
+          this.editor.dispatchCommand(action.command)
+        })
+        break
+
+      case "color":
+        this.#withTemporarySelection(() => {
+          this.editor.dispatchCommand("toggleHighlight", { [action.style]: action.value })
+        })
+        break
+
+      case "remove-color":
+        this.#withTemporarySelection(() => {
+          this.editor.dispatchCommand("removeHighlight")
+        })
+        break
+
+      case "duplicate":
+        this.#handleDuplicate()
+        break
+
+      case "delete":
+        this.#handleDelete()
+        break
+    }
+  }
+
+  // Create a temporary RangeSelection over selected blocks, run the callback,
+  // then restore null selection for block select mode.
+  #withTemporarySelection(callback) {
+    this.editor.update(() => {
+      const keys = [...this.#selectedBlockKeys]
+      if (keys.length === 0) return
+
+      const firstNode = $getNodeByKey(keys[0])
+      const lastNode = $getNodeByKey(keys[keys.length - 1])
+      if (!firstNode) return
+
+      // Select from start of first block to end of last block
+      if (firstNode.selectStart) firstNode.selectStart()
+      else if (firstNode.select) firstNode.select()
+
+      const selection = $getSelection()
+      if ($isRangeSelection(selection) && lastNode) {
+        if (lastNode.selectEnd) {
+          const endSelection = lastNode.selectEnd()
+          if (endSelection) {
+            selection.focus.set(
+              endSelection.focus.key,
+              endSelection.focus.offset,
+              endSelection.focus.type
+            )
+          }
+        }
+      }
+
+      callback()
+
+      $setSelection(null)
+    }, { tag: HISTORY_MERGE_TAG })
+
+    requestAnimationFrame(() => this.#syncSelectionClasses())
+  }
+
+  #handleDuplicate() {
+    this.editor.update(() => {
+      const allKeys = this.#getDocumentOrderBlockKeys()
+      const sortedKeys = [...this.#selectedBlockKeys].sort(
+        (a, b) => allKeys.indexOf(a) - allKeys.indexOf(b)
+      )
+
+      const newKeys = []
+      // Insert clones after the LAST selected block so the group stays together
+      let insertAfterNode = $getNodeByKey(sortedKeys[sortedKeys.length - 1])
+
+      for (const key of sortedKeys) {
+        const node = $getNodeByKey(key)
+        if (!node) continue
+
+        const clone = $parseSerializedNode(node.exportJSON())
+        if (insertAfterNode) {
+          insertAfterNode.insertAfter(clone)
+          insertAfterNode = clone
+        }
+        newKeys.push(clone.getKey())
+      }
+
+      // Select the duplicated blocks
+      if (newKeys.length > 0) {
+        this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
+        this.#selectedBlockKeys = new Set(newKeys)
+        this.#anchorKey = newKeys[0]
+        this.#focusKey = newKeys[newKeys.length - 1]
+      }
+    }, { tag: HISTORY_MERGE_TAG })
+
+    requestAnimationFrame(() => this.#syncSelectionClasses())
   }
 
   #handleIndentOutdent(outdent) {
