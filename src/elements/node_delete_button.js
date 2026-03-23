@@ -46,6 +46,7 @@ export class NodeDeleteButton extends HTMLElement {
     const fileUrl = this.dataset.fileUrl
     const fileName = this.dataset.fileName
     const contentType = this.dataset.contentType
+    const caption = this.dataset.caption
 
     if (fileUrl) {
       const previewButton = createElement("button", {
@@ -59,7 +60,7 @@ export class NodeDeleteButton extends HTMLElement {
       previewButton.innerHTML = PREVIEW_ICON
       previewButton.addEventListener("click", (e) => {
         e.stopPropagation()
-        this.#dispatchPreviewEvent(fileUrl, fileName, contentType)
+        this.#dispatchPreviewEvent(fileUrl, fileName, contentType, caption)
       })
       container.appendChild(previewButton)
 
@@ -75,7 +76,7 @@ export class NodeDeleteButton extends HTMLElement {
         editButton.innerHTML = EDIT_ICON
         editButton.addEventListener("click", (e) => {
           e.stopPropagation()
-          this.#dispatchEditEvent(fileUrl, fileName, contentType)
+          this.#dispatchEditEvent(fileUrl, fileName, contentType, caption)
         })
         container.appendChild(editButton)
       }
@@ -150,17 +151,17 @@ export class NodeDeleteButton extends HTMLElement {
       contentType === "application/csv"
   }
 
-  #dispatchEditEvent(fileUrl, fileName, contentType) {
+  #dispatchEditEvent(fileUrl, fileName, contentType, caption) {
     this.editorElement.dispatchEvent(new CustomEvent("lexxy:edit-attachment", {
       bubbles: true,
-      detail: { fileUrl, fileName, contentType }
+      detail: { fileUrl, fileName, contentType, caption }
     }))
   }
 
-  #dispatchPreviewEvent(fileUrl, fileName, contentType) {
+  #dispatchPreviewEvent(fileUrl, fileName, contentType, caption) {
     this.editorElement.dispatchEvent(new CustomEvent("lexxy:preview-attachment", {
       bubbles: true,
-      detail: { fileUrl, fileName, contentType }
+      detail: { fileUrl, fileName, contentType, caption }
     }))
   }
 

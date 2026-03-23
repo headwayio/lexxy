@@ -1319,6 +1319,7 @@
       aspect-ratio: 1;
       background: transparent;
       block-size: var(--button-size);
+      border-radius: var(--floating-tools-radius);
       color: var(--lexxy-color-ink-inverted);
       display: flex;
       justify-content: center;

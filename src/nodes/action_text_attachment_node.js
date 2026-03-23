@@ -230,6 +230,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       controls.dataset.fileUrl = this.fileUrl
       controls.dataset.fileName = this.fileName || ""
       controls.dataset.contentType = this.contentType || ""
+      controls.dataset.caption = this.caption || ""
     }
     if (this.isPreviewableAttachment) {
       controls.dataset.previewable = "true"
