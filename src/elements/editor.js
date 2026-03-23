@@ -32,6 +32,7 @@ import { TablesExtension } from "../extensions/tables_extension"
 import { AttachmentsExtension } from "../extensions/attachments_extension.js"
 import { FormatEscapeExtension } from "../extensions/format_escape_extension.js"
 import { SlashCommandsExtension } from "../extensions/slash_commands_extension.js"
+import { BlockSelectionExtension } from "../extensions/block_selection_extension.js"
 
 
 export class LexicalEditorElement extends HTMLElement {
@@ -126,7 +127,8 @@ export class LexicalEditorElement extends HTMLElement {
       TablesExtension,
       AttachmentsExtension,
       FormatEscapeExtension,
-      SlashCommandsExtension
+      SlashCommandsExtension,
+      BlockSelectionExtension
     ]
   }
 
