@@ -63,12 +63,44 @@ export class BlockDragAndDrop {
     if (!this.#handleElement || !blockElement) return
 
     const editorRect = this.#editorElement.getBoundingClientRect()
-    const blockRect = blockElement.getBoundingClientRect()
+    const handleHeight = this.#handleElement.offsetHeight || 24
 
-    const top = blockRect.top - editorRect.top
+    const blockRect = blockElement.getBoundingClientRect()
+    let top
+
+    if (blockElement.matches("pre, code[data-language]")) {
+      // Code blocks: center in the language-selector row (the top padding area)
+      const paddingTop = parseFloat(getComputedStyle(blockElement).paddingTop) || 0
+      const rowCenter = blockRect.top + (paddingTop / 2)
+      top = rowCenter - editorRect.top - (handleHeight / 2)
+    } else {
+      // All other blocks: center on the first character of text
+      const firstCharRect = this.#getFirstCharRect(blockElement)
+      if (firstCharRect && firstCharRect.height > 0) {
+        const lineCenter = firstCharRect.top + (firstCharRect.height / 2)
+        top = lineCenter - editorRect.top - (handleHeight / 2)
+      } else {
+        top = blockRect.top - editorRect.top
+      }
+    }
 
     this.#handleElement.style.top = `${top}px`
     this.#handleElement.classList.add("lexxy-block-handle--visible")
+  }
+
+  #getFirstCharRect(element) {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    let textNode = walker.nextNode()
+    while (textNode && !textNode.textContent.trim()) {
+      textNode = walker.nextNode()
+    }
+    if (!textNode) return null
+
+    const range = document.createRange()
+    const offset = textNode.textContent.search(/\S/)
+    range.setStart(textNode, offset >= 0 ? offset : 0)
+    range.setEnd(textNode, (offset >= 0 ? offset : 0) + 1)
+    return range.getBoundingClientRect()
   }
 
   #hideHandle() {
