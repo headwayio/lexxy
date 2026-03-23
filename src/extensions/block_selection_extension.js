@@ -11,7 +11,9 @@ import {
   CLICK_COMMAND,
   COMMAND_PRIORITY_HIGH,
   HISTORY_MERGE_TAG,
-  KEY_ESCAPE_COMMAND
+  INDENT_CONTENT_COMMAND,
+  KEY_ESCAPE_COMMAND,
+  OUTDENT_CONTENT_COMMAND
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
@@ -319,6 +321,12 @@ export class BlockSelectionExtension extends LexxyExtension {
         this.#handleDelete()
         break
 
+      case "Tab":
+        event.preventDefault()
+        event.stopPropagation()
+        this.#handleIndentOutdent(event.shiftKey)
+        break
+
       case "a":
         if (event.metaKey || event.ctrlKey) {
           event.preventDefault()
@@ -405,6 +413,40 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#focusKey = topLevelKeys[topLevelKeys.length - 1]
       this.#syncSelectionClasses()
     }
+  }
+
+  #handleIndentOutdent(outdent) {
+    this.editor.update(() => {
+      // Find all selected list items
+      const listItemKeys = [...this.#selectedBlockKeys].filter(key => {
+        const node = $getNodeByKey(key)
+        return node && $isListItemNode(node)
+      })
+      if (listItemKeys.length === 0) return
+
+      // Temporarily create a RangeSelection covering the list items
+      // so Lexical's indent/outdent command handlers can find them.
+      const firstNode = $getNodeByKey(listItemKeys[0])
+      const lastNode = $getNodeByKey(listItemKeys[listItemKeys.length - 1])
+      if (!firstNode) return
+
+      firstNode.selectStart()
+      const selection = $getSelection()
+      if ($isRangeSelection(selection) && lastNode) {
+        selection.focus.set(lastNode.getKey(), lastNode.getChildrenSize(), "element")
+      }
+
+      this.editor.dispatchCommand(
+        outdent ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND
+      )
+
+      // Restore null selection for block select mode
+      $setSelection(null)
+    }, { tag: HISTORY_MERGE_TAG })
+
+    requestAnimationFrame(() => {
+      this.#syncSelectionClasses()
+    })
   }
 
   // -- Block movement ---------------------------------------------------------
