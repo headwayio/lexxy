@@ -7,6 +7,7 @@ import {
   $isElementNode,
   $isParagraphNode,
   $parseSerializedNode,
+  $isDecoratorNode,
   $isRangeSelection,
   $setSelection,
   CLICK_COMMAND,
@@ -201,11 +202,20 @@ export class BlockSelectionExtension extends LexxyExtension {
   #collectListItemKeys(listNode, keys) {
     const children = listNode.getChildren()
     for (const child of children) {
-      if ($isListItemNode(child)) {
+      if (!$isListItemNode(child)) continue
+
+      if (this.#isStructuralWrapper(child)) {
+        // Skip structural wrappers — recurse into their nested lists directly
+        for (const grandchild of child.getChildren()) {
+          if ($isListNode(grandchild)) {
+            this.#collectListItemKeys(grandchild, keys)
+          }
+        }
+      } else {
+        // Content item — add its key and recurse into any nested lists
         keys.push(child.getKey())
         for (const grandchild of child.getChildren()) {
           if ($isListNode(grandchild)) {
-            keys.push(grandchild.getKey())
             this.#collectListItemKeys(grandchild, keys)
           }
         }
@@ -214,17 +224,31 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #getNextBlockKey(currentKey) {
-    const allKeys = this.#getDocumentOrderBlockKeys()
+    const allKeys = this.#getNavigableBlockKeys()
     const index = allKeys.indexOf(currentKey)
     if (index === -1 || index >= allKeys.length - 1) return null
     return allKeys[index + 1]
   }
 
   #getPreviousBlockKey(currentKey) {
-    const allKeys = this.#getDocumentOrderBlockKeys()
+    const allKeys = this.#getNavigableBlockKeys()
     const index = allKeys.indexOf(currentKey)
     if (index <= 0) return null
     return allKeys[index - 1]
+  }
+
+  // Block keys suitable for arrow-key navigation — excludes ListNode
+  // containers since they aren't visually selectable.
+  #getNavigableBlockKeys() {
+    const allKeys = this.#getDocumentOrderBlockKeys()
+    return allKeys.filter(key => {
+      let isNavigable = true
+      this.editor.getEditorState().read(() => {
+        const node = $getNodeByKey(key)
+        if ($isListNode(node)) isNavigable = false
+      })
+      return isNavigable
+    })
   }
 
   #getBlockKeyContainingCursor() {
@@ -754,6 +778,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   #createBlockForCommand(command) {
     switch (command) {
       case "setFormatParagraph": return $createParagraphNode()
+      case "setFormatHeadingXLarge": return $createHeadingNode("h1")
       case "setFormatHeadingLarge": return $createHeadingNode("h2")
       case "setFormatHeadingMedium": return $createHeadingNode("h3")
       case "setFormatHeadingSmall": return $createHeadingNode("h4")
@@ -1279,6 +1304,44 @@ export class BlockSelectionExtension extends LexxyExtension {
     const sibling = isDown ? node.getNextSibling() : node.getPreviousSibling()
 
     if (!sibling) return
+
+    // Decorator nodes (HR, images): Lexical keeps separator paragraphs between
+    // adjacent decorators. When moving a decorator, skip over any empty separator
+    // paragraphs to reach the real target position.
+    // If the target is a ListNode, fall through to the list-handling logic below.
+    if ($isDecoratorNode(node)) {
+      let target = sibling
+      // Skip empty separator paragraphs between decorator nodes
+      while (target && $isParagraphNode(target) && target.getTextContentSize() === 0) {
+        const beyond = isDown ? target.getNextSibling() : target.getPreviousSibling()
+        if (beyond) {
+          target = beyond
+        } else {
+          break
+        }
+      }
+      if (!$isListNode(target)) {
+        if (isDown) {
+          target.insertAfter(node)
+        } else {
+          target.insertBefore(node)
+        }
+        return
+      }
+      // target is a ListNode — fall through to list handling below
+    }
+
+    // When moving an empty paragraph adjacent to a decorator node (HR, image),
+    // swap the decorator over the paragraph instead. This prevents Lexical from
+    // re-inserting a separator paragraph (which makes the move appear to fail).
+    if ($isParagraphNode(node) && node.getTextContentSize() === 0 && $isDecoratorNode(sibling)) {
+      if (isDown) {
+        node.insertBefore(sibling)
+      } else {
+        node.insertAfter(sibling)
+      }
+      return
+    }
 
     if ($isListNode(sibling)) {
       if ($isListNode(node)) {
