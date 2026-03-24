@@ -1,4 +1,4 @@
-import { $getNodeByKey, $getState, $hasUpdateTag, $setState, COMMAND_PRIORITY_NORMAL, PASTE_TAG, TextNode, createCommand, createState, defineExtension } from "lexical"
+import { $getNodeByKey, $getState, $hasUpdateTag, $isTextNode, $setState, COMMAND_PRIORITY_LOW, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, PASTE_TAG, TextNode, createCommand, createState, defineExtension } from "lexical"
 import { $getSelection, $isRangeSelection } from "lexical"
 import { $getSelectionStyleValueForProperty, $patchStyleText, getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { $createCodeHighlightNode, $createCodeNode, $isCodeHighlightNode, $isCodeNode, CodeHighlightNode, CodeNode } from "@lexical/code"
@@ -52,6 +52,10 @@ export class HighlightExtension extends LexxyExtension {
         return mergeRegister(
           editor.registerCommand(TOGGLE_HIGHLIGHT_COMMAND, (styles) => $toggleSelectionStyles(editor, styles), COMMAND_PRIORITY_NORMAL),
           editor.registerCommand(REMOVE_HIGHLIGHT_COMMAND, () => $toggleSelectionStyles(editor, BLANK_STYLES), COMMAND_PRIORITY_NORMAL),
+          editor.registerCommand(KEY_ENTER_COMMAND, () => {
+            requestAnimationFrame(() => $clearHighlightOnNewBlock(editor))
+            return false
+          }, COMMAND_PRIORITY_LOW),
           editor.registerNodeTransform(TextNode, $syncHighlightWithStyle),
           editor.registerNodeTransform(CodeHighlightNode, $syncHighlightWithCodeHighlightNode),
           editor.registerNodeTransform(TextNode, (textNode) => $canonicalizePastedStyles(textNode, canonicalizers)),
@@ -419,6 +423,27 @@ function $setCodeHighlightFormat(node, shouldHaveHighlight) {
 
 function toggleOrReplace(oldValue, newValue) {
   return oldValue === newValue ? null : newValue
+}
+
+function $clearHighlightOnNewBlock(editor) {
+  editor.update(() => {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return
+
+    const anchor = selection.anchor.getNode()
+    if (!$isTextNode(anchor)) return
+    if (anchor.getTextContent() !== "") return
+
+    const style = anchor.getStyle()
+    if (!hasHighlightStyles(style)) return
+
+    const styles = getStyleObjectFromCSS(style)
+    delete styles.color
+    delete styles["background-color"]
+    const newCSS = getCSSFromStyleObject(styles)
+    anchor.setStyle(newCSS)
+    selection.setStyle(newCSS)
+  })
 }
 
 function $syncHighlightWithStyle(textNode) {
