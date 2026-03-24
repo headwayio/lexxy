@@ -2,23 +2,46 @@ import LexxyExtension from "./lexxy_extension"
 import { createElement } from "../helpers/html_helper"
 import ToolbarIcons from "../elements/toolbar_icons"
 
-const SLASH_COMMANDS = [
-  { command: "setFormatParagraph", label: "Normal text", search: "paragraph normal text plain", icon: ToolbarIcons.paragraph },
-  { command: "setFormatHeadingLarge", label: "Large Heading", search: "heading title h2 large", icon: ToolbarIcons.h2 },
-  { command: "setFormatHeadingMedium", label: "Medium Heading", search: "heading title h3 medium", icon: ToolbarIcons.h3 },
-  { command: "setFormatHeadingSmall", label: "Small Heading", search: "heading title h4 small", icon: ToolbarIcons.h4 },
-  { command: "bold", label: "Bold", search: "bold strong", icon: ToolbarIcons.bold },
-  { command: "italic", label: "Italic", search: "italic emphasis", icon: ToolbarIcons.italic },
-  { command: "underline", label: "Underline", search: "underline", icon: ToolbarIcons.underline },
-  { command: "strikethrough", label: "Strikethrough", search: "strikethrough strike", icon: ToolbarIcons.strikethrough },
-  { command: "link", label: "Link", search: "link url href", icon: ToolbarIcons.link },
-  { command: "insertUnorderedList", label: "Bullet list", search: "bullet list unordered", icon: ToolbarIcons.ul },
-  { command: "insertOrderedList", label: "Numbered list", search: "numbered list ordered", icon: ToolbarIcons.ol },
-  { command: "insertQuoteBlock", label: "Quote", search: "quote blockquote", icon: ToolbarIcons.quote },
-  { command: "insertCodeBlock", label: "Code block", search: "code block pre", icon: ToolbarIcons.code },
-  { command: "insertHorizontalDivider", label: "Divider", search: "divider horizontal rule line", icon: ToolbarIcons.hr },
-  { command: "insertTable", label: "Table", search: "table grid", icon: ToolbarIcons.table },
-  { command: "uploadAttachments", label: "Upload file", search: "upload file attachment image", icon: ToolbarIcons.attachment }
+const COLOR_NAMES = ["Yellow", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Brown", "Gray"]
+
+function colorName(cssVar) {
+  const match = cssVar.match(/--highlight-(?:bg-)?(\d+)/)
+  return match ? COLOR_NAMES[parseInt(match[1]) - 1] || `Color ${match[1]}` : cssVar
+}
+
+const SLASH_COMMAND_SECTIONS = [
+  {
+    section: "Basic blocks",
+    items: [
+      { command: "setFormatParagraph", label: "Text", search: "paragraph normal text plain", icon: ToolbarIcons.paragraph },
+      { command: "setFormatHeadingXLarge", label: "Heading 1", search: "heading 1 title h1 xlarge", icon: ToolbarIcons.h1, shortcut: "#" },
+      { command: "setFormatHeadingLarge", label: "Heading 2", search: "heading 2 title h2 large", icon: ToolbarIcons.h2, shortcut: "##" },
+      { command: "setFormatHeadingMedium", label: "Heading 3", search: "heading 3 title h3 medium", icon: ToolbarIcons.h3, shortcut: "###" },
+      { command: "setFormatHeadingSmall", label: "Heading 4", search: "heading 4 title h4 small", icon: ToolbarIcons.h4, shortcut: "####" },
+      { command: "insertUnorderedList", label: "Bullet list", search: "bullet list unordered", icon: ToolbarIcons.ul, shortcut: "-" },
+      { command: "insertOrderedList", label: "Numbered list", search: "numbered list ordered", icon: ToolbarIcons.ol, shortcut: "1." },
+      { command: "insertQuoteBlock", label: "Quote", search: "quote blockquote", icon: ToolbarIcons.quote, shortcut: '> | "' },
+      { command: "insertCodeBlock", label: "Code block", search: "code block pre", icon: ToolbarIcons.code, shortcut: "```" },
+      { command: "insertTable", label: "Table", search: "table grid", icon: ToolbarIcons.table },
+      { command: "insertHorizontalDivider", label: "Divider", search: "divider horizontal rule line separator", icon: ToolbarIcons.hr, shortcut: "---" },
+    ]
+  },
+  {
+    section: "Inline",
+    items: [
+      { command: "bold", label: "Bold", search: "bold strong", icon: ToolbarIcons.bold, shortcut: "**text**" },
+      { command: "italic", label: "Italic", search: "italic emphasis", icon: ToolbarIcons.italic, shortcut: "_text_" },
+      { command: "underline", label: "Underline", search: "underline", icon: ToolbarIcons.underline },
+      { command: "strikethrough", label: "Strikethrough", search: "strikethrough strike", icon: ToolbarIcons.strikethrough, shortcut: "~~text~~" },
+      { command: "link", label: "Link", search: "link url href", icon: ToolbarIcons.link },
+    ]
+  },
+  {
+    section: "Media",
+    items: [
+      { command: "uploadAttachments", label: "Upload file", search: "upload file attachment image media", icon: ToolbarIcons.attachment },
+    ]
+  },
 ]
 
 export class SlashCommandsExtension extends LexxyExtension {
@@ -34,20 +57,89 @@ export class SlashCommandsExtension extends LexxyExtension {
     const prompt = createElement("lexxy-prompt")
     prompt.setAttribute("trigger", "/")
     prompt.setAttribute("dispatch-command", "")
+    prompt.setAttribute("supports-space-in-searches", "")
 
-    for (const { command, label, search, icon } of SLASH_COMMANDS) {
-      const item = createElement("lexxy-prompt-item")
-      item.setAttribute("search", search)
-      item.setAttribute("data-command", command)
+    // Static command sections
+    for (const { section, items } of SLASH_COMMAND_SECTIONS) {
+      for (const { command, label, search, icon, shortcut } of items) {
+        prompt.appendChild(this.#buildCommandItem({ command, label, search, icon, section, shortcut }))
+      }
+    }
 
-      const menuTemplate = document.createElement("template")
-      menuTemplate.setAttribute("type", "menu")
-      menuTemplate.innerHTML = `<span class="lexxy-slash-command__icon">${icon}</span><span class="lexxy-slash-command__label">${label}</span>`
-
-      item.appendChild(menuTemplate)
-      prompt.appendChild(item)
+    // Dynamic color sections from editor config
+    const colorConfig = this.editorElement.config.get("highlight.buttons")
+    if (colorConfig) {
+      this.#appendColorItems(prompt, colorConfig)
     }
 
     this.editorElement.appendChild(prompt)
+  }
+
+  #buildCommandItem({ command, label, search, icon, section, payload, selectBlock, shortcut }) {
+    const item = createElement("lexxy-prompt-item")
+    item.setAttribute("search", search)
+    item.setAttribute("data-command", command)
+    if (section) item.setAttribute("data-section", section)
+    if (payload) item.setAttribute("data-command-payload", JSON.stringify(payload))
+    if (selectBlock) item.setAttribute("data-command-select-block", "")
+
+    const shortcutHtml = shortcut
+      ? `<span class="lexxy-slash-command__shortcut">${shortcut}</span>`
+      : ""
+
+    const menuTemplate = document.createElement("template")
+    menuTemplate.setAttribute("type", "menu")
+    menuTemplate.innerHTML = `<span class="lexxy-slash-command__icon">${icon}</span><span class="lexxy-slash-command__label">${label}</span>${shortcutHtml}`
+
+    item.appendChild(menuTemplate)
+    return item
+  }
+
+  #buildColorItem({ label, search, section, style, value }) {
+    const item = createElement("lexxy-prompt-item")
+    item.setAttribute("search", search)
+    item.setAttribute("data-command", "toggleHighlight")
+    item.setAttribute("data-command-payload", JSON.stringify({ [style]: value }))
+    item.setAttribute("data-command-select-block", "")
+    item.setAttribute("data-section", section)
+
+    const swatchHtml = style === "color"
+      ? `<span class="lexxy-slash-command__color-swatch" style="color:${value}">A</span>`
+      : `<span class="lexxy-slash-command__color-swatch" style="background-color:${value}"></span>`
+
+    const menuTemplate = document.createElement("template")
+    menuTemplate.setAttribute("type", "menu")
+    menuTemplate.innerHTML = `${swatchHtml}<span class="lexxy-slash-command__label">${label}</span>`
+
+    item.appendChild(menuTemplate)
+    return item
+  }
+
+  #appendColorItems(prompt, colorConfig) {
+    if (colorConfig.color?.length) {
+      for (const value of colorConfig.color) {
+        const name = colorName(value)
+        prompt.appendChild(this.#buildColorItem({
+          label: `${name} text`,
+          search: `${name} text color`,
+          section: "Text color",
+          style: "color",
+          value,
+        }))
+      }
+    }
+
+    if (colorConfig["background-color"]?.length) {
+      for (const value of colorConfig["background-color"]) {
+        const name = colorName(value)
+        prompt.appendChild(this.#buildColorItem({
+          label: `${name} background`,
+          search: `${name} background color`,
+          section: "Background color",
+          style: "background-color",
+          value,
+        }))
+      }
+    }
   }
 }

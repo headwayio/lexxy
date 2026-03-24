@@ -16,7 +16,9 @@ export class LexicalPromptElement extends HTMLElement {
     super()
     this.keyListeners = []
     this.showPopoverId = 0
+    this.#keyboardFocusTimer = null
   }
+  #keyboardFocusTimer = null
 
   static observedAttributes = [ "connected" ]
 
@@ -217,10 +219,19 @@ export class LexicalPromptElement extends HTMLElement {
     return Array.from(this.popoverElement.querySelectorAll(".lexxy-prompt-menu__item"))
   }
 
-  #selectOption(listItem) {
+  #selectOption(listItem, direction) {
     this.#clearSelection()
     listItem.toggleAttribute("aria-selected", true)
-    listItem.scrollIntoView({ block: "nearest", behavior: "smooth" })
+
+    // Keyboard navigation sets the outline ring and suppresses hover bg
+    if (direction) {
+      if (this.#keyboardFocusTimer) clearTimeout(this.#keyboardFocusTimer)
+      listItem.toggleAttribute("data-keyboard-focus", true)
+      this.popoverElement.classList.add("lexxy-prompt-menu--keyboard-active")
+      this.#scrollWithLookahead(listItem, direction)
+    } else {
+      listItem.scrollIntoView({ block: "nearest" })
+    }
     listItem.focus()
 
     // Preserve selection to prevent cursor jump
@@ -234,10 +245,76 @@ export class LexicalPromptElement extends HTMLElement {
   }
 
   #clearSelection() {
-    this.#listItemElements.forEach((item) => { item.toggleAttribute("aria-selected", false) })
+    this.#listItemElements.forEach((item) => {
+      item.toggleAttribute("aria-selected", false)
+      item.removeAttribute("data-keyboard-focus")
+    })
     this.#editorContentElement.removeAttribute("aria-controls")
     this.#editorContentElement.removeAttribute("aria-activedescendant")
     this.#editorContentElement.removeAttribute("aria-haspopup")
+  }
+
+  #scrollWithLookahead(listItem, direction = "down") {
+    const container = this.popoverElement
+    const items = this.#listItemElements
+    const index = items.indexOf(listItem)
+    const lookahead = 2
+
+    const padding = 6
+    const footer = container.querySelector(".lexxy-prompt-menu__footer")
+    const footerHeight = footer ? footer.offsetHeight + 8 : 0
+    const containerRect = container.getBoundingClientRect()
+    const visibleTop = containerRect.top + padding
+    const visibleBottom = containerRect.bottom - footerHeight
+
+    // First ensure the selected item itself is visible
+    if (index === 0) {
+      container.scrollTop = 0
+    } else {
+      const itemRect = listItem.getBoundingClientRect()
+      if (itemRect.top < visibleTop) {
+        container.scrollTop -= visibleTop - itemRect.top
+      } else if (itemRect.bottom > visibleBottom) {
+        container.scrollTop += itemRect.bottom - visibleBottom
+      }
+    }
+
+    // Then scroll the lookahead target into view
+    const targetIndex = direction === "down"
+      ? Math.min(index + lookahead, items.length - 1)
+      : Math.max(index - lookahead, 0)
+
+    // When near the top, scroll all the way to reveal section headers
+    if (direction === "up" && targetIndex <= 1) {
+      container.scrollTop = 0
+    } else if (direction === "down" && targetIndex >= items.length - 2) {
+      container.scrollTop = container.scrollHeight
+    } else {
+      const target = items[targetIndex]
+      if (target && target !== listItem) {
+        const targetRect = target.getBoundingClientRect()
+        if (direction === "down" && targetRect.bottom > visibleBottom) {
+          container.scrollTop += targetRect.bottom - visibleBottom
+        } else if (direction === "up" && targetRect.top < visibleTop) {
+          container.scrollTop -= visibleTop - targetRect.top
+        }
+      }
+    }
+
+    this.#updateScrollFades()
+  }
+
+  #updateScrollFades() {
+    const container = this.popoverElement
+    if (!container) return
+
+    const atTop = container.scrollTop <= 1
+    const footer = container.querySelector(".lexxy-prompt-menu__footer")
+    const footerHeight = footer ? footer.offsetHeight + 4 : 0
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - footerHeight
+
+    container.classList.toggle("lexxy-prompt-menu--fade-top", !atTop)
+    container.classList.toggle("lexxy-prompt-menu--fade-bottom", !atBottom)
   }
 
   #positionPopover() {
@@ -270,7 +347,8 @@ export class LexicalPromptElement extends HTMLElement {
     // When flipped above cursor, recalculate top so the bottom edge
     // stays anchored to the cursor as the menu height changes (filtering)
     if (this.popoverElement.hasAttribute("data-flipped")) {
-      this.#setPopoverOffsetY(viewportY - this.popoverElement.offsetHeight - fontSize)
+      const flippedTop = viewportY - this.popoverElement.offsetHeight - fontSize
+      this.#setPopoverOffsetY(Math.max(8, flippedTop))
     }
   }
 
@@ -351,6 +429,18 @@ export class LexicalPromptElement extends HTMLElement {
   #showResults(filteredListItems) {
     this.popoverElement.classList.remove("lexxy-prompt-menu--empty")
     this.popoverElement.append(...filteredListItems)
+    if (this.hasAttribute("dispatch-command")) {
+      this.popoverElement.appendChild(this.#buildFooter())
+    }
+    this.popoverElement.scrollTop = 0
+    requestAnimationFrame(() => this.#updateScrollFades())
+  }
+
+  #buildFooter() {
+    const footer = createElement("li", { role: "presentation" })
+    footer.classList.add("lexxy-prompt-menu__footer")
+    footer.innerHTML = `<span>Close menu</span><span class="lexxy-prompt-menu__footer-key">esc</span>`
+    return footer
   }
 
   #showEmptyResults() {
@@ -385,12 +475,12 @@ export class LexicalPromptElement extends HTMLElement {
 
   #moveSelectionDown() {
     const nextIndex = this.#selectedIndex + 1
-    if (nextIndex < this.#listItemElements.length) this.#selectOption(this.#listItemElements[nextIndex])
+    if (nextIndex < this.#listItemElements.length) this.#selectOption(this.#listItemElements[nextIndex], "down")
   }
 
   #moveSelectionUp() {
     const previousIndex = this.#selectedIndex - 1
-    if (previousIndex >= 0) this.#selectOption(this.#listItemElements[previousIndex])
+    if (previousIndex >= 0) this.#selectOption(this.#listItemElements[previousIndex], "up")
   }
 
   get #selectedIndex() {
@@ -438,13 +528,24 @@ export class LexicalPromptElement extends HTMLElement {
     const command = promptItem.getAttribute("data-command")
     if (!command) return
 
+    const payloadStr = promptItem.getAttribute("data-command-payload")
+    const payload = payloadStr ? JSON.parse(payloadStr) : undefined
+    const selectBlock = promptItem.hasAttribute("data-command-select-block")
+
     this.#editor.update(() => {
       this.#editorContents.replaceTextBackUntil(stringToReplace, [ $createTextNode("") ])
     })
 
     requestAnimationFrame(() => {
       this.#editor.update(() => {
-        this.#editor.dispatchCommand(command)
+        if (selectBlock) {
+          const sel = $getSelection()
+          if ($isRangeSelection(sel)) {
+            const block = sel.anchor.getNode().getTopLevelElementOrThrow()
+            block.select(0, block.getChildrenSize())
+          }
+        }
+        this.#editor.dispatchCommand(command, payload)
       })
     })
   }
@@ -505,16 +606,49 @@ export class LexicalPromptElement extends HTMLElement {
     popoverContainer.setAttribute("nonce", getNonce())
     popoverContainer.append(...await this.source.buildListItems())
     popoverContainer.addEventListener("click", this.#handlePopoverClick)
+    popoverContainer.addEventListener("mousemove", this.#handlePopoverMousemove)
+    popoverContainer.addEventListener("scroll", this.#handlePopoverScroll, { passive: true })
     this.#editorElement.appendChild(popoverContainer)
     return popoverContainer
   }
 
   #handlePopoverClick = (event) => {
+    if (event.target.closest(".lexxy-prompt-menu__footer")) {
+      this.#hidePopover()
+      this.#editorElement.focus()
+      return
+    }
+
     const listItem = event.target.closest(".lexxy-prompt-menu__item")
     if (listItem) {
       this.#selectOption(listItem)
       this.#optionWasSelected()
     }
+  }
+
+  #handlePopoverMousemove = (event) => {
+    this.popoverElement.classList.remove("lexxy-prompt-menu--keyboard-active")
+
+    const listItem = event.target.closest(".lexxy-prompt-menu__item")
+    if (!listItem || listItem.hasAttribute("aria-selected")) return
+
+    // Clear keyboard focus outline after a short delay when mouse moves to a different item
+    if (this.#keyboardFocusTimer) clearTimeout(this.#keyboardFocusTimer)
+    const currentKeyboardItem = this.popoverElement.querySelector("[data-keyboard-focus]")
+    if (currentKeyboardItem && currentKeyboardItem !== listItem) {
+      this.#keyboardFocusTimer = setTimeout(() => {
+        currentKeyboardItem.removeAttribute("data-keyboard-focus")
+      }, 500)
+    }
+
+    // Silently update selection tracking so keyboard continues from here
+    this.#clearSelection()
+    listItem.toggleAttribute("aria-selected", true)
+    this.#editorContentElement.setAttribute("aria-activedescendant", listItem.id)
+  }
+
+  #handlePopoverScroll = () => {
+    this.#updateScrollFades()
   }
 
   #reconnect() {
