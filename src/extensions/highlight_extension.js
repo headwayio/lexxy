@@ -57,7 +57,8 @@ export class HighlightExtension extends LexxyExtension {
           editor.registerNodeTransform(TextNode, (textNode) => $canonicalizePastedStyles(textNode, canonicalizers)),
           editor.registerMutationListener(CodeNode, (mutations) => {
             $applyPendingCodeHighlights(editor, mutations)
-          }, { skipInitialization: true })
+          }, { skipInitialization: true }),
+          $registerMarkPaddingSync(editor)
         )
       }
     })
@@ -459,4 +460,27 @@ function $setPastedStyles(textNode, value = true) {
 
 function $hasPastedStyles(textNode) {
   return $getState(textNode, hasPastedStylesState)
+}
+
+// After DOM reconciliation, scan <mark> elements and set data-pad-start /
+// data-pad-end attributes based on whether the mark sits at a word boundary.
+// Marks mid-word get no horizontal padding; marks at word edges get padding.
+function $registerMarkPaddingSync(editor) {
+  return editor.registerUpdateListener(() => {
+    requestAnimationFrame(() => {
+      const root = editor.getRootElement()
+      if (!root) return
+
+      for (const mark of root.querySelectorAll("mark")) {
+        const prev = mark.previousSibling
+        const next = mark.nextSibling
+
+        const padStart = !prev || (prev.textContent && /\s$/.test(prev.textContent))
+        const padEnd = !next || (next.textContent && /^\s/.test(next.textContent))
+
+        mark.toggleAttribute("data-pad-start", padStart)
+        mark.toggleAttribute("data-pad-end", padEnd)
+      }
+    })
+  })
 }
