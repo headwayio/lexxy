@@ -1,7 +1,7 @@
 import Lexxy from "../config/lexxy"
 import { createElement, generateDomId, parseHtml } from "../helpers/html_helper"
 import { getNonce } from "../helpers/csp_helper"
-import { $createTextNode, $getSelection, $isRangeSelection, $isTextNode, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_SPACE_COMMAND, KEY_TAB_COMMAND } from "lexical"
+import { $createParagraphNode, $createTextNode, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, COMMAND_PRIORITY_CRITICAL, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_SPACE_COMMAND, KEY_TAB_COMMAND } from "lexical"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import InlinePromptSource from "../editor/prompt/inline_source"
 import DeferredPromptSource from "../editor/prompt/deferred_source"
@@ -339,15 +339,16 @@ export class LexicalPromptElement extends HTMLElement {
     }
 
     // Flip above cursor if it would overflow viewport bottom
+    const flippedGap = fontSize * 3
     if (popoverRect.bottom > window.innerHeight) {
       this.popoverElement.toggleAttribute("data-flipped", true)
-      this.#setPopoverOffsetY(viewportY - popoverRect.height - fontSize)
+      this.#setPopoverOffsetY(viewportY - popoverRect.height - flippedGap)
     }
 
     // When flipped above cursor, recalculate top so the bottom edge
     // stays anchored to the cursor as the menu height changes (filtering)
     if (this.popoverElement.hasAttribute("data-flipped")) {
-      const flippedTop = viewportY - this.popoverElement.offsetHeight - fontSize
+      const flippedTop = viewportY - this.popoverElement.offsetHeight - flippedGap
       this.#setPopoverOffsetY(Math.max(8, flippedTop))
     }
   }
@@ -531,6 +532,7 @@ export class LexicalPromptElement extends HTMLElement {
     const payloadStr = promptItem.getAttribute("data-command-payload")
     const payload = payloadStr ? JSON.parse(payloadStr) : undefined
     const selectBlock = promptItem.hasAttribute("data-command-select-block")
+    const insertBelow = promptItem.hasAttribute("data-insert-below")
 
     this.#editor.update(() => {
       this.#editorContents.replaceTextBackUntil(stringToReplace, [ $createTextNode("") ])
@@ -538,16 +540,58 @@ export class LexicalPromptElement extends HTMLElement {
 
     requestAnimationFrame(() => {
       this.#editor.update(() => {
-        if (selectBlock) {
+        this.#removeTrailingWhitespaceNode()
+
+        if (insertBelow) {
+          this.#insertNewBlockBelow()
+        } else if (selectBlock) {
           const sel = $getSelection()
           if ($isRangeSelection(sel)) {
-            const block = sel.anchor.getNode().getTopLevelElementOrThrow()
+            const node = sel.anchor.getNode()
+            const block = $isElementNode(node) ? node : node.getParentOrThrow()
             block.select(0, block.getChildrenSize())
+            this.#editor.dispatchCommand(command, payload)
+            // Collapse selection to end so cursor stays inside the styled text
+            const afterSel = $getSelection()
+            if ($isRangeSelection(afterSel)) {
+              afterSel.anchor.set(afterSel.focus.key, afterSel.focus.offset, afterSel.focus.type)
+            }
+            return
           }
         }
         this.#editor.dispatchCommand(command, payload)
       })
     })
+  }
+
+  #insertNewBlockBelow() {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return
+
+    const anchorNode = selection.anchor.getNode()
+    const topLevelElement = anchorNode.getTopLevelElementOrThrow()
+
+    // Always insert below when inside a list, or when the block has content
+    const isListBlock = topLevelElement.getType() === "list"
+    const blockHasContent = topLevelElement.getTextContent().trim() !== ""
+
+    if (isListBlock || blockHasContent) {
+      const newParagraph = $createParagraphNode()
+      topLevelElement.insertAfter(newParagraph)
+      newParagraph.selectStart()
+    }
+    // Otherwise, the command will convert the current empty block in place
+  }
+
+  #removeTrailingWhitespaceNode() {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return
+
+    const anchorNode = selection.anchor.getNode()
+    if ($isTextNode(anchorNode) && anchorNode.getTextContent().trim() === "") {
+      anchorNode.setTextContent("")
+      anchorNode.select(0, 0)
+    }
   }
 
   #insertTemplatesAsEditableText(templates, stringToReplace) {

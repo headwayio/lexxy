@@ -1,5 +1,5 @@
 import BaseSource from "./base_source"
-import { filterMatches } from "../../helpers/string_helper"
+import fuzzysort from "fuzzysort"
 import { createElement } from "../../helpers/html_helper"
 
 export default class LocalFilterSource extends BaseSource {
@@ -18,10 +18,38 @@ export default class LocalFilterSource extends BaseSource {
   }
 
   #buildListItemsFromPromptItems(promptItems, filter) {
-    const listItems = []
     this.promptItemByListItem = new WeakMap()
 
-    // Group items by section, preserving order of first appearance
+    if (filter.length > 0) {
+      return this.#buildFilteredResults(promptItems, filter)
+    } else {
+      return this.#buildSectionedResults(promptItems)
+    }
+  }
+
+  #buildFilteredResults(promptItems, filter) {
+    const listItems = []
+    const targets = promptItems.map(promptItem => ({
+      promptItem,
+      search: promptItem.getAttribute("search")
+    }))
+
+    const results = fuzzysort.go(filter, targets, { key: "search" })
+
+    if (results.length > 0) {
+      listItems.push(this.#buildSectionHeader("Filtered results"))
+      for (const result of results) {
+        const listItem = this.buildListItemElementFor(result.obj.promptItem, true)
+        this.promptItemByListItem.set(listItem, result.obj.promptItem)
+        listItems.push(listItem)
+      }
+    }
+
+    return listItems
+  }
+
+  #buildSectionedResults(promptItems) {
+    const listItems = []
     const sections = []
     const sectionMap = new Map()
 
@@ -36,23 +64,13 @@ export default class LocalFilterSource extends BaseSource {
     }
 
     for (const { name, items } of sections) {
-      const matchingItems = []
-
-      for (const promptItem of items) {
-        const searchableText = promptItem.getAttribute("search")
-        if (!filter || filterMatches(searchableText, filter)) {
-          const listItem = this.buildListItemElementFor(promptItem)
-          this.promptItemByListItem.set(listItem, promptItem)
-          matchingItems.push(listItem)
-        }
+      if (name) {
+        listItems.push(this.#buildSectionHeader(name))
       }
-
-      if (matchingItems.length > 0) {
-        // Insert section header if the section has a name
-        if (name) {
-          listItems.push(this.#buildSectionHeader(name))
-        }
-        listItems.push(...matchingItems)
+      for (const promptItem of items) {
+        const listItem = this.buildListItemElementFor(promptItem, false)
+        this.promptItemByListItem.set(listItem, promptItem)
+        listItems.push(listItem)
       }
     }
 

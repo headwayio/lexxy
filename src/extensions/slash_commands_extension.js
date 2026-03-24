@@ -9,22 +9,34 @@ function colorName(cssVar) {
   return match ? COLOR_NAMES[parseInt(match[1]) - 1] || `Color ${match[1]}` : cssVar
 }
 
+const CONVERTIBLE_BLOCK_ITEMS = [
+  { command: "setFormatParagraph", label: "Text", search: "paragraph normal text plain", icon: ToolbarIcons.paragraph },
+  { command: "setFormatHeadingXLarge", label: "Heading 1", search: "heading 1 title h1 xlarge", icon: ToolbarIcons.h1, shortcut: "#" },
+  { command: "setFormatHeadingLarge", label: "Heading 2", search: "heading 2 title h2 large", icon: ToolbarIcons.h2, shortcut: "##" },
+  { command: "setFormatHeadingMedium", label: "Heading 3", search: "heading 3 title h3 medium", icon: ToolbarIcons.h3, shortcut: "###" },
+  { command: "setFormatHeadingSmall", label: "Heading 4", search: "heading 4 title h4 small", icon: ToolbarIcons.h4, shortcut: "####" },
+  { command: "insertUnorderedList", label: "Bullet list", search: "bullet list unordered", icon: ToolbarIcons.ul, shortcut: "-" },
+  { command: "insertOrderedList", label: "Numbered list", search: "numbered list ordered", icon: ToolbarIcons.ol, shortcut: "1." },
+  { command: "insertQuoteBlock", label: "Quote", search: "quote blockquote", icon: ToolbarIcons.quote, shortcut: '> | "' },
+  { command: "insertCodeBlock", label: "Code block", search: "code block pre", icon: ToolbarIcons.code, shortcut: "```" },
+]
+
+const INSERT_ONLY_ITEMS = [
+  { command: "insertTable", label: "Table", search: "table grid", icon: ToolbarIcons.table },
+  { command: "insertHorizontalDivider", label: "Divider", search: "divider horizontal rule line separator", icon: ToolbarIcons.hr, shortcut: "---" },
+]
+
 const SLASH_COMMAND_SECTIONS = [
   {
     section: "Basic blocks",
     items: [
-      { command: "setFormatParagraph", label: "Text", search: "paragraph normal text plain", icon: ToolbarIcons.paragraph },
-      { command: "setFormatHeadingXLarge", label: "Heading 1", search: "heading 1 title h1 xlarge", icon: ToolbarIcons.h1, shortcut: "#" },
-      { command: "setFormatHeadingLarge", label: "Heading 2", search: "heading 2 title h2 large", icon: ToolbarIcons.h2, shortcut: "##" },
-      { command: "setFormatHeadingMedium", label: "Heading 3", search: "heading 3 title h3 medium", icon: ToolbarIcons.h3, shortcut: "###" },
-      { command: "setFormatHeadingSmall", label: "Heading 4", search: "heading 4 title h4 small", icon: ToolbarIcons.h4, shortcut: "####" },
-      { command: "insertUnorderedList", label: "Bullet list", search: "bullet list unordered", icon: ToolbarIcons.ul, shortcut: "-" },
-      { command: "insertOrderedList", label: "Numbered list", search: "numbered list ordered", icon: ToolbarIcons.ol, shortcut: "1." },
-      { command: "insertQuoteBlock", label: "Quote", search: "quote blockquote", icon: ToolbarIcons.quote, shortcut: '> | "' },
-      { command: "insertCodeBlock", label: "Code block", search: "code block pre", icon: ToolbarIcons.code, shortcut: "```" },
-      { command: "insertTable", label: "Table", search: "table grid", icon: ToolbarIcons.table },
-      { command: "insertHorizontalDivider", label: "Divider", search: "divider horizontal rule line separator", icon: ToolbarIcons.hr, shortcut: "---" },
+      ...CONVERTIBLE_BLOCK_ITEMS.map(item => ({ ...item, insertBelow: true })),
+      ...INSERT_ONLY_ITEMS,
     ]
+  },
+  {
+    section: "Turn into",
+    items: CONVERTIBLE_BLOCK_ITEMS.map(({ shortcut, ...item }) => ({ ...item, search: `${item.search} turn into`, filterSuffix: "Turn into" })),
   },
   {
     section: "Inline",
@@ -61,8 +73,8 @@ export class SlashCommandsExtension extends LexxyExtension {
 
     // Static command sections
     for (const { section, items } of SLASH_COMMAND_SECTIONS) {
-      for (const { command, label, search, icon, shortcut } of items) {
-        prompt.appendChild(this.#buildCommandItem({ command, label, search, icon, section, shortcut }))
+      for (const { command, label, search, icon, shortcut, insertBelow, filterSuffix } of items) {
+        prompt.appendChild(this.#buildCommandItem({ command, label, search, icon, section, shortcut, insertBelow, filterSuffix }))
       }
     }
 
@@ -75,13 +87,15 @@ export class SlashCommandsExtension extends LexxyExtension {
     this.editorElement.appendChild(prompt)
   }
 
-  #buildCommandItem({ command, label, search, icon, section, payload, selectBlock, shortcut }) {
+  #buildCommandItem({ command, label, search, icon, section, payload, selectBlock, shortcut, insertBelow, filterSuffix }) {
     const item = createElement("lexxy-prompt-item")
     item.setAttribute("search", search)
     item.setAttribute("data-command", command)
     if (section) item.setAttribute("data-section", section)
     if (payload) item.setAttribute("data-command-payload", JSON.stringify(payload))
     if (selectBlock) item.setAttribute("data-command-select-block", "")
+    if (insertBelow) item.setAttribute("data-insert-below", "")
+    if (filterSuffix) item.setAttribute("data-filter-suffix", filterSuffix)
 
     const shortcutHtml = shortcut
       ? `<span class="lexxy-slash-command__shortcut">${shortcut}</span>`
