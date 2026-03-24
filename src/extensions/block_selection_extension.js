@@ -12,6 +12,7 @@ import {
   $setSelection,
   CLICK_COMMAND,
   COMMAND_PRIORITY_HIGH,
+  FORMAT_TEXT_COMMAND,
   HISTORY_MERGE_TAG,
   INDENT_CONTENT_COMMAND,
   KEY_ESCAPE_COMMAND,
@@ -405,6 +406,46 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
         break
 
+      case "b":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#applyInlineFormat("bold")
+        }
+        break
+
+      case "i":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#applyInlineFormat("italic")
+        }
+        break
+
+      case "u":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#applyInlineFormat("underline")
+        }
+        break
+
+      case "x":
+      case "X":
+        if ((event.metaKey || event.ctrlKey) && event.shiftKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#applyInlineFormat("strikethrough")
+        }
+        break
+
+      case "k":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        break
+
     }
   }
 
@@ -575,6 +616,12 @@ export class BlockSelectionExtension extends LexxyExtension {
         this.#handleDelete()
         break
     }
+  }
+
+  #applyInlineFormat(format) {
+    this.#withTemporarySelection(() => {
+      this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)
+    })
   }
 
   // Create a temporary RangeSelection over selected blocks, run the callback,
