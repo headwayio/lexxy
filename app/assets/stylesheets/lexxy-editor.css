@@ -646,6 +646,11 @@
   padding: var(--lexxy-editor-padding);
   padding-inline-start: var(--lexxy-block-handle-gutter);
 
+  /* Strikethrough + underline combination */
+  s u, u s {
+    text-decoration: line-through underline;
+  }
+
   /* Code blocks in editor */
   code, pre {
     background-color: var(--lexxy-color-code-bg, var(--lexxy-color-ink-lightest));
@@ -705,6 +710,7 @@
   li[data-list-item-type="bullet"] {
     position: relative;
     line-height: 1.75;
+    margin-block-start: 4px;
 
     &::marker {
       content: none;
@@ -1002,48 +1008,46 @@
 
   lexxy-link-dropdown {
     font-size: var(--lexxy-text-small);
-    inset-inline-start: var(--lexxy-toolbar-spacing);
-    inset-inline-end: var(--lexxy-toolbar-spacing);
+    min-inline-size: 320px;
 
     form {
       display: flex;
       flex: 1;
-      gap: var(--lexxy-toolbar-spacing);
-
-      [overflowing] & {
-        display: block;
-
-        .lexxy-editor__toolbar-dropdown-actions {
-          margin-block-start: var(--lexxy-toolbar-spacing);
-        }
-      }
+      gap: 6px;
+      align-items: stretch;
     }
 
     .lexxy-editor__toolbar-dropdown-actions {
       display: flex;
-      flex: 1;
-      gap: var(--lexxy-toolbar-spacing);
+      gap: 4px;
+      flex-shrink: 0;
     }
 
-    input[type="url"] {
+    input[type="text"] {
       background-color: var(--lexxy-color-canvas);
       border: 1px solid var(--lexxy-color-ink-lighter);
-      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+      border-radius: 4px;
       color: var(--lexxy-color-text);
-      block-size: var(--lexxy-toolbar-button-size);
+      block-size: 30px;
       box-sizing: border-box;
       font-size: var(--lexxy-text-small);
-      flex: 2;
+      flex: 1;
       inline-size: 100%;
       line-height: normal;
       padding-block: 0;
-      padding-inline: 1ch;
+      padding-inline: 8px;
     }
 
-    button {
-      background-color: var(--lexxy-color-ink-lightest);
-      inline-size: 100%;
-      padding-inline: 2ch;
+    .lexxy-editor__toolbar-button {
+      aspect-ratio: unset;
+      block-size: 30px;
+      box-sizing: border-box;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      font-size: var(--lexxy-text-small);
+      font-weight: 500;
+      padding-inline: 12px;
+      white-space: nowrap;
     }
 
     button[type="submit"] {
@@ -1053,6 +1057,10 @@
       &:hover {
         background-color: var(--lexxy-color-accent-medium);
       }
+    }
+
+    button[type="button"] {
+      background-color: var(--lexxy-color-ink-lightest);
     }
   }
 
@@ -1384,6 +1392,12 @@
 }
 
 
+/* Link selection highlight (CSS Custom Highlight API) */
+::highlight(lexxy-link-selection) {
+  background-color: Highlight;
+  color: HighlightText;
+}
+
 /* --------------------------------------------------------------------------
 /* Prompt */
 
@@ -1509,6 +1523,10 @@
 :where(.lexxy-slash-command__label) {
   white-space: nowrap;
   flex: 1;
+}
+
+:where(.lexxy-slash-command__filter-suffix) {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
 }
 
 :where(.lexxy-slash-command__shortcut) {
@@ -1637,7 +1655,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   .block--selected {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, transparent);
     background-color: var(--block-select-bg);
-    border-radius: var(--lexxy-radius);
+    border-radius: 4px;
   }
 
   .block--selected.block--focused {
@@ -1668,15 +1686,14 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     padding: 0;
   }
 
-  /* Horizontal dividers: outline border in block-select mode */
+  /* Horizontal dividers: outline in block-select mode */
   .horizontal-divider.block--selected,
   .horizontal-divider.block--selected.block--focused,
   .block--selected > .horizontal-divider,
   .block--focused > .horizontal-divider {
     background-color: transparent !important;
-    outline: 1.5px solid color-mix(in oklch, var(--lexxy-color-accent-dark) 40%, transparent);
-    outline-offset: 3px;
-    border-radius: var(--lexxy-radius);
+    outline: 4px solid color-mix(in oklch, var(--lexxy-color-accent-dark) 40%, transparent);
+    border-radius: 1px;
   }
 
   /* When an HR is inside a selected list item, suppress the li background
