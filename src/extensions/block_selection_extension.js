@@ -5,8 +5,8 @@ import {
   $getRoot,
   $getSelection,
   $isElementNode,
-  $parseSerializedNode,
   $isParagraphNode,
+  $parseSerializedNode,
   $isRangeSelection,
   $setSelection,
   CLICK_COMMAND,
@@ -17,6 +17,8 @@ import {
   OUTDENT_CONTENT_COMMAND
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
+import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
+import { TOGGLE_HIGHLIGHT_COMMAND, REMOVE_HIGHLIGHT_COMMAND, BLANK_STYLES } from "./highlight_extension"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
 
 export class BlockSelectionExtension extends LexxyExtension {
@@ -263,15 +265,16 @@ export class BlockSelectionExtension extends LexxyExtension {
     )
   }
 
-  // Direct keydown listener on the editor element — works even when Lexical
-  // selection is null (block-select mode clears it). Lexical's command system
-  // doesn't dispatch key commands when selection is null, so we bypass it.
+  // Document-level keydown listener for block-select mode. Lexical's command
+  // system doesn't dispatch key commands when selection is null, so we use a
+  // direct listener. Registered on document (not the editor element) because
+  // Lexical may blur the editor during reconciliation when selection is null,
+  // which would prevent element-level listeners from firing.
   #registerDirectKeydownHandler() {
     const handler = this.#handleKeydown.bind(this)
-    // Listen on the editor element (captures events from the contenteditable root)
-    this.editorElement.addEventListener("keydown", handler, true)
+    document.addEventListener("keydown", handler, true)
     this.#cleanupFns.push(() => {
-      this.editorElement.removeEventListener("keydown", handler, true)
+      document.removeEventListener("keydown", handler, true)
     })
   }
 
@@ -279,9 +282,22 @@ export class BlockSelectionExtension extends LexxyExtension {
     return !!this.editorElement.querySelector("lexxy-prompt[open]")
   }
 
+  #isBlockActionsMenuOpen() {
+    return this.#blockActionsMenu && !this.#blockActionsMenu.hidden
+  }
+
   #handleKeydown(event) {
+    // ⌘⇧H applies last used color in both edit and block select modes
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "h" || event.key === "H")) {
+      event.preventDefault()
+      event.stopPropagation()
+      this.#applyLastUsedColor()
+      return
+    }
+
     if (!this.isBlockSelectMode) return
     if (this.#isPromptOpen()) return
+    if (this.#isBlockActionsMenuOpen()) return
 
     switch (event.key) {
       case "ArrowUp":
@@ -364,6 +380,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           this.#handleSelectAll()
         }
         break
+
     }
   }
 
@@ -482,9 +499,8 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.editorElement.appendChild(this.#blockActionsMenu)
     }
 
-    const anchorRect = focusedEl.getBoundingClientRect()
     this.#blockActionsMenu.show({
-      anchorRect,
+      anchorElement: focusedEl,
       editorElement: this.editorElement,
       onAction: (action) => this.#handleBlockAction(action),
       onClose: () => this.root?.focus()
@@ -493,23 +509,37 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#blockActionsMenu.focus()
   }
 
+  #applyLastUsedColor() {
+    try {
+      const stored = localStorage.getItem("lexxy-last-color")
+      if (!stored) return
+      const last = JSON.parse(stored)
+      if (!last?.style || !last?.value) return
+
+      if (this.isBlockSelectMode) {
+        this.#handleBlockAction({ type: "color", style: last.style, value: last.value })
+      } else {
+        // In edit mode, apply directly to the current text selection
+        this.editor.dispatchCommand(TOGGLE_HIGHLIGHT_COMMAND, { [last.style]: last.value })
+      }
+    } catch { /* localStorage may be unavailable */ }
+  }
+
   #handleBlockAction(action) {
     switch (action.type) {
       case "turn-into":
-        this.#withTemporarySelection(() => {
-          this.editor.dispatchCommand(action.command)
-        })
+        this.#convertBlockType(action.command)
         break
 
       case "color":
         this.#withTemporarySelection(() => {
-          this.editor.dispatchCommand("toggleHighlight", { [action.style]: action.value })
+          this.editor.dispatchCommand(TOGGLE_HIGHLIGHT_COMMAND, { [action.style]: action.value })
         })
         break
 
       case "remove-color":
         this.#withTemporarySelection(() => {
-          this.editor.dispatchCommand("removeHighlight")
+          this.editor.dispatchCommand(REMOVE_HIGHLIGHT_COMMAND, BLANK_STYLES)
         })
         break
 
@@ -534,21 +564,25 @@ export class BlockSelectionExtension extends LexxyExtension {
       const lastNode = $getNodeByKey(keys[keys.length - 1])
       if (!firstNode) return
 
-      // Select from start of first block to end of last block
-      if (firstNode.selectStart) firstNode.selectStart()
-      else if (firstNode.select) firstNode.select()
-
+      // Select from start of first block to end of last block.
+      // We must avoid calling lastNode.selectEnd() because it creates a
+      // new RangeSelection (replacing the one from selectStart). Instead,
+      // set the focus point directly on the existing selection.
+      firstNode.selectStart()
       const selection = $getSelection()
       if ($isRangeSelection(selection) && lastNode) {
-        if (lastNode.selectEnd) {
-          const endSelection = lastNode.selectEnd()
-          if (endSelection) {
-            selection.focus.set(
-              endSelection.focus.key,
-              endSelection.focus.offset,
-              endSelection.focus.type
-            )
-          }
+        const lastDescendant = lastNode.getLastDescendant()
+        if (lastDescendant) {
+          const endOffset = $isElementNode(lastDescendant)
+            ? lastDescendant.getChildrenSize()
+            : lastDescendant.getTextContentSize()
+          selection.focus.set(
+            lastDescendant.getKey(),
+            endOffset,
+            $isElementNode(lastDescendant) ? "element" : "text"
+          )
+        } else {
+          selection.focus.set(lastNode.getKey(), lastNode.getChildrenSize(), "element")
         }
       }
 
@@ -557,7 +591,175 @@ export class BlockSelectionExtension extends LexxyExtension {
       $setSelection(null)
     }, { tag: HISTORY_MERGE_TAG })
 
-    requestAnimationFrame(() => this.#syncSelectionClasses())
+    this.#syncAndRefocus()
+  }
+
+  // Convert selected blocks to a different block type. For list items,
+  // this extracts the item from its list (splitting the list around it)
+  // and inserts the new block type at that position. For list-to-list
+  // conversions, it just changes the list item type.
+  #convertBlockType(command) {
+    const isListCommand = command === "insertUnorderedList" || command === "insertOrderedList"
+    const listType = command === "insertUnorderedList" ? "bullet" : "number"
+
+    this.editor.update(() => {
+      const newSelectedKeys = new Set()
+
+      for (const key of this.#selectedBlockKeys) {
+        const node = $getNodeByKey(key)
+        if (!node) continue
+
+        if ($isListItemNode(node)) {
+          if (isListCommand) {
+            // List-to-list: just change the item's list type
+            if (node.setListItemType) node.setListItemType(listType)
+            newSelectedKeys.add(node.getKey())
+          } else {
+            // List item → non-list block: extract and split list
+            this.#extractListItemAsBlock(node, command)
+            // #extractListItemAsBlock updates selection keys internally
+          }
+        } else {
+          // Non-list block: use temporary selection + command dispatch.
+          // The command may replace the node (e.g., paragraph → heading),
+          // so find the block at the same position after dispatch.
+          const parent = node.getParent()
+          const index = node.getIndexWithinParent()
+
+          if (node.selectStart) node.selectStart()
+          else if (node.select) node.select()
+          this.editor.dispatchCommand(command)
+          $setSelection(null)
+
+          // Find the replacement node at the same position
+          const latestParent = $getNodeByKey(parent.getKey()) || $getRoot()
+          const children = latestParent.getChildren()
+          const replacement = children[Math.min(index, children.length - 1)]
+          if (replacement) newSelectedKeys.add(replacement.getKey())
+        }
+      }
+
+      // Merge keys from #extractListItemAsBlock with new keys.
+      // Only include nodes still attached to the document tree —
+      // replaced nodes (e.g., paragraph → heading) linger in the
+      // node map as orphans during the update callback.
+      for (const key of this.#selectedBlockKeys) {
+        if (!newSelectedKeys.has(key)) {
+          const node = $getNodeByKey(key)
+          if (node && node.getParent() !== null) newSelectedKeys.add(key)
+        }
+      }
+
+      // Update selection to the converted blocks
+      this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
+      this.#selectedBlockKeys = newSelectedKeys
+      if (newSelectedKeys.size > 0) {
+        const keys = [...newSelectedKeys]
+        this.#anchorKey = keys[0]
+        this.#focusKey = keys[keys.length - 1]
+      }
+
+      // Ensure Lexical selection is null for block select mode
+      $setSelection(null)
+    }, { tag: HISTORY_MERGE_TAG })
+
+    this.#syncAndRefocus()
+  }
+
+  // Extract a list item from its parent list, convert it to the target
+  // block type, and split the list around it. Items after the extracted
+  // item (including nested children) form a new list below the new block.
+  #extractListItemAsBlock(node, command) {
+    const list = node.getParent()
+    if (!$isListNode(list)) return
+
+    // Create the target block
+    const newBlock = this.#createBlockForCommand(command)
+    if (!newBlock) return
+
+    // Move children from the list item to the new block.
+    // If the target is a paragraph and a child IS a paragraph, unwrap it
+    // (move its children directly) to avoid nested <p><p>...</p></p>.
+    const isParagraphTarget = $isParagraphNode(newBlock)
+    for (const child of [...node.getChildren()]) {
+      if ($isListNode(child)) continue
+      if (isParagraphTarget && $isParagraphNode(child)) {
+        // Unwrap: move the paragraph's children into the new block
+        for (const grandchild of [...child.getChildren()]) {
+          newBlock.append(grandchild)
+        }
+        child.remove()
+      } else {
+        newBlock.append(child)
+      }
+    }
+
+    // Collect items after this node (they'll form the "after" list).
+    // If this node has a structural wrapper, extract its nested children
+    // into the after-items and skip the wrapper.
+    const afterItems = []
+    let nextSibling = node.getNextSibling()
+
+    // Check if the next sibling is this node's structural wrapper
+    if (nextSibling && $isListItemNode(nextSibling) && this.#isStructuralWrapper(nextSibling)) {
+      // Promote nested children into afterItems
+      for (const wrapperChild of nextSibling.getChildren()) {
+        if ($isListNode(wrapperChild)) {
+          for (const nested of [...wrapperChild.getChildren()]) {
+            afterItems.push(nested)
+          }
+        }
+      }
+      const wrapperToRemove = nextSibling
+      nextSibling = nextSibling.getNextSibling()
+      wrapperToRemove.remove()
+    }
+
+    // Collect remaining siblings
+    while (nextSibling) {
+      const next = nextSibling.getNextSibling()
+      afterItems.push(nextSibling)
+      nextSibling = next
+    }
+
+    // Remove the original list item
+    const nodeKey = node.getKey()
+    node.remove()
+
+    // Insert the new block after the list
+    list.insertAfter(newBlock)
+
+    // If there are after-items, create a new list for them
+    if (afterItems.length > 0) {
+      const newList = $createListNode(list.getListType())
+      for (const item of afterItems) {
+        newList.append(item)
+      }
+      newBlock.insertAfter(newList)
+    }
+
+    // Clean up the original list if empty
+    this.#cleanupEmptyList(list)
+
+    // Update selection to track the new block
+    const newKey = newBlock.getKey()
+    if (this.#selectedBlockKeys.has(nodeKey)) {
+      this.#selectedBlockKeys.delete(nodeKey)
+      this.#selectedBlockKeys.add(newKey)
+      if (this.#anchorKey === nodeKey) this.#anchorKey = newKey
+      if (this.#focusKey === nodeKey) this.#focusKey = newKey
+    }
+  }
+
+  #createBlockForCommand(command) {
+    switch (command) {
+      case "setFormatParagraph": return $createParagraphNode()
+      case "setFormatHeadingLarge": return $createHeadingNode("h2")
+      case "setFormatHeadingMedium": return $createHeadingNode("h3")
+      case "setFormatHeadingSmall": return $createHeadingNode("h4")
+      case "insertQuoteBlock": return $createQuoteNode()
+      default: return null
+    }
   }
 
   #handleDuplicate() {
@@ -575,7 +777,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         const node = $getNodeByKey(key)
         if (!node) continue
 
-        const clone = $parseSerializedNode(node.exportJSON())
+        const clone = $parseSerializedNode(this.#exportNodeWithChildren(node))
         if (insertAfterNode) {
           insertAfterNode.insertAfter(clone)
           insertAfterNode = clone
@@ -592,6 +794,23 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }, { tag: HISTORY_MERGE_TAG })
 
+    this.#syncAndRefocus()
+  }
+
+  // Recursively serialize a node and its children. Lexical's exportJSON()
+  // only serializes the node itself (children: []), so we must walk the
+  // tree to produce a JSON structure that $parseSerializedNode can recreate.
+  #exportNodeWithChildren(node) {
+    const json = node.exportJSON()
+    if ($isElementNode(node)) {
+      json.children = node.getChildren().map(child => this.#exportNodeWithChildren(child))
+    }
+    return json
+  }
+
+  // Sync selection classes after a block action. The document-level keydown
+  // listener doesn't depend on focus, so no re-focus is needed.
+  #syncAndRefocus() {
     requestAnimationFrame(() => this.#syncSelectionClasses())
   }
 
