@@ -4,8 +4,8 @@ import { ToolbarDropdown } from "../toolbar_dropdown"
 
 export class LinkDropdown extends ToolbarDropdown {
   _savedSelectionRect = null
+  _savedSelectionRects = null
   _savedLexicalSelection = null
-  _savedNativeRange = null
 
   connectedCallback() {
     super.connectedCallback()
@@ -87,10 +87,27 @@ export class LinkDropdown extends ToolbarDropdown {
   }
 
   #saveSelection() {
+    // Pin the dropdown immediately — before the details opens — so the
+    // toolbar's update-listener closeDropdowns() won't close it mid-open
+    this.container.setAttribute("data-pinned", "")
+
     const selection = window.getSelection()
     if (selection && selection.rangeCount > 0) {
-      this._savedNativeRange = selection.getRangeAt(0).cloneRange()
-      this._savedSelectionRect = this._savedNativeRange.getBoundingClientRect()
+      const range = selection.getRangeAt(0)
+      this._savedSelectionRect = range.getBoundingClientRect()
+
+      // Compute line-height to expand rects to full selection height
+      const container = range.commonAncestorContainer
+      const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container
+      const lineHeight = parseFloat(getComputedStyle(element).lineHeight) || 0
+
+      // Save rects now — after Lexical reconciles the DOM, the range nodes
+      // may be replaced and getClientRects() would return empty.
+      // Expand each rect vertically to match the full line-height.
+      this._savedSelectionRects = Array.from(range.getClientRects()).map(r => {
+        const expand = lineHeight > r.height ? (lineHeight - r.height) / 2 : 0
+        return { left: r.left, top: r.top - expand, width: r.width, height: r.height + expand * 2 }
+      })
     }
     this.editor.getEditorState().read(() => {
       const sel = $getSelection()
@@ -101,14 +118,31 @@ export class LinkDropdown extends ToolbarDropdown {
   }
 
   #showSelectionHighlight() {
-    if (!this._savedNativeRange || !CSS.highlights) return
+    if (!this._savedSelectionRects?.length) return
 
-    const highlight = new Highlight(this._savedNativeRange)
-    CSS.highlights.set("lexxy-link-selection", highlight)
+    this._highlightOverlays = []
+    const editorEl = this.editorElement
+    const editorRect = editorEl.getBoundingClientRect()
+
+    for (const rect of this._savedSelectionRects) {
+      if (rect.width === 0) continue
+
+      const overlay = document.createElement("div")
+      overlay.className = "lexxy-link-selection-overlay"
+      overlay.style.left = `${rect.left - editorRect.left - editorEl.clientLeft}px`
+      overlay.style.top = `${rect.top - editorRect.top - editorEl.clientTop + editorEl.scrollTop}px`
+      overlay.style.width = `${rect.width}px`
+      overlay.style.height = `${rect.height}px`
+      editorEl.appendChild(overlay)
+      this._highlightOverlays.push(overlay)
+    }
   }
 
   #clearSelectionHighlight() {
-    CSS.highlights?.delete("lexxy-link-selection")
+    if (this._highlightOverlays) {
+      this._highlightOverlays.forEach(el => el.remove())
+      this._highlightOverlays = null
+    }
   }
 
   #positionNearSelection() {
