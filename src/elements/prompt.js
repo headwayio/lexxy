@@ -263,7 +263,14 @@ export class LexicalPromptElement extends HTMLElement {
 
     // Flip above cursor if it would overflow viewport bottom
     if (popoverRect.bottom > window.innerHeight) {
+      this.popoverElement.toggleAttribute("data-flipped", true)
       this.#setPopoverOffsetY(viewportY - popoverRect.height - fontSize)
+    }
+
+    // When flipped above cursor, recalculate top so the bottom edge
+    // stays anchored to the cursor as the menu height changes (filtering)
+    if (this.popoverElement.hasAttribute("data-flipped")) {
+      this.#setPopoverOffsetY(viewportY - this.popoverElement.offsetHeight - fontSize)
     }
   }
 
@@ -279,6 +286,7 @@ export class LexicalPromptElement extends HTMLElement {
     this.popoverElement.removeAttribute("data-clipped-at-bottom")
     this.popoverElement.removeAttribute("data-clipped-at-right")
     this.popoverElement.removeAttribute("data-anchored")
+    this.popoverElement.removeAttribute("data-flipped")
   }
 
   async #hidePopover() {
