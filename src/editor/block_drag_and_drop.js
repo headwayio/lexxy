@@ -1461,6 +1461,10 @@ export class BlockDragAndDrop {
       if ($isElementNode(nodeToInsert)) {
         nodeToInsert.selectStart()
       }
+      // Inherit parent highlight color after drop
+      if ($isListItemNode(nodeToInsert)) {
+        this.#blockSelectionExtension.inheritParentHighlight(nodeToInsert.getKey())
+      }
       } catch (e) {
         console.error("[BlockDragAndDrop] Drop update error:", e)
       }

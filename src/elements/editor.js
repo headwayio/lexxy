@@ -298,7 +298,7 @@ export class LexicalEditorElement extends HTMLElement {
 
   #createEditorContentElement() {
     const editorContentElement = createElement("div", {
-      classList: "lexxy-editor__content",
+      classList: "lexxy-editor__content lexxy-content",
       contenteditable: true,
       role: "textbox",
       "aria-multiline": true,
