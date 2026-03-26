@@ -967,7 +967,10 @@ export class BlockSelectionExtension extends LexxyExtension {
     }, { tag: HISTORY_MERGE_TAG })
 
     requestAnimationFrame(() => {
-      this.#syncSelectionClasses()
+      requestAnimationFrame(() => {
+        this.#syncSelectionClasses()
+        this.#dragAndDrop?.repositionHandle()
+      })
     })
   }
 
@@ -1853,11 +1856,20 @@ export class BlockSelectionExtension extends LexxyExtension {
             $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
           )
           if (hasNonTextBlock) {
+            let result
             if (isOutdent) {
-              return this.#outdentWrappedBlock(current, false)
+              result = this.#outdentWrappedBlock(current, false)
             } else {
-              return this.#indentWrappedBlock(current, false)
+              result = this.#indentWrappedBlock(current, false)
             }
+            if (result) {
+              // Double-RAF: first waits for Lexical's DOM reconciliation,
+              // second ensures layout is computed before repositioning
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => this.#dragAndDrop?.repositionHandle())
+              })
+            }
+            return result
           }
           break
         }
@@ -1870,6 +1882,19 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.editor.registerCommand(INDENT_CONTENT_COMMAND, () => handleIndent(false), COMMAND_PRIORITY_HIGH),
       this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => handleIndent(true), COMMAND_PRIORITY_HIGH)
     )
+  }
+
+  static MAX_NESTING_DEPTH = 10
+
+  // Count how many ListNode ancestors a node has (= its nesting depth).
+  #getListDepth(node) {
+    let depth = 0
+    let current = node.getParent()
+    while (current) {
+      if ($isListNode(current)) depth++
+      current = current.getParent()
+    }
+    return depth
   }
 
   // Indent: nest the wrapped block under its previous sibling (same visual position).

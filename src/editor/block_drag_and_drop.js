@@ -60,6 +60,23 @@ export class BlockDragAndDrop {
     this.#registerListeners()
   }
 
+  // Re-position handle/bullet on the currently hovered block (e.g., after
+  // Tab indent changes the block's DOM position). Looks up the fresh DOM
+  // element by node key since Lexical may have recreated the element.
+  repositionHandle() {
+    if (!this.#currentHoveredBlock) return
+    const key = Object.keys(this.#currentHoveredBlock).find(k => k.startsWith("__lexicalKey_"))
+    if (key) {
+      const nodeKey = this.#currentHoveredBlock[key]
+      const freshEl = this.#editor.getElementByKey(nodeKey)
+      if (freshEl && freshEl !== this.#currentHoveredBlock) {
+        this.#currentHoveredBlock.classList.remove("lexxy-block-hovered")
+        this.#currentHoveredBlock = freshEl
+      }
+    }
+    this.#positionHandle(this.#currentHoveredBlock)
+  }
+
   destroy() {
     this.#cleanup()
     this.#cancelHideTimer()
