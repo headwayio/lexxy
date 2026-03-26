@@ -2,7 +2,7 @@
 
 :where(lexxy-editor) {
   --lexxy-editor-padding: 1ch;
-  --lexxy-block-handle-gutter: 28px;
+  --lexxy-block-handle-gutter: 48px;
   --lexxy-editor-rows: 8lh;
   @supports (min-block-size: attr(rows lh)) {
     --lexxy-editor-rows: attr(rows lh, 8lh);
@@ -645,6 +645,7 @@
   outline: 0;
   padding: var(--lexxy-editor-padding);
   padding-inline-start: var(--lexxy-block-handle-gutter);
+  padding-inline-end: var(--lexxy-block-handle-gutter);
 
   /* Strikethrough + underline combination */
   s u, u s {
@@ -1654,22 +1655,55 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 }
 
 :where(.lexxy-editor__content) {
-  /* Notion-style translucent block highlight */
-  .block--selected {
-    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, transparent);
+  /* Notion-style uniform block highlight — opaque color (mixed with canvas)
+     prevents visual stacking when nested elements overlap. */
+  .block--selected,
+  .block--selected.block--focused {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     background-color: var(--block-select-bg);
-    border-radius: 4px;
   }
 
-  .block--selected.block--focused {
-    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 20%, transparent);
+  /* Structural wrappers get highlighted only when their preceding sibling
+     is selected — this means the parent item is part of the selection, so
+     all children should be too. Prevents ancestor wrappers from lighting
+     up when only a deeply nested item is selected. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     background-color: var(--block-select-bg);
+    padding-top: 0.02px;
+    margin-top: 0;
+    box-shadow: -2em 0 0 0 var(--block-select-bg);
+  }
+
+  /* Children inside a highlighted wrapper: suppress their own background
+     so the wrapper provides a single continuous highlight surface. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected,
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected.block--focused {
+    background-color: transparent;
+    box-shadow: none;
+  }
+
+  /* The parent item above the wrapper should also use the uniform shade
+     when its children are selected (not the darker focused shade). */
+  .block--focused:has(+ li.lexxy-nested-listitem .block--selected) {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
   }
 
   /* Extend highlight leftward on list items to cover the bullet/number marker.
      Hidden-bullet items don't need the extension since they have no marker. */
   li.block--selected:not([data-block-movement-wrapped]) {
     box-shadow: -2em 0 0 0 var(--block-select-bg);
+  }
+
+  /* Bridge the 4px margin gap between adjacent selected items and between
+     a wrapper and the next selected item. The -4px upward shadow exactly
+     fills the gap without overlapping the previous item's text. */
+  .block--selected + li.block--selected:not([data-block-movement-wrapped]),
+  li.lexxy-nested-listitem:has(.block--selected) + li.block--selected:not([data-block-movement-wrapped]) {
+    box-shadow:
+      -2em 0 0 0 var(--block-select-bg),
+      0 -4px 0 0 var(--block-select-bg),
+      -2em -4px 0 0 var(--block-select-bg);
   }
 
   /* Code blocks: keep the code block's own background intact.
@@ -1685,8 +1719,9 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   }
 
   figure.horizontal-divider {
-    margin: 8px 0;
-    padding: 0;
+    margin: 0;
+    padding: 8px 0;
+    cursor: pointer;
   }
 
   /* Horizontal dividers: outline in block-select mode */
@@ -1707,19 +1742,30 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     box-shadow: none;
   }
 
-  /* Hide bullet marker and remove list padding for list items that DIRECTLY
-     wrap a non-text block (headings, tables, code blocks, etc.) moved into
-     the list via block movement. The [data-list-item-type] constraint ensures
-     we only target actual content list items, not Lexical's structural
-     nested-listitem wrappers. */
+  /* Wrapped non-text blocks (headings, tables, code blocks, etc.) inside lists.
+     The bullet marker is hidden by default but shown on hover so users can see
+     where the wrapped content sits in the hierarchy. Wrapped blocks sit at their
+     natural structural depth (li → block) — no margin offset needed. */
   li[data-list-item-type]:has(> h1, > h2, > h3, > h4, > h5, > h6, > table, > figure, > pre, > code[data-language], > blockquote, > hr, > .lexxy-content__table-wrapper, > .attachment-gallery, > .horizontal-divider),
   li[data-block-movement-wrapped] {
     &::before {
-      content: none !important;
-      display: none !important;
+      opacity: 0;
+      transition: opacity 150ms ease;
+      top: var(--bullet-offset-y, 0px);
+      block-size: 24px;
+      line-height: 24px;
     }
 
-    margin-inline-start: -2em;
+    &.lexxy-block-hovered::before {
+      opacity: 0.4;
+    }
+  }
+
+  /* Hide the trailing <br> Lexical adds after decorator figures inside list
+     items. Without this, attachments/HRs in lists have an extra blank line. */
+  li:has(> figure[data-lexical-decorator]) > br,
+  li:has(> figure.attachment) > br {
+    display: none;
   }
 
   .lexxy-dragging {
@@ -1727,32 +1773,39 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   }
 }
 
-/* Block drop indicators ------------------------------------------------------- */
+/* Block drop indicator (Notion-style hierarchy line) -------------------------- */
 
-:where(.lexxy-editor__content) {
-  [class*="lexxy-block-drop-target--"] {
-    position: relative;
-  }
-
-  .lexxy-block-drop-target--before::before,
-  .lexxy-block-drop-target--after::after {
-    background-color: var(--lexxy-focus-ring-color);
-    block-size: 3px;
-    border-radius: 1px;
-    content: "";
-    inset-inline: 0;
-    pointer-events: none;
+:where(lexxy-editor) {
+  .lexxy-drop-indicator {
     position: absolute;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 80ms ease;
   }
 
-  .lexxy-block-drop-target--before::before {
-    inset-block-start: -2px;
-    transform: translate(0, -0.5ch);
+  .lexxy-drop-indicator--visible {
+    opacity: 1;
   }
 
-  .lexxy-block-drop-target--after::after {
-    inset-block-end: -2px;
-    transform: translate(0, 0.5ch);
+  .lexxy-drop-indicator__circle {
+    flex-shrink: 0;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    border: 1.5px solid var(--lexxy-focus-ring-color);
+    background: var(--lexxy-color-surface, #fff);
+    margin-inline-start: -3px;
+    margin-inline-end: var(--indicator-gap, 0px);
+  }
+
+  .lexxy-drop-indicator__line {
+    flex: 1;
+    block-size: 2px;
+    background: var(--lexxy-focus-ring-color);
+    border-radius: 1px;
   }
 }
 
@@ -1761,7 +1814,6 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 :where(lexxy-editor) {
   .lexxy-block-handle {
     position: absolute;
-    inset-inline-start: 4px;
     inline-size: 20px;
     block-size: 24px;
     display: flex;
@@ -1769,7 +1821,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     justify-content: center;
     cursor: grab;
     opacity: 0;
-    transition: opacity 150ms ease;
+    transition: opacity 100ms ease;
     border-radius: var(--lexxy-radius);
     color: var(--lexxy-color-ink-lighter);
     pointer-events: auto;
@@ -1777,7 +1829,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   }
 
   .lexxy-block-handle--visible {
-    opacity: 0.4;
+    opacity: 0.7;
   }
 
   .lexxy-block-handle--visible:hover {
@@ -1788,6 +1840,33 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
   .lexxy-block-handle:active {
     cursor: grabbing;
+  }
+
+  /* Add block button (+ icon, to the left of the drag handle) */
+  .lexxy-block-add {
+    position: absolute;
+    inline-size: 20px;
+    block-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 100ms ease;
+    border-radius: var(--lexxy-radius);
+    color: var(--lexxy-color-ink-lighter);
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .lexxy-block-add--visible {
+    opacity: 0.7;
+  }
+
+  .lexxy-block-add--visible:hover {
+    opacity: 1;
+    background: var(--lexxy-color-ink-lightest);
+    color: var(--lexxy-color-ink);
   }
 }
 

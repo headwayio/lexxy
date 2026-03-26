@@ -11,6 +11,7 @@ import {
   $isRangeSelection,
   $setSelection,
   CLICK_COMMAND,
+  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_HIGH,
   FORMAT_TEXT_COMMAND,
   HISTORY_MERGE_TAG,
@@ -56,6 +57,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   initializeEditor() {
     this.#registerEscapeHandler()
     this.#registerClickHandler()
+    this.#registerDecoratorClickInterceptor()
     this.#registerDirectKeydownHandler()
     this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
   }
@@ -113,11 +115,39 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#selectedBlockKeys.add(nodeKey)
     this.#focusKey = nodeKey
 
+    // Also select children (items in the structural wrapper after this node)
+    if (!extend) {
+      this.editor.getEditorState().read(() => {
+        const node = $getNodeByKey(nodeKey)
+        if ($isListItemNode(node)) {
+          this.#collectChildKeys(node, this.#selectedBlockKeys)
+        }
+      })
+    }
+
     if (extend && this.#anchorKey) {
       this.#selectRange(this.#anchorKey, nodeKey)
     }
 
     this.#syncSelectionClasses()
+  }
+
+  // Collect keys of items nested under a list item (in its structural wrapper)
+  // and add them to a Set. Uses an intermediate array because
+  // #collectListItemKeys expects Array.push().
+  #collectChildKeys(listItemNode, keySet) {
+    const next = listItemNode.getNextSibling()
+    if (!next || !$isListItemNode(next) || !this.#isStructuralWrapper(next)) return
+
+    const childKeys = []
+    for (const child of next.getChildren()) {
+      if ($isListNode(child)) {
+        this.#collectListItemKeys(child, childKeys)
+      }
+    }
+    for (const key of childKeys) {
+      keySet.add(key)
+    }
   }
 
   #selectRange(fromKey, toKey) {
@@ -514,11 +544,17 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.editor.update(() => {
       for (const key of this.#selectedBlockKeys) {
         const node = $getNodeByKey(key)
-        if (node) {
-          const root = $getRoot()
-          if (root.getChildrenSize() <= 1 && node.getParent() === root) continue
-          node.remove()
-        }
+        if (!node) continue
+
+        const root = $getRoot()
+        if (root.getChildrenSize() <= 1 && node.getParent() === root) continue
+
+        // For list items, walk up to find the highest ancestor that would
+        // become empty if we delete this node. This cleanly removes the
+        // entire nesting chain (li → ul → structural-wrapper li → ul → ...)
+        // without leaving phantom empty items from Lexical's normalizer.
+        const target = this.#findHighestRemovableAncestor(node, root)
+        target.remove()
       }
     })
 
@@ -956,7 +992,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Re-sync wrapped keys with current selection after all moves.
       // Lexical's copy-on-write may have changed keys during the update.
       this.#resyncWrappedKeys()
-    }, { tag: HISTORY_MERGE_TAG })
+    }, { tag: "history-push" })
 
     requestAnimationFrame(() => {
       this.#syncSelectionClasses()
@@ -1546,6 +1582,67 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (this.#focusKey === oldKey) this.#focusKey = newKey
   }
 
+  // Walk up from a node to find the highest ancestor that would become empty
+  // if we delete this node. For a wrapped block in a nested list like:
+  //   li(structural) → ul → li(structural) → ul → li(wraps HR) → figure
+  // If the inner li is the only real item in its ul, and that ul is the only
+  // child of its structural wrapper li, we can delete the outermost wrapper
+  // instead — removing the entire empty chain in one shot.
+  #findHighestRemovableAncestor(node, root) {
+    let target = node
+
+    while (true) {
+      const parent = target.getParent()
+      if (!parent || parent === root) break
+
+      if ($isListNode(parent)) {
+        // Is this the only real (non-structural) item in the list?
+        if (this.#countRealItems(parent) <= 1) {
+          // The list would be empty — check if we can remove its wrapper too
+          const wrapper = parent.getParent()
+          if (wrapper && $isListItemNode(wrapper) && wrapper !== root) {
+            target = wrapper
+            continue // keep walking up
+          }
+          // List is a root child — remove the whole list
+          target = parent
+        }
+        break
+      } else if ($isListItemNode(parent)) {
+        // Node is content inside a list item — can we remove the whole item?
+        // Only if it has no other meaningful content (just this node)
+        const siblings = parent.getChildren().filter(c => !$isListNode(c))
+        if (siblings.length <= 1) {
+          target = parent
+          continue // keep walking up
+        }
+        break
+      } else {
+        break
+      }
+    }
+
+    return target
+  }
+
+  // Walk up the tree from a parent node after its child was deleted,
+  // removing any empty containers: ListItemNode → ListNode → structural wrapper
+  #cleanupAfterDelete(parent) {
+    if (!parent || !parent.getParent()) return
+
+    if ($isListItemNode(parent) && parent.getChildrenSize() === 0) {
+      // Deleted content from inside a list item — remove the empty item
+      const list = parent.getParent()
+      parent.remove()
+      if ($isListNode(list)) {
+        this.#cleanupEmptyList(list)
+      }
+    } else if ($isListNode(parent)) {
+      // Deleted a list item from a list — check if the list is now empty
+      this.#cleanupEmptyList(parent)
+    }
+  }
+
   #cleanupEmptyList(listNode) {
     if (!$isListNode(listNode)) return
 
@@ -1598,8 +1695,48 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   #registerClickHandler() {
     this.#cleanupFns.push(
-      this.editor.registerCommand(CLICK_COMMAND, this.#handleClick.bind(this), COMMAND_PRIORITY_HIGH)
+      this.editor.registerCommand(CLICK_COMMAND, this.#handleClick.bind(this), COMMAND_PRIORITY_CRITICAL)
     )
+  }
+
+  // Intercept mousedown on decorator blocks (HR) at the capture phase, BEFORE
+  // Lexical's own mousedown handler. This prevents Lexical from creating a
+  // NodeSelection (and showing its own delete-button UI) for these elements.
+  // Instead, we enter block-select mode in the subsequent click handler.
+  // Intercept all pointer events on decorator blocks (HR) at the capture phase,
+  // BEFORE Lexical's own handlers. This prevents Lexical from creating a
+  // NodeSelection (and showing its own delete-button UI) for these elements.
+  #registerDecoratorClickInterceptor() {
+    const onMouseDown = (event) => {
+      const decorator = event.target.closest(".horizontal-divider")
+      if (!decorator) return
+
+      event.stopPropagation()
+
+      const blockElement = this.#findBlockElementFromDOM(decorator)
+      if (blockElement) {
+        const nodeKey = this.#getNodeKeyFromElement(blockElement)
+        if (nodeKey) {
+          this.enterBlockSelectMode(nodeKey)
+        }
+      }
+    }
+
+    // Also intercept mouseup and click to prevent Lexical's deferred selection
+    const suppressIfDecorator = (event) => {
+      if (event.target.closest(".horizontal-divider")) {
+        event.stopPropagation()
+      }
+    }
+
+    this.root?.addEventListener("mousedown", onMouseDown, true)
+    this.root?.addEventListener("mouseup", suppressIfDecorator, true)
+    this.root?.addEventListener("click", suppressIfDecorator, true)
+    this.#cleanupFns.push(() => {
+      this.root?.removeEventListener("mousedown", onMouseDown, true)
+      this.root?.removeEventListener("mouseup", suppressIfDecorator, true)
+      this.root?.removeEventListener("click", suppressIfDecorator, true)
+    })
   }
 
   #handleClick(event) {
@@ -1640,12 +1777,27 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
+    // Clicking on a decorator block (HR, images) enters block-select mode
+    // rather than using Lexical's default decorator selection.
+    if (this.#isDecoratorBlock(blockElement)) {
+      const nodeKey = this.#getNodeKeyFromElement(blockElement)
+      if (nodeKey) {
+        this.enterBlockSelectMode(nodeKey)
+        return true
+      }
+    }
+
     if (this.isBlockSelectMode) {
       this.#exitBlockSelectMode()
       return false
     }
 
     return false
+  }
+
+  #isDecoratorBlock(element) {
+    return element?.classList?.contains("horizontal-divider") ||
+           element?.closest?.(".horizontal-divider") !== null
   }
 
   #findBlockElementFromDOM(element) {

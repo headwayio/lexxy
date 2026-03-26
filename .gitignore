@@ -11,6 +11,7 @@
 /dist/
 /node_modules/
 /app/assets/javascript/
+.yarn/install-state.gz
 
 # Claude Code
 /.claude/worktrees/
