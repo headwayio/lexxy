@@ -16,6 +16,8 @@ import {
   FORMAT_TEXT_COMMAND,
   HISTORY_MERGE_TAG,
   INDENT_CONTENT_COMMAND,
+  $isTextNode,
+  KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
   COMMAND_PRIORITY_LOW,
@@ -24,6 +26,8 @@ import {
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
 import { TOGGLE_HIGHLIGHT_COMMAND, REMOVE_HIGHLIGHT_COMMAND, BLANK_STYLES } from "./highlight_extension"
+import { getStyleObjectFromCSS, getCSSFromStyleObject } from "@lexical/selection"
+import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
 
 export class BlockSelectionExtension extends LexxyExtension {
@@ -62,6 +66,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#registerDecoratorClickInterceptor()
     this.#registerDirectKeydownHandler()
     this.#registerWrappedBlockIndentHandler()
+    this.#registerHighlightClearOnEnter()
     this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
   }
 
@@ -1828,6 +1833,60 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (!wrapper || !$isListItemNode(wrapper)) return
     if (!wrapper.getParent()) return // already removed
     wrapper.remove()
+  }
+
+  // -- Highlight clear on Enter -----------------------------------------------
+
+  // Clear highlight color when Enter creates a new line. Skips when the slash
+  // menu is open (Enter selects a menu item, not a new line).
+  #registerHighlightClearOnEnter() {
+    const editorElement = this.editorElement
+    this.#cleanupFns.push(
+      this.editor.registerCommand(KEY_ENTER_COMMAND, () => {
+        if (editorElement.querySelector("lexxy-prompt[open]")) return false
+        setTimeout(() => this.#clearHighlightOnNewBlock(), 0)
+        return false
+      }, COMMAND_PRIORITY_CRITICAL)
+    )
+  }
+
+  #clearHighlightOnNewBlock() {
+    this.editor.update(() => {
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection)) return
+
+      let anchor = selection.anchor.getNode()
+
+      if (!$isTextNode(anchor)) {
+        const firstChild = anchor.getFirstChild?.()
+        if ($isTextNode(firstChild)) {
+          anchor = firstChild
+        } else {
+          // No text node — clear selection style so new text won't inherit color
+          const selStyle = selection.style
+          if (selStyle && hasHighlightStyles(selStyle)) {
+            const styles = getStyleObjectFromCSS(selStyle)
+            delete styles.color
+            delete styles["background-color"]
+            selection.setStyle(getCSSFromStyleObject(styles))
+          }
+          return
+        }
+      }
+
+      const text = anchor.getTextContent().replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+      if (text.length > 0) return
+
+      const style = anchor.getStyle()
+      if (!hasHighlightStyles(style)) return
+
+      const styles = getStyleObjectFromCSS(style)
+      delete styles.color
+      delete styles["background-color"]
+      const newCSS = getCSSFromStyleObject(styles)
+      anchor.setStyle(newCSS)
+      selection.setStyle(newCSS)
+    })
   }
 
   // -- Wrapped block indent/outdent -------------------------------------------

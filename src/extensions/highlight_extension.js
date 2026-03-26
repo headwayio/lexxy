@@ -27,6 +27,7 @@ export class HighlightExtension extends LexxyExtension {
     return this.editorElement.supportsRichText
   }
 
+
   get lexicalExtension() {
     const extension = defineExtension({
       dependencies: [ RichTextExtension ],
@@ -52,12 +53,6 @@ export class HighlightExtension extends LexxyExtension {
         return mergeRegister(
           editor.registerCommand(TOGGLE_HIGHLIGHT_COMMAND, (styles) => $toggleSelectionStyles(editor, styles), COMMAND_PRIORITY_NORMAL),
           editor.registerCommand(REMOVE_HIGHLIGHT_COMMAND, () => $toggleSelectionStyles(editor, BLANK_STYLES), COMMAND_PRIORITY_NORMAL),
-          editor.registerCommand(KEY_ENTER_COMMAND, () => {
-            // Use queueMicrotask (not RAF) — by the time RAF fires, Lexical
-            // may have already changed the selection/anchor node.
-            queueMicrotask(() => $clearHighlightOnNewBlock(editor))
-            return false
-          }, COMMAND_PRIORITY_LOW),
           editor.registerNodeTransform(TextNode, $syncHighlightWithStyle),
           editor.registerNodeTransform(CodeHighlightNode, $syncHighlightWithCodeHighlightNode),
           editor.registerNodeTransform(TextNode, (textNode) => $canonicalizePastedStyles(textNode, canonicalizers)),
@@ -432,9 +427,31 @@ function $clearHighlightOnNewBlock(editor) {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
-    const anchor = selection.anchor.getNode()
-    if (!$isTextNode(anchor)) return
-    if (anchor.getTextContent() !== "") return
+    // The anchor after Enter may be a text node (empty) or an element node
+    // (empty paragraph/list item). Handle both cases.
+    let anchor = selection.anchor.getNode()
+
+    // If anchor is an element, check if it has a text child to clear
+    if (!$isTextNode(anchor)) {
+      const firstChild = anchor.getFirstChild?.()
+      if ($isTextNode(firstChild)) {
+        anchor = firstChild
+      } else {
+        // No text node — just clear the selection style so new text won't inherit
+        const selStyle = selection.style
+        if (selStyle && hasHighlightStyles(selStyle)) {
+          const styles = getStyleObjectFromCSS(selStyle)
+          delete styles.color
+          delete styles["background-color"]
+          selection.setStyle(getCSSFromStyleObject(styles))
+        }
+        return
+      }
+    }
+
+    // Treat zero-width chars and empty strings as "empty" (new block)
+    const text = anchor.getTextContent().replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+    if (text.length > 0) return
 
     const style = anchor.getStyle()
     if (!hasHighlightStyles(style)) return
