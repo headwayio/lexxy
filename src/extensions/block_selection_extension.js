@@ -976,17 +976,22 @@ export class BlockSelectionExtension extends LexxyExtension {
     const selectedKeys = [...this.#selectedBlockKeys]
     if (selectedKeys.length === 0) return
 
+    // Filter to only "root" keys — parents whose children are also selected.
+    // When a parent is selected with its children, only move the parent;
+    // the children travel with it via the structural wrapper.
+    const rootKeys = this.#filterToRootKeys(selectedKeys)
+
     const allKeys = this.#getDocumentOrderBlockKeys()
-    selectedKeys.sort((a, b) => allKeys.indexOf(a) - allKeys.indexOf(b))
+    rootKeys.sort((a, b) => allKeys.indexOf(a) - allKeys.indexOf(b))
 
     this.editor.update(() => {
       if (direction === "up") {
-        for (const key of selectedKeys) {
+        for (const key of rootKeys) {
           this.#moveSingleBlock(key, "up")
         }
       } else {
-        for (let i = selectedKeys.length - 1; i >= 0; i--) {
-          this.#moveSingleBlock(selectedKeys[i], "down")
+        for (let i = rootKeys.length - 1; i >= 0; i--) {
+          this.#moveSingleBlock(rootKeys[i], "down")
         }
       }
       // Re-sync wrapped keys with current selection after all moves.
@@ -998,6 +1003,42 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#syncSelectionClasses()
       this.#syncWrappedBlockAttributes()
     })
+  }
+
+  // Given a set of selected keys, return only the "root" keys — items that
+  // are not children of another selected item. This prevents moving children
+  // individually when the parent already moves them via its structural wrapper.
+  #filterToRootKeys(selectedKeys) {
+    const keySet = new Set(selectedKeys)
+    const rootKeys = []
+
+    this.editor.getEditorState().read(() => {
+      for (const key of selectedKeys) {
+        const node = $getNodeByKey(key)
+        if (!node) continue
+
+        // Walk up through list structure to check if any ancestor is also selected
+        let isChild = false
+        let current = node.getParent()
+        while (current) {
+          if ($isListItemNode(current) && this.#isStructuralWrapper(current)) {
+            // Found a structural wrapper — check if the item BEFORE it is selected
+            const textItem = current.getPreviousSibling()
+            if (textItem && keySet.has(textItem.getKey())) {
+              isChild = true
+              break
+            }
+          }
+          current = current.getParent()
+        }
+
+        if (!isChild) {
+          rootKeys.push(key)
+        }
+      }
+    })
+
+    return rootKeys
   }
 
   // Re-apply data-block-movement-wrapped DOM attribute after moves.
@@ -1139,11 +1180,16 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     const nodeKey = node.getKey()
 
+    // Capture the node's own structural wrapper (children) BEFORE the move.
+    // It travels with the node as a unit.
+    const ownWrapper = this.#getOwnStructuralWrapper(node)
+
     // Check if moving the node will empty its parent list BEFORE the move.
     // If so, save the structural wrapper key so we can destroy it after.
     const sourceList = node.getParent()
     let sourceWrapperKey = null
-    if (sourceList && $isListNode(sourceList) && this.#countRealItems(sourceList) <= 1) {
+    const realItemCount = this.#countRealItems(sourceList)
+    if (sourceList && $isListNode(sourceList) && realItemCount <= 1) {
       const sourceWrapper = sourceList.getParent()
       if (sourceWrapper && $isListItemNode(sourceWrapper) && this.#isStructuralWrapper(sourceWrapper)) {
         sourceWrapperKey = sourceWrapper.getKey()
@@ -1173,10 +1219,25 @@ export class BlockSelectionExtension extends LexxyExtension {
       nestedList.append(node)
     }
 
+    // Move the node's children wrapper right after the node in the new list
+    if (ownWrapper) {
+      node.insertAfter(ownWrapper)
+    }
+
     // Destroy the old structural wrapper if the move emptied its list
     if (sourceWrapperKey) {
       this.#forceDestroyWrapper(sourceWrapperKey)
     }
+  }
+
+  // Get the structural wrapper (children container) that immediately follows
+  // a list item, if any. Returns null if the node has no children.
+  #getOwnStructuralWrapper(node) {
+    const next = node.getNextSibling()
+    if (next && $isListItemNode(next) && this.#isStructuralWrapper(next)) {
+      return next
+    }
+    return null
   }
 
   // Promote a list item out of its current list to the parent level.
@@ -1204,6 +1265,9 @@ export class BlockSelectionExtension extends LexxyExtension {
       // UP, we want to go before the TEXT ListItemNode that precedes the
       // wrapper (the item the user sees as the "parent"). When moving DOWN,
       // inserting after the wrapper is correct.
+      // Capture the node's children wrapper BEFORE moving.
+      const ownWrapper = this.#getOwnStructuralWrapper(node)
+
       if (isDown) {
         listParent.insertAfter(node)
       } else {
@@ -1213,6 +1277,10 @@ export class BlockSelectionExtension extends LexxyExtension {
         } else {
           listParent.insertBefore(node)
         }
+      }
+      // Move children wrapper right after the node in the new position
+      if (ownWrapper) {
+        node.insertAfter(ownWrapper)
       }
       this.#cleanupEmptyList(currentList)
     } else {

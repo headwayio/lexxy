@@ -1670,9 +1670,18 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   .block--selected + li.lexxy-nested-listitem:has(.block--selected) {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     background-color: var(--block-select-bg);
-    padding-top: 0.02px;
     margin-top: 0;
     box-shadow: -2em 0 0 0 var(--block-select-bg);
+  }
+
+  /* The parent item extends its highlight DOWNWARD to cover the collapsed
+     heading margin gap between itself and the structural wrapper. Downward
+     shadow (not upward) avoids bleeding into the previous section. */
+  li.block--selected:has(+ li.lexxy-nested-listitem .block--selected) {
+    box-shadow:
+      -2em 0 0 0 var(--block-select-bg),
+      0 1.5em 0 0 var(--block-select-bg),
+      -2em 1.5em 0 0 var(--block-select-bg);
   }
 
   /* Children inside a highlighted wrapper: suppress their own background
@@ -1768,8 +1777,44 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     display: none;
   }
 
+  /* Dragged items: lighter shade + faded text instead of element opacity.
+     Element opacity creates separate stacking contexts per element, causing
+     double-layered shadows where parent and wrapper overlap. Uses a fixed
+     base color (not currentColor) to avoid recursive compounding on nested
+     elements where each child would get 30% of the already-faded parent. */
+  /* Dragged items: faded text + lighter selection background.
+     Color is set via inheritance (no * selector) so syntax tokens in code
+     blocks keep their explicit theme colors. Elements with their own color
+     rules (blockquote, links) get explicit overrides below. */
   .lexxy-dragging {
-    opacity: 0.4;
+    color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent) !important;
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 5%, var(--lexxy-color-canvas)) !important;
+  }
+
+  /* Elements with their own color rules need explicit fade override */
+  .lexxy-dragging blockquote,
+  .lexxy-dragging a,
+  .lexxy-dragging figcaption,
+  .lexxy-dragging .lexxy-placeholder {
+    color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent) !important;
+  }
+
+  /* Code blocks: ::after overlay dims uniformly while keeping the dark
+     background opaque (no parent blue bleeding through) and preserving
+     syntax highlighting colors underneath. */
+  .lexxy-dragging pre,
+  .lexxy-dragging code[data-language] {
+    position: relative;
+  }
+  .lexxy-dragging pre::after,
+  .lexxy-dragging code[data-language]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: color-mix(in oklch, var(--lexxy-color-canvas, #fff) 40%, transparent);
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
   }
 }
 
@@ -1807,6 +1852,29 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     background: var(--lexxy-focus-ring-color);
     border-radius: 1px;
   }
+}
+
+/* Drag ghost: match text dimness, background, and code treatment to originals */
+.lexxy-drag-ghost .lexxy-editor__content {
+  color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
+}
+.lexxy-drag-ghost .lexxy-editor__content blockquote,
+.lexxy-drag-ghost .lexxy-editor__content a {
+  color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
+}
+.lexxy-drag-ghost pre,
+.lexxy-drag-ghost code[data-language] {
+  position: relative;
+}
+.lexxy-drag-ghost pre::after,
+.lexxy-drag-ghost code[data-language]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--lexxy-color-canvas, #fff) 40%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Block drag handle ----------------------------------------------------------- */

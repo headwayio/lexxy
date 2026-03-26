@@ -878,8 +878,9 @@ export class BlockDragAndDrop {
       // Wrapped blocks (heading, code, HR) can exit to root level (depth 0).
       // Regular list items stay at depth >= 1 (they need a parent list).
       const minSnapDepth = (draggedIsWrappedBlock && isLastInSublist) ? 0 : 1
-      // Only offer shallower depths when at the end of the sublist
-      const minDepth = isLastInSublist ? minSnapDepth : targetDepth
+      // Offer shallower depths at the end of a sublist, or for self-targets
+      // (self-outdent can promote from any position without affecting siblings)
+      const minDepth = (isLastInSublist || isSelfTarget) ? minSnapDepth : targetDepth
       const validSnaps = snapPoints.filter(p => p.depth >= minDepth && p.depth <= targetDepth)
       if (validSnaps.length >= 1) {
         const snap = validSnaps.length > 1
@@ -1099,11 +1100,31 @@ export class BlockDragAndDrop {
       ghostContent = sourceElement.cloneNode(true)
     }
 
+    // Strip selection classes from cloned elements — they carry box-shadows
+    // (bullet extensions, gap bridges) that render as dark borders in the ghost.
+    for (const el of ghostContent.querySelectorAll(".block--selected, .block--focused")) {
+      el.classList.remove("block--selected", "block--focused")
+    }
+    ghostContent.classList?.remove("block--selected", "block--focused")
+
     // Wrap in a container with Lexxy's CSS classes so content styles
     // (bullets, headings, code blocks, blockquotes, etc.) render correctly.
     const styleWrapper = document.createElement("div")
     styleWrapper.className = "lexxy-content lexxy-editor__content"
     styleWrapper.appendChild(ghostContent)
+
+    // Copy CSS custom properties from the editor to the ghost so code blocks,
+    // colors, etc. render correctly outside the <lexxy-editor> element.
+    const editorStyles = getComputedStyle(this.#editorElement)
+    const varsToForward = [
+      "--lexxy-color-code-bg", "--lexxy-color-code-text", "--lexxy-color-canvas",
+      "--lexxy-color-surface", "--lexxy-color-ink", "--lexxy-color-ink-lighter",
+      "--lexxy-color-ink-lightest", "--lexxy-color-accent-dark", "--lexxy-focus-ring-color"
+    ]
+    for (const v of varsToForward) {
+      const val = editorStyles.getPropertyValue(v)
+      if (val) styleWrapper.style.setProperty(v, val)
+    }
 
     const ghost = document.createElement("div")
     ghost.className = "lexxy-drag-ghost"
@@ -1111,16 +1132,16 @@ export class BlockDragAndDrop {
     ghost.style.position = "fixed"
     ghost.style.width = `${Math.min(rect.width + 24, 400)}px`
     ghost.style.maxWidth = "400px"
-    ghost.style.maxHeight = "200px"
+    ghost.style.maxHeight = "280px"
     ghost.style.pointerEvents = "none"
     ghost.style.zIndex = "10000"
-    ghost.style.opacity = "0.85"
+    ghost.style.opacity = "1"
     ghost.style.transform = "scale(0.95)"
     ghost.style.transformOrigin = "top left"
     ghost.style.borderRadius = "6px"
     ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)"
-    ghost.style.background = "var(--lexxy-color-surface, #fff)"
-    ghost.style.padding = "4px 8px"
+    ghost.style.background = "color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 5%, var(--lexxy-color-canvas, #fff))"
+    ghost.style.padding = "4px 8px 8px"
     ghost.style.overflow = "hidden"
     ghost.style.left = `${event.clientX + 12}px`
     ghost.style.top = `${event.clientY - 12}px`
