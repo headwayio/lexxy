@@ -17,6 +17,8 @@ import {
   HISTORY_MERGE_TAG,
   INDENT_CONTENT_COMMAND,
   KEY_ESCAPE_COMMAND,
+  KEY_TAB_COMMAND,
+  COMMAND_PRIORITY_LOW,
   OUTDENT_CONTENT_COMMAND
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
@@ -485,18 +487,16 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (this.#isPromptOpen()) return false
 
     if (this.isBlockSelectMode) {
+      // Block-select → exit and blur the editor. The next Esc will bubble
+      // to the parent (slide-over/modal close) since the editor isn't focused.
       this.#exitBlockSelectMode()
-      if (this.#savedSelection) {
-        this.editor.update(() => {
-          $setSelection(this.#savedSelection)
-        })
-        this.#savedSelection = null
-      }
-      this.editor.focus()
+      this.#savedSelection = null
+      this.editor.update(() => { $setSelection(null) })
+      this.root?.blur()
       return true
     }
 
-    // Enter block-select mode from edit mode
+    // Edit mode → enter block-select on the current block
     const blockKey = this.#getBlockKeyContainingCursor()
     if (blockKey) {
       this.enterBlockSelectMode(blockKey)
@@ -1206,8 +1206,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     // If so, save the structural wrapper key so we can destroy it after.
     const sourceList = node.getParent()
     let sourceWrapperKey = null
-    const realItemCount = this.#countRealItems(sourceList)
-    if (sourceList && $isListNode(sourceList) && realItemCount <= 1) {
+    if (sourceList && $isListNode(sourceList) && this.#countRealItems(sourceList) <= 1) {
       const sourceWrapper = sourceList.getParent()
       if (sourceWrapper && $isListItemNode(sourceWrapper) && this.#isStructuralWrapper(sourceWrapper)) {
         sourceWrapperKey = sourceWrapper.getKey()
@@ -1880,7 +1879,14 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     this.#cleanupFns.push(
       this.editor.registerCommand(INDENT_CONTENT_COMMAND, () => handleIndent(false), COMMAND_PRIORITY_HIGH),
-      this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => handleIndent(true), COMMAND_PRIORITY_HIGH)
+      this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => handleIndent(true), COMMAND_PRIORITY_HIGH),
+      // Prevent Tab from moving focus out of the editor. Runs at LOW priority
+      // so list/code handlers get first shot. If they don't handle it, consume
+      // the event to keep focus inside the editor.
+      this.editor.registerCommand(KEY_TAB_COMMAND, (event) => {
+        event.preventDefault()
+        return true
+      }, COMMAND_PRIORITY_LOW)
     )
   }
 

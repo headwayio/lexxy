@@ -1755,11 +1755,11 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      The bullet marker is hidden by default but shown on hover so users can see
      where the wrapped content sits in the hierarchy. Wrapped blocks sit at their
      natural structural depth (li → block) — no margin offset needed. */
+  /* Hide bullet on all wrapped items. Show on hover for non-text blocks. */
   li[data-list-item-type]:has(> h1, > h2, > h3, > h4, > h5, > h6, > table, > figure, > pre, > code[data-language], > blockquote, > hr, > .lexxy-content__table-wrapper, > .attachment-gallery, > .horizontal-divider),
   li[data-block-movement-wrapped] {
     &::before {
       opacity: 0;
-      transition: opacity 150ms ease;
       top: var(--bullet-offset-y, 0px);
       block-size: 24px;
       line-height: 24px;
