@@ -1877,7 +1877,18 @@ export class BlockSelectionExtension extends LexxyExtension {
       return false
     }
 
+    // Schedule handle reposition after ANY indent/outdent (CRITICAL runs first,
+    // returns false to let actual handlers proceed)
+    const scheduleReposition = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => this.#dragAndDrop?.repositionHandle())
+      })
+      return false
+    }
+
     this.#cleanupFns.push(
+      this.editor.registerCommand(INDENT_CONTENT_COMMAND, scheduleReposition, COMMAND_PRIORITY_CRITICAL),
+      this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, scheduleReposition, COMMAND_PRIORITY_CRITICAL),
       this.editor.registerCommand(INDENT_CONTENT_COMMAND, () => handleIndent(false), COMMAND_PRIORITY_HIGH),
       this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => handleIndent(true), COMMAND_PRIORITY_HIGH),
       // Prevent Tab from moving focus out of the editor. Runs at LOW priority

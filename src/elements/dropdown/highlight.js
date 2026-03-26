@@ -14,10 +14,13 @@ const NO_STYLE = Symbol("no_style")
 export class HighlightDropdown extends ToolbarDropdown {
   connectedCallback() {
     super.connectedCallback()
-    this.#registerToggleHandler()
+    // Setup moved to initialize() — connectedCallback runs before the base
+    // class has resolved this.container (deferred via queueMicrotask).
+    // initialize() is called after the editor is connected and container is set.
   }
 
   initialize() {
+    this.#registerToggleHandler()
     this.#setUpButtons()
     this.#registerButtonHandlers()
   }

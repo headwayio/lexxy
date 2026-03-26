@@ -53,7 +53,9 @@ export class HighlightExtension extends LexxyExtension {
           editor.registerCommand(TOGGLE_HIGHLIGHT_COMMAND, (styles) => $toggleSelectionStyles(editor, styles), COMMAND_PRIORITY_NORMAL),
           editor.registerCommand(REMOVE_HIGHLIGHT_COMMAND, () => $toggleSelectionStyles(editor, BLANK_STYLES), COMMAND_PRIORITY_NORMAL),
           editor.registerCommand(KEY_ENTER_COMMAND, () => {
-            requestAnimationFrame(() => $clearHighlightOnNewBlock(editor))
+            // Use queueMicrotask (not RAF) — by the time RAF fires, Lexical
+            // may have already changed the selection/anchor node.
+            queueMicrotask(() => $clearHighlightOnNewBlock(editor))
             return false
           }, COMMAND_PRIORITY_LOW),
           editor.registerNodeTransform(TextNode, $syncHighlightWithStyle),

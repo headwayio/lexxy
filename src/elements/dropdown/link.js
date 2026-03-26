@@ -9,8 +9,13 @@ export class LinkDropdown extends ToolbarDropdown {
 
   connectedCallback() {
     super.connectedCallback()
-    this.input = this.querySelector("input")
+    // Setup moved to initialize() — connectedCallback runs before the base
+    // class has resolved this.container (deferred via queueMicrotask).
+    // initialize() is called after the editor is connected and container is set.
+  }
 
+  initialize() {
+    this.input = this.querySelector("input")
     this.#registerHandlers()
   }
 

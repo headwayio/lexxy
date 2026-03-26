@@ -396,7 +396,7 @@ export class CommandDispatcher {
     if (this.selection.isInsideList) {
       return this.#handleTabForList(event)
     } else if (this.selection.isInsideCodeBlock) {
-      return this.#handleTabForCode()
+      return this.#handleTabForCode(event)
     }
     return false
   }
@@ -409,9 +409,13 @@ export class CommandDispatcher {
     return this.editor.dispatchCommand(command)
   }
 
-  #handleTabForCode() {
+  #handleTabForCode(event) {
     const selection = $getSelection()
-    return $isRangeSelection(selection) && selection.isCollapsed()
+    if ($isRangeSelection(selection) && selection.isCollapsed()) {
+      event?.preventDefault()
+      return true
+    }
+    return false
   }
 
   // Not using TOGGLE_LINK_COMMAND because it's not handled unless you use React/LinkPlugin
