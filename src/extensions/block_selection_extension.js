@@ -1737,11 +1737,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     // If the list has no parent, it was already removed
     if (!listNode.getParent()) return
 
-    // Prune empty ListItemNodes that Lexical normalization may have inserted
-    // (containing only a LineBreakNode / <br>) to keep a list valid.
+    // Prune ONLY structural wrappers that became empty (no list children).
+    // Do NOT remove regular items with empty text — those may be user-created
+    // or the previous sibling bullet that happens to have no text.
     for (const child of [...listNode.getChildren()]) {
-      if ($isListItemNode(child) && !this.#isStructuralWrapper(child)
-          && child.getTextContent().trim() === "") {
+      if ($isListItemNode(child) && this.#isStructuralWrapper(child)
+          && child.getChildren().every(c => $isListNode(c) && c.getChildrenSize() === 0)) {
         child.remove()
       }
     }
@@ -1830,10 +1831,21 @@ export class BlockSelectionExtension extends LexxyExtension {
     while (prev && $isListItemNode(prev) && this.#isStructuralWrapper(prev)) {
       prev = prev.getPreviousSibling()
     }
-    if (!prev || !$isListItemNode(prev)) return false
-
     // Capture the node's own children wrapper before moving
     const ownWrapper = carryChildren ? this.#getOwnStructuralWrapper(node) : null
+
+    if (!prev || !$isListItemNode(prev)) {
+      // No previous sibling — wrap in a structural wrapper (invisible, no text
+      // content) to create deeper nesting. Matches Lexical's approach where
+      // intermediate wrappers are hidden by CSS.
+      const nestedList = $createListNode(parent.getListType())
+      const wrapper = $createListItemNode()
+      wrapper.append(nestedList)
+      node.insertBefore(wrapper)
+      nestedList.append(node)
+      if (ownWrapper) node.insertAfter(ownWrapper)
+      return true
+    }
 
     // Find or create the previous sibling's nested list
     let nestedList = null
