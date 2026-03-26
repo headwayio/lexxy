@@ -59,6 +59,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#registerClickHandler()
     this.#registerDecoratorClickInterceptor()
     this.#registerDirectKeydownHandler()
+    this.#registerWrappedBlockIndentHandler()
     this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
   }
 
@@ -89,7 +90,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     })
 
     // Ensure the editor root stays focused for keydown events
-    this.root?.focus()
+    this.root?.focus({ preventScroll: true })
 
     this.#selectBlock(nodeKey)
   }
@@ -924,30 +925,43 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   #handleIndentOutdent(outdent) {
     this.editor.update(() => {
-      // Find all selected list items
-      const listItemKeys = [...this.#selectedBlockKeys].filter(key => {
+      // Filter to root keys only (parents, not their auto-selected children)
+      const rootKeys = this.#filterToRootKeys([...this.#selectedBlockKeys])
+      const listItemKeys = rootKeys.filter(key => {
         const node = $getNodeByKey(key)
         return node && $isListItemNode(node)
       })
       if (listItemKeys.length === 0) return
 
-      // Temporarily create a RangeSelection covering the list items
-      // so Lexical's indent/outdent command handlers can find them.
-      const firstNode = $getNodeByKey(listItemKeys[0])
-      const lastNode = $getNodeByKey(listItemKeys[listItemKeys.length - 1])
-      if (!firstNode) return
+      // Process each item: use wrapped-block indent for non-text blocks,
+      // Lexical's standard indent for regular list items.
+      for (const key of listItemKeys) {
+        const node = $getNodeByKey(key)
+        if (!node) continue
 
-      firstNode.selectStart()
-      const selection = $getSelection()
-      if ($isRangeSelection(selection) && lastNode) {
-        selection.focus.set(lastNode.getKey(), lastNode.getChildrenSize(), "element")
+        const children = node.getChildren()
+        const isWrapped = children.some(c =>
+          $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+        )
+        const hasChildren = !!this.#getOwnStructuralWrapper(node)
+
+        if (isWrapped || hasChildren) {
+          // Wrapped blocks or items with children — use our indent/outdent
+          // which carries the structural wrapper with the node
+          if (outdent) {
+            this.#outdentWrappedBlock(node)
+          } else {
+            this.#indentWrappedBlock(node)
+          }
+        } else {
+          // Simple list item — use Lexical's built-in indent/outdent
+          node.selectStart()
+          this.editor.dispatchCommand(
+            outdent ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND
+          )
+        }
       }
 
-      this.editor.dispatchCommand(
-        outdent ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND
-      )
-
-      // Restore null selection for block select mode
       $setSelection(null)
     }, { tag: HISTORY_MERGE_TAG })
 
@@ -1757,6 +1771,133 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (!wrapper || !$isListItemNode(wrapper)) return
     if (!wrapper.getParent()) return // already removed
     wrapper.remove()
+  }
+
+  // -- Wrapped block indent/outdent -------------------------------------------
+
+  // When Tab/Shift+Tab fires inside a wrapped block (heading, blockquote, etc.
+  // that was moved into a list), Lexical's default handler indents the CONTENT
+  // (e.g., adds indent to the heading). Instead, move the entire list item —
+  // the same as nesting/promoting a regular list item.
+  // In normal mode, intercept Tab only for wrapped blocks (headings, blockquotes,
+  // etc.) — Lexical's default handler adds padding to the content instead of
+  // nesting the list item. Regular items use Lexical's default re-parenting.
+  #registerWrappedBlockIndentHandler() {
+    const handleIndent = (isOutdent) => {
+      if (this.#mode === "block-select") return false
+
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection)) return false
+
+      const anchorNode = selection.anchor.getNode()
+      let current = anchorNode
+      while (current) {
+        if ($isListItemNode(current)) {
+          const children = current.getChildren()
+          const hasNonTextBlock = children.some(c =>
+            $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+          )
+          if (hasNonTextBlock) {
+            if (isOutdent) {
+              return this.#outdentWrappedBlock(current, false)
+            } else {
+              return this.#indentWrappedBlock(current, false)
+            }
+          }
+          break
+        }
+        current = current.getParent()
+      }
+      return false
+    }
+
+    this.#cleanupFns.push(
+      this.editor.registerCommand(INDENT_CONTENT_COMMAND, () => handleIndent(false), COMMAND_PRIORITY_HIGH),
+      this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => handleIndent(true), COMMAND_PRIORITY_HIGH)
+    )
+  }
+
+  // Indent: nest the wrapped block under its previous sibling (same visual position).
+  // carryChildren: true = move structural wrapper with node (block-select mode),
+  //                false = leave children behind to be re-parented (normal mode).
+  // Returns true if indent was performed, false if no previous sibling found
+  #indentWrappedBlock(node, carryChildren = true) {
+    const parent = node.getParent()
+    if (!$isListNode(parent)) return false
+
+    // Find the previous content sibling (skip structural wrappers)
+    let prev = node.getPreviousSibling()
+    while (prev && $isListItemNode(prev) && this.#isStructuralWrapper(prev)) {
+      prev = prev.getPreviousSibling()
+    }
+    if (!prev || !$isListItemNode(prev)) return false
+
+    // Capture the node's own children wrapper before moving
+    const ownWrapper = carryChildren ? this.#getOwnStructuralWrapper(node) : null
+
+    // Find or create the previous sibling's nested list
+    let nestedList = null
+    const wrapperCandidate = prev.getNextSibling()
+    if (wrapperCandidate && $isListItemNode(wrapperCandidate)
+        && this.#isStructuralWrapper(wrapperCandidate)
+        && !wrapperCandidate.is(node)) {
+      nestedList = wrapperCandidate.getChildren().find(c => $isListNode(c))
+    }
+
+    if (!nestedList) {
+      nestedList = $createListNode(parent.getListType())
+      const wrapper = $createListItemNode()
+      wrapper.append(nestedList)
+      prev.insertAfter(wrapper)
+    }
+
+    // Append to the end of the nested list (stays at same visual position)
+    nestedList.append(node)
+    if (ownWrapper) node.insertAfter(ownWrapper)
+    return true
+  }
+
+  // Outdent: promote the wrapped block to its parent list (same visual position).
+  // Splits the nested list if the node is in the middle — items before stay in
+  // the original wrapper, items after go into a new wrapper.
+  // carryChildren: true = move structural wrapper with node (block-select mode),
+  //                false = leave children behind (normal mode).
+  // Returns true if outdent was performed
+  #outdentWrappedBlock(node, carryChildren = true) {
+    const currentList = node.getParent()
+    if (!$isListNode(currentList)) return false
+
+    const structuralWrapper = currentList.getParent()
+    if (!$isListItemNode(structuralWrapper) || !this.#isStructuralWrapper(structuralWrapper)) return false
+
+    // Capture trailing siblings (items after the node in the nested list)
+    const ownWrapper = carryChildren ? this.#getOwnStructuralWrapper(node) : null
+    const trailingSiblings = []
+    let sib = (ownWrapper || node).getNextSibling()
+    while (sib) {
+      trailingSiblings.push(sib)
+      sib = sib.getNextSibling()
+    }
+
+    // Insert the node after the structural wrapper in the parent list
+    structuralWrapper.insertAfter(node)
+    if (ownWrapper) node.insertAfter(ownWrapper)
+
+    // If there were trailing siblings, move them into a new wrapper after the node
+    if (trailingSiblings.length > 0) {
+      const insertAfter = ownWrapper || node
+      const newList = $createListNode(currentList.getListType())
+      const newWrapper = $createListItemNode()
+      newWrapper.append(newList)
+      insertAfter.insertAfter(newWrapper)
+      for (const trailing of trailingSiblings) {
+        newList.append(trailing)
+      }
+    }
+
+    // Clean up if the original nested list is now empty
+    this.#cleanupEmptyList(currentList)
+    return true
   }
 
   // -- Click handling ---------------------------------------------------------

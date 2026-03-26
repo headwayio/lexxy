@@ -1786,9 +1786,13 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      Color is set via inheritance (no * selector) so syntax tokens in code
      blocks keep their explicit theme colors. Elements with their own color
      rules (blockquote, links) get explicit overrides below. */
+  .lexxy-dragging,
+  .lexxy-dragging .block--selected,
+  .lexxy-dragging li.lexxy-nested-listitem {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 5%, var(--lexxy-color-canvas)) !important;
+  }
   .lexxy-dragging {
     color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent) !important;
-    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 5%, var(--lexxy-color-canvas)) !important;
   }
 
   /* Elements with their own color rules need explicit fade override */

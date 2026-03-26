@@ -1130,8 +1130,7 @@ export class BlockDragAndDrop {
     ghost.className = "lexxy-drag-ghost"
     ghost.appendChild(styleWrapper)
     ghost.style.position = "fixed"
-    ghost.style.width = `${Math.min(rect.width + 24, 400)}px`
-    ghost.style.maxWidth = "400px"
+    ghost.style.width = `${rect.width + 24}px`
     ghost.style.maxHeight = "280px"
     ghost.style.pointerEvents = "none"
     ghost.style.zIndex = "10000"
