@@ -133,18 +133,19 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#syncSelectionClasses()
   }
 
-  // Collect keys of items nested under a list item (in its structural wrapper)
-  // and add them to a Set. Uses an intermediate array because
-  // #collectListItemKeys expects Array.push().
+  // Collect keys of items nested under a list item (in its structural wrappers).
+  // Walks ALL consecutive structural wrappers after the node — handles cases
+  // where multiple wrappers exist (e.g., from list splitting or deep nesting).
   #collectChildKeys(listItemNode, keySet) {
-    const next = listItemNode.getNextSibling()
-    if (!next || !$isListItemNode(next) || !this.#isStructuralWrapper(next)) return
-
+    let next = listItemNode.getNextSibling()
     const childKeys = []
-    for (const child of next.getChildren()) {
-      if ($isListNode(child)) {
-        this.#collectListItemKeys(child, childKeys)
+    while (next && $isListItemNode(next) && this.#isStructuralWrapper(next)) {
+      for (const child of next.getChildren()) {
+        if ($isListNode(child)) {
+          this.#collectListItemKeys(child, childKeys)
+        }
       }
+      next = next.getNextSibling()
     }
     for (const key of childKeys) {
       keySet.add(key)
@@ -1747,8 +1748,11 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
-    // Clean up lists that are empty OR only contain structural wrappers
-    if (this.#countRealItems(listNode) > 0) return
+    // Clean up lists that are empty OR only contain empty structural wrappers.
+    // Use getTextContentSize to check ALL descendants (including nested wrappers
+    // that contain real content like headings) — countRealItems only checks
+    // direct children and misses content inside structural wrappers.
+    if (listNode.getTextContentSize() > 0) return
 
     // Remove any leftover structural wrappers
     for (const child of listNode.getChildren()) {
@@ -1762,6 +1766,56 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#forceDestroyWrapper(parent.getKey())
     } else {
       listNode.remove()
+    }
+  }
+
+  // Walk all lists in the document and merge adjacent wrappers at every level.
+  #mergeAllAdjacentWrappers() {
+    const root = $getRoot()
+    for (const child of root.getChildren()) {
+      if ($isListNode(child)) {
+        this.#mergeAdjacentWrappersRecursive(child)
+      }
+    }
+  }
+
+  #mergeAdjacentWrappersRecursive(listNode) {
+    // Recurse into nested lists first (bottom-up)
+    for (const child of listNode.getChildren()) {
+      if ($isListItemNode(child)) {
+        for (const grandchild of child.getChildren()) {
+          if ($isListNode(grandchild)) {
+            this.#mergeAdjacentWrappersRecursive(grandchild)
+          }
+        }
+      }
+    }
+    this.#mergeAdjacentWrappers(listNode)
+  }
+
+  // Merge adjacent structural wrappers in a list. After outdent splits a list,
+  // re-indenting can leave separate wrappers that should be one. This combines
+  // them so parent→child selection traversal works correctly.
+  #mergeAdjacentWrappers(listNode) {
+    if (!$isListNode(listNode)) return
+    const latest = $getNodeByKey(listNode.getKey())
+    if (!latest || !$isListNode(latest)) return
+
+    const children = [...latest.getChildren()]
+    for (let i = 0; i < children.length - 1; i++) {
+      const current = children[i]
+      const next = children[i + 1]
+      if (!$isListItemNode(current) || !$isListItemNode(next)) continue
+      if (!this.#isStructuralWrapper(current) || !this.#isStructuralWrapper(next)) continue
+
+      const currentList = current.getChildren().find(c => $isListNode(c))
+      const nextList = next.getChildren().find(c => $isListNode(c))
+      if (currentList && nextList) {
+        for (const child of [...nextList.getChildren()]) {
+          currentList.append(child)
+        }
+        next.remove()
+      }
     }
   }
 
@@ -1844,6 +1898,8 @@ export class BlockSelectionExtension extends LexxyExtension {
       node.insertBefore(wrapper)
       nestedList.append(node)
       if (ownWrapper) node.insertAfter(ownWrapper)
+      // Merge adjacent wrappers at the parent level
+      this.#mergeAdjacentWrappers(parent)
       return true
     }
 
@@ -1866,6 +1922,9 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Append to the end of the nested list (stays at same visual position)
     nestedList.append(node)
     if (ownWrapper) node.insertAfter(ownWrapper)
+    // Merge adjacent structural wrappers at both levels
+    this.#mergeAdjacentWrappers(nestedList)
+    this.#mergeAdjacentWrappers(parent)
     return true
   }
 
@@ -1909,6 +1968,9 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Clean up if the original nested list is now empty
     this.#cleanupEmptyList(currentList)
+    // Merge adjacent structural wrappers in the parent list
+    const parentList = node.getParent()
+    if ($isListNode(parentList)) this.#mergeAdjacentWrappers(parentList)
     return true
   }
 
