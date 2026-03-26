@@ -884,7 +884,7 @@
   -webkit-user-select: none;
 }
 
-/* Chevron variant needs class specificity to override .lexxy-editor__toolbar-button's aspect-ratio */
+/* Chevron variant — matches upstream Lexxy exactly */
 .lexxy-editor__toolbar-dropdown--chevron summary.lexxy-editor__toolbar-button {
   aspect-ratio: unset;
   gap: 0.5ch;
@@ -892,7 +892,7 @@
   padding-inline: 0.75ch;
 }
 
-.lexxy-editor__toolbar-dropdown--chevron summary.lexxy-editor__toolbar-button:after {
+.lexxy-editor__toolbar-dropdown--chevron summary.lexxy-editor__toolbar-button::after {
   block-size: 0.3ch;
   border-block-end: 2px solid currentcolor;
   border-inline-end: 2px solid currentcolor;
