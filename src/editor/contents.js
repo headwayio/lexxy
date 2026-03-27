@@ -71,7 +71,7 @@ export default class Contents {
     if (!$isRangeSelection(selection)) return
 
     const listItem = this.#findContainingListItem(selection)
-    if (listItem) {
+    if (listItem && this.#hasWrappedBlockChild(listItem)) {
       this.#unwrapListItemContent(listItem)
       return
     }
@@ -128,6 +128,14 @@ export default class Contents {
       current = current.getParent()
     }
     return null
+  }
+
+  // Check whether a list item contains a wrapped block element (heading,
+  // blockquote, code) as opposed to plain inline content.
+  #hasWrappedBlockChild(listItem) {
+    return listItem.getChildren().some(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
   }
 
   // Wrap a list item's inline content in a block element (heading, quote).
@@ -237,13 +245,6 @@ export default class Contents {
     if (!$isRangeSelection(selection)) return
 
     if (this.#insertNodeIfRoot($createQuoteNode())) return
-
-    // Inside a list item → wrap content in a blockquote
-    const listItem = this.#findContainingListItem(selection)
-    if (listItem) {
-      this.#wrapListItemContent(listItem, $createQuoteNode())
-      return
-    }
 
     const topLevelElements = this.#topLevelElementsInSelection(selection)
 

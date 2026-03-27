@@ -267,11 +267,11 @@ export class ActionTextAttachmentNode extends DecoratorNode {
 
     figure.className = figure.className.replace("attachment--preview", "attachment--file")
 
-    const container = figure.querySelector(".attachment__container")
-    if (container) container.remove()
+    const previewView = figure.querySelector(".attachment__preview-view")
+    if (previewView) previewView.remove()
 
-    const caption = figure.querySelector("figcaption")
-    if (caption) caption.remove()
+    const cardView = figure.querySelector(".attachment__card-view")
+    if (cardView) cardView.remove()
 
     figure.appendChild(this.#createDOMForFile())
     figure.appendChild(this.#createDOMForNotImage())

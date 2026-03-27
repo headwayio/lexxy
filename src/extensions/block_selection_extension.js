@@ -2821,7 +2821,13 @@ export class BlockSelectionExtension extends LexxyExtension {
   // BEFORE Lexical's own handlers. This prevents Lexical from creating a
   // NodeSelection (and showing its own delete-button UI) for these elements.
   #registerDecoratorClickInterceptor() {
+    function isInsideControls(event) {
+      return event.target.closest("lexxy-node-delete-button")
+    }
+
     const onMouseDown = (event) => {
+      if (isInsideControls(event)) return
+
       const decorator = event.target.closest(".horizontal-divider")
       if (!decorator) return
 
@@ -2838,6 +2844,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Also intercept mouseup and click to prevent Lexical's deferred selection
     function suppressIfDecorator(event) {
+      if (isInsideControls(event)) return
       if (event.target.closest(".horizontal-divider")) {
         event.stopPropagation()
       }
