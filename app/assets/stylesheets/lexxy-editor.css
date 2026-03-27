@@ -990,6 +990,16 @@
 }
 
 
+/* Link selection highlight overlay (matches native ::selection height) */
+.lexxy-link-selection-overlay {
+  background-color: #B7D9FF;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+
 /* --------------------------------------------------------------------------
 /* Prompt */
 
