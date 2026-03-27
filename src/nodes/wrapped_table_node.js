@@ -1,4 +1,5 @@
 import { TableNode } from "@lexical/table"
+import { $isListItemNode, $createListItemNode } from "@lexical/list"
 import { createElement } from "../helpers/html_helper"
 
 export class WrappedTableNode extends TableNode {
@@ -16,6 +17,19 @@ export class WrappedTableNode extends TableNode {
 
   canInsertTextAfter() {
     return false
+  }
+
+  // When exiting a table inside a list item, create a sibling list item
+  // (not a paragraph inside the wrapper) so it inherits parent highlighting.
+  insertNewAfter(selection, restoreSelection) {
+    const parentListItem = this.getParent()
+    if ($isListItemNode(parentListItem)) {
+      const newItem = $createListItemNode()
+      parentListItem.insertAfter(newItem)
+      newItem.select()
+      return newItem
+    }
+    return super.insertNewAfter(selection, restoreSelection)
   }
 
   exportDOM(editor) {
