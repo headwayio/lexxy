@@ -229,7 +229,7 @@ test.describe("Block formatting", () => {
       details.dispatchEvent(new Event("toggle"))
     })
 
-    const input = page.locator("lexxy-link-dropdown input[type='url']").first()
+    const input = page.locator("lexxy-link-dropdown input[type='text']").first()
     await expect(input).toBeVisible({ timeout: 2_000 })
     await input.fill("https://37signals.com")
     await page
