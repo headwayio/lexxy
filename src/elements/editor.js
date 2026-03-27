@@ -164,6 +164,10 @@ export class LexicalEditorElement extends HTMLElement {
     return this.config.get("multiLine") && !this.isSingleLineMode
   }
 
+  get supportsMixedLists() {
+    return this.supportsRichText && this.config.get("mixedLists")
+  }
+
   get supportsRichText() {
     return this.config.get("richText")
   }
