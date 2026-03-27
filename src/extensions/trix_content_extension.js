@@ -54,10 +54,26 @@ function $applyStrikethrough(textNode) {
 }
 
 function onlyPreLanguageElements(element, conversion) {
-  return element.hasAttribute(TRIX_LANGUAGE_ATTR) ? conversion : null
+  return detectLanguage(element) ? conversion : null
+}
+
+function detectLanguage(element) {
+  // Trix format: <pre language="ruby">
+  if (element.hasAttribute(TRIX_LANGUAGE_ATTR)) {
+    return element.getAttribute(TRIX_LANGUAGE_ATTR)
+  }
+
+  // CommonMark / marked format: <pre><code class="language-ruby">
+  const codeChild = element.querySelector("code[class*='language-']")
+  if (codeChild) {
+    const match = codeChild.className.match(/language-(\S+)/)
+    if (match) return match[1]
+  }
+
+  return null
 }
 
 function $applyLanguage(conversionOutput, element) {
-  const language = normalizeCodeLang(element.getAttribute(TRIX_LANGUAGE_ATTR))
+  const language = normalizeCodeLang(detectLanguage(element))
   conversionOutput.node.setLanguage(language)
 }

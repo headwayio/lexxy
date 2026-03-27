@@ -204,7 +204,13 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #updateButtonStates() {
     const selection = $getSelection()
-    if (!$isRangeSelection(selection)) return
+
+    // In block select mode, the selection is an internal implementation detail
+    // (used temporarily for commands like color/highlight). Don't reflect it.
+    if (!$isRangeSelection(selection) || this.editor.getRootElement()?.classList.contains("block-selection-active")) {
+      this.#clearAllPressedStates()
+      return
+    }
 
     const anchorNode = selection.anchor.getNode()
     if (!anchorNode.getParent()) { return }
@@ -217,6 +223,7 @@ export class LexicalToolbarElement extends HTMLElement {
 
     this.#setButtonPressed("format", isInHeading || isStrikethrough || isUnderline)
     this.#setButtonPressed("paragraph", !isInHeading)
+    this.#setButtonPressed("heading-xlarge", headingTag === "h1")
     this.#setButtonPressed("heading-large", headingTag === "h2")
     this.#setButtonPressed("heading-medium", headingTag === "h3")
     this.#setButtonPressed("heading-small", headingTag === "h4")
@@ -235,6 +242,12 @@ export class LexicalToolbarElement extends HTMLElement {
     this.#setButtonPressed("table", isInTable)
 
     this.#updateUndoRedoButtonStates()
+  }
+
+  #clearAllPressedStates() {
+    for (const button of this.querySelectorAll("[aria-pressed='true']")) {
+      button.setAttribute("aria-pressed", "false")
+    }
   }
 
   #setButtonPressed(name, isPressed) {
@@ -309,7 +322,9 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #closeDropdowns() {
    this.#dropdowns.forEach((details) => {
-     details.open = false
+     if (!details.hasAttribute("data-pinned")) {
+       details.open = false
+     }
    })
  }
 
@@ -363,14 +378,17 @@ export class LexicalToolbarElement extends HTMLElement {
           <button type="button" name="paragraph" data-command="setFormatParagraph" title="Paragraph">
             ${ToolbarIcons.paragraph} <span>Normal</span>
           </button>
-          <button type="button" name="heading-large" data-command="setFormatHeadingLarge" title="Large heading">
-            ${ToolbarIcons.h2} <span>Large Heading</span>
+          <button type="button" name="heading-xlarge" data-command="setFormatHeadingXLarge" title="Heading 1">
+            ${ToolbarIcons.h1} <span>Heading 1</span>
           </button>
-          <button type="button" name="heading-medium" data-command="setFormatHeadingMedium" title="Medium heading">
-            ${ToolbarIcons.h3} <span>Medium Heading</span>
+          <button type="button" name="heading-large" data-command="setFormatHeadingLarge" title="Heading 2">
+            ${ToolbarIcons.h2} <span>Heading 2</span>
           </button>
-          <button class="lexxy-editor__toolbar-group-end" type="button" name="heading-small" data-command="setFormatHeadingSmall" title="Small heading">
-            ${ToolbarIcons.h4} <span>Small Heading</span>
+          <button type="button" name="heading-medium" data-command="setFormatHeadingMedium" title="Heading 3">
+            ${ToolbarIcons.h3} <span>Heading 3</span>
+          </button>
+          <button type="button" name="heading-small" data-command="setFormatHeadingSmall" title="Heading 4">
+            ${ToolbarIcons.h4} <span>Heading 4</span>
           </button>
           <div class="lexxy-editor__toolbar-separator" role="separator"></div>
           <button type="button" name="strikethrough" data-command="strikethrough" title="Strikethrough">
@@ -398,7 +416,7 @@ export class LexicalToolbarElement extends HTMLElement {
         </summary>
         <lexxy-link-dropdown class="lexxy-editor__toolbar-dropdown-content">
           <form method="dialog">
-            <input type="url" placeholder="Enter a URL…" class="input">
+            <input type="text" placeholder="Enter a URL…" class="input">
             <div class="lexxy-editor__toolbar-dropdown-actions">
               <button type="submit" class="lexxy-editor__toolbar-button" value="link">Link</button>
               <button type="button" class="lexxy-editor__toolbar-button" value="unlink">Unlink</button>

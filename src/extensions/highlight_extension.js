@@ -1,4 +1,4 @@
-import { $getNodeByKey, $getState, $hasUpdateTag, $setState, COMMAND_PRIORITY_NORMAL, PASTE_TAG, TextNode, createCommand, createState, defineExtension } from "lexical"
+import { $getNodeByKey, $getState, $hasUpdateTag, $isTextNode, $setState, COMMAND_PRIORITY_LOW, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, PASTE_TAG, TextNode, createCommand, createState, defineExtension } from "lexical"
 import { $getSelection, $isRangeSelection } from "lexical"
 import { $getSelectionStyleValueForProperty, $patchStyleText, getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { $createCodeHighlightNode, $createCodeNode, $isCodeHighlightNode, $isCodeNode, CodeHighlightNode, CodeNode } from "@lexical/code"
@@ -26,6 +26,7 @@ export class HighlightExtension extends LexxyExtension {
   get enabled() {
     return this.editorElement.supportsRichText
   }
+
 
   get lexicalExtension() {
     const extension = defineExtension({
@@ -57,7 +58,8 @@ export class HighlightExtension extends LexxyExtension {
           editor.registerNodeTransform(TextNode, (textNode) => $canonicalizePastedStyles(textNode, canonicalizers)),
           editor.registerMutationListener(CodeNode, (mutations) => {
             $applyPendingCodeHighlights(editor, mutations)
-          }, { skipInitialization: true })
+          }, { skipInitialization: true }),
+          $registerMarkPaddingSync(editor)
         )
       }
     })
@@ -420,6 +422,49 @@ function toggleOrReplace(oldValue, newValue) {
   return oldValue === newValue ? null : newValue
 }
 
+function $clearHighlightOnNewBlock(editor) {
+  editor.update(() => {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return
+
+    // The anchor after Enter may be a text node (empty) or an element node
+    // (empty paragraph/list item). Handle both cases.
+    let anchor = selection.anchor.getNode()
+
+    // If anchor is an element, check if it has a text child to clear
+    if (!$isTextNode(anchor)) {
+      const firstChild = anchor.getFirstChild?.()
+      if ($isTextNode(firstChild)) {
+        anchor = firstChild
+      } else {
+        // No text node — just clear the selection style so new text won't inherit
+        const selStyle = selection.style
+        if (selStyle && hasHighlightStyles(selStyle)) {
+          const styles = getStyleObjectFromCSS(selStyle)
+          delete styles.color
+          delete styles["background-color"]
+          selection.setStyle(getCSSFromStyleObject(styles))
+        }
+        return
+      }
+    }
+
+    // Treat zero-width chars and empty strings as "empty" (new block)
+    const text = anchor.getTextContent().replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+    if (text.length > 0) return
+
+    const style = anchor.getStyle()
+    if (!hasHighlightStyles(style)) return
+
+    const styles = getStyleObjectFromCSS(style)
+    delete styles.color
+    delete styles["background-color"]
+    const newCSS = getCSSFromStyleObject(styles)
+    anchor.setStyle(newCSS)
+    selection.setStyle(newCSS)
+  })
+}
+
 function $syncHighlightWithStyle(textNode) {
   if (hasHighlightStyles(textNode.getStyle()) !== textNode.hasFormat("highlight")) {
     textNode.toggleFormat("highlight")
@@ -459,4 +504,27 @@ function $setPastedStyles(textNode, value = true) {
 
 function $hasPastedStyles(textNode) {
   return $getState(textNode, hasPastedStylesState)
+}
+
+// After DOM reconciliation, scan <mark> elements and set data-pad-start /
+// data-pad-end attributes based on whether the mark sits at a word boundary.
+// Marks mid-word get no horizontal padding; marks at word edges get padding.
+function $registerMarkPaddingSync(editor) {
+  return editor.registerUpdateListener(() => {
+    requestAnimationFrame(() => {
+      const root = editor.getRootElement()
+      if (!root) return
+
+      for (const mark of root.querySelectorAll("mark")) {
+        const prev = mark.previousSibling
+        const next = mark.nextSibling
+
+        const padStart = !prev || (prev.textContent && /\s$/.test(prev.textContent))
+        const padEnd = !next || (next.textContent && /^\s/.test(next.textContent))
+
+        mark.toggleAttribute("data-pad-start", padStart)
+        mark.toggleAttribute("data-pad-end", padEnd)
+      }
+    })
+  })
 }

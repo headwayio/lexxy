@@ -11,6 +11,21 @@ test.describe("Paste — Markdown", () => {
     await assertEditorHtml(editor, "<p>Hello <strong>there</strong></p>")
   })
 
+  test("preserve language when pasting markdown code fences", async ({
+    page,
+    editor,
+  }) => {
+    await page.goto("/")
+    await editor.waitForConnected()
+
+    await editor.paste("```ruby\ndef hello\n  puts 'world'\nend\n```")
+
+    await assertEditorContent(editor, async (content) => {
+      await expect(content.locator("code[data-highlight-language='ruby']")).toBeVisible()
+      await expect(content).toContainText("def hello")
+    })
+  })
+
   test("don't convert markdown when pasting into code block", async ({
     page,
     editor,
