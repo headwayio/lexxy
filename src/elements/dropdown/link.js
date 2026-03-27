@@ -9,21 +9,25 @@ export class LinkDropdown extends ToolbarDropdown {
 
   connectedCallback() {
     super.connectedCallback()
-    this.input = this.querySelector("input")
-    if (!this.input) return
+    // Setup moved to initialize() — connectedCallback runs before the base
+    // class has resolved this.container (deferred via queueMicrotask).
+    // initialize() is called after the editor is connected and container is set.
+  }
 
+  initialize() {
+    this.input = this.querySelector("input")
     this.#registerHandlers()
   }
 
   #registerHandlers() {
-    this.container?.addEventListener("toggle", this.#handleToggle.bind(this))
+    this.container.addEventListener("toggle", this.#handleToggle.bind(this))
     this.addEventListener("submit", this.#handleSubmit.bind(this))
     this.input.addEventListener("keydown", this.#handleInputKeydown.bind(this))
-    this.querySelector("[value='unlink']")?.addEventListener("click", this.#handleUnlink.bind(this))
+    this.querySelector("[value='unlink']").addEventListener("click", this.#handleUnlink.bind(this))
 
     // Save the selection before the details element steals focus
-    this.container?.querySelector("summary")?.addEventListener("pointerdown", () => this.#saveSelection())
-    this.editorElement?.addEventListener("keydown", (event) => {
+    this.container.querySelector("summary").addEventListener("pointerdown", () => this.#saveSelection())
+    this.editorElement.addEventListener("keydown", (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         this.#saveSelection()
       }
@@ -100,7 +104,7 @@ export class LinkDropdown extends ToolbarDropdown {
       // Compute line-height to expand rects to full selection height
       const container = range.commonAncestorContainer
       const element = container.nodeType === Node.TEXT_NODE ? container.parentElement : container
-      const lineHeight = parseFloat(window.getComputedStyle(element).lineHeight) || 0
+      const lineHeight = parseFloat(getComputedStyle(element).lineHeight) || 0
 
       // Save rects now — after Lexical reconciles the DOM, the range nodes
       // may be replaced and getClientRects() would return empty.

@@ -29,8 +29,8 @@ test.describe("Non-previewable attachment", () => {
     await expect(figure).toBeVisible()
     await expect(figure).toHaveClass(/attachment--file/)
     await expect(figure.locator("img")).toHaveCount(0)
-    await expect(figure.locator(".attachment__icon").first()).toBeVisible()
-    await expect(figure.locator(".attachment__name").first()).toHaveText("protected.pdf")
+    await expect(figure.locator(".attachment__icon")).toBeVisible()
+    await expect(figure.locator(".attachment__name")).toHaveText("protected.pdf")
   })
 
   test("broken preview image falls back to file rendering", async ({ page, editor }) => {
@@ -45,8 +45,8 @@ test.describe("Non-previewable attachment", () => {
     // After onerror fires, the figure should swap to file rendering
     await expect(figure).toHaveClass(/attachment--file/, { timeout: 5000 })
     await expect(figure.locator("img")).toHaveCount(0)
-    await expect(figure.locator(".attachment__icon").first()).toBeVisible()
-    await expect(figure.locator(".attachment__name").first()).toHaveText("protected.pdf")
+    await expect(figure.locator(".attachment__icon")).toBeVisible()
+    await expect(figure.locator(".attachment__name")).toHaveText("protected.pdf")
   })
 
   test("exportDOM preserves previewable='true' after visual fallback", async ({ page, editor }) => {

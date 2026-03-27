@@ -6,7 +6,7 @@ import {
 
 import { $generateNodesFromDOM } from "@lexical/html"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
-import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
+import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from "@lexical/rich-text"
 import { $isListItemNode, $isListNode } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
@@ -72,7 +72,8 @@ export default class Contents {
 
     const listItem = this.#findContainingListItem(selection)
     if (listItem) {
-      this.unwrapListItemIfWrapped(listItem)
+      this.#unwrapListItemContent(listItem)
+      return
     }
 
     const savedStyles = this.#captureTextStyles(selection)
@@ -83,6 +84,12 @@ export default class Contents {
   applyHeadingFormat(tag) {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
+
+    const listItem = this.#findContainingListItem(selection)
+    if (listItem) {
+      this.#wrapListItemContent(listItem, $createHeadingNode(tag))
+      return
+    }
 
     const savedStyles = this.#captureTextStyles(selection)
     $setBlocksType(selection, () => $createHeadingNode(tag))
@@ -124,9 +131,16 @@ export default class Contents {
   }
 
   // Wrap a list item's inline content in a block element (heading, quote).
-  // If already wrapped, swap the wrapper type. Public for use by slash
-  // commands and block editing extensions.
-  wrapListItemContent(listItem, newBlock) {
+  // If already wrapped, swap the wrapper type. Schedules a bullet offset
+  // resync after the DOM reconciles.
+  #wrapListItemContent(listItem, newBlock) {
+    const listItemKey = listItem.getKey()
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = this.editor.getElementByKey(listItemKey)
+        if (el) dispatch(el, "lexxy:sync-wrapped-block")
+      })
+    })
     const children = listItem.getChildren()
 
     // Already wrapped in a non-paragraph block? Swap the wrapper.
@@ -179,11 +193,26 @@ export default class Contents {
       wrappedChild.remove()
     }
     listItem.selectEnd()
+
+    // Schedule bullet offset + drag handle sync after DOM reconciles
+    const listItemKey = listItem.getKey()
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = this.editor.getElementByKey(listItemKey)
+        if (el) dispatch(el, "lexxy:sync-wrapped-block")
+      })
+    })
   }
 
   #applyCodeBlockFormat() {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
+
+    const listItem = this.#findContainingListItem(selection)
+    if (listItem) {
+      this.#wrapListItemContent(listItem, $createCodeNode("plain"))
+      return
+    }
 
     $setBlocksType(selection, () => $createCodeNode("plain"))
   }
@@ -208,6 +237,13 @@ export default class Contents {
     if (!$isRangeSelection(selection)) return
 
     if (this.#insertNodeIfRoot($createQuoteNode())) return
+
+    // Inside a list item → wrap content in a blockquote
+    const listItem = this.#findContainingListItem(selection)
+    if (listItem) {
+      this.#wrapListItemContent(listItem, $createQuoteNode())
+      return
+    }
 
     const topLevelElements = this.#topLevelElementsInSelection(selection)
 

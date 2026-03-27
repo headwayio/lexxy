@@ -37,24 +37,16 @@ export class EarlyEscapeListItemNode extends ListItemNode {
 
   createDOM(config) {
     const element = super.createDOM(config)
-    this.#syncDOMAttributes(element)
+    element.dataset.listItemType = this.getEffectiveListType()
+    this.#updateBulletDepth(element)
     return element
   }
 
   updateDOM(prevNode, dom, config) {
     const result = super.updateDOM(prevNode, dom, config)
-    this.#syncDOMAttributes(dom)
+    dom.dataset.listItemType = this.getEffectiveListType()
+    this.#updateBulletDepth(dom)
     return result
-  }
-
-  #syncDOMAttributes(element) {
-    if (this.__listItemType) {
-      element.dataset.listItemType = this.getEffectiveListType()
-      this.#updateBulletDepth(element)
-    } else {
-      delete element.dataset.listItemType
-      delete element.dataset.bulletDepth
-    }
   }
 
   #updateBulletDepth(element) {

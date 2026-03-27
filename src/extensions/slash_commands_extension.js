@@ -62,11 +62,7 @@ export class SlashCommandsExtension extends LexxyExtension {
   }
 
   initializeEditor() {
-    // Defer prompt element creation until after editor is interactive.
-    // The slash menu only appears when the user types "/", so there's
-    // no need to build it synchronously during editor initialization.
-    requestIdleCallback?.(() => this.#buildPromptElement()) ??
-      setTimeout(() => this.#buildPromptElement(), 0)
+    this.#buildPromptElement()
   }
 
   #buildPromptElement() {

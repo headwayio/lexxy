@@ -8,15 +8,21 @@ export async function openFormatDropdown(page) {
   })
 }
 
-const FORMAT_DROPDOWN_COMMANDS = new Set([
-  "setFormatParagraph", "setFormatHeadingLarge", "setFormatHeadingMedium",
-  "setFormatHeadingSmall", "strikethrough", "underline"
-])
+export async function clickFormatButton(page, command) {
+  await openFormatDropdown(page)
+  await page.locator(`lexxy-toolbar [data-command='${command}']`).click()
+}
 
-export async function clickToolbarButton(page, command) {
-  if (FORMAT_DROPDOWN_COMMANDS.has(command)) {
-    await openFormatDropdown(page)
-  }
+export async function openListsDropdown(page) {
+  await page.evaluate(() => {
+    const details = document.querySelector("summary[name='lists']").closest("details")
+    details.open = true
+    details.dispatchEvent(new Event("toggle"))
+  })
+}
+
+export async function clickListsButton(page, command) {
+  await openListsDropdown(page)
   await page.locator(`lexxy-toolbar [data-command='${command}']`).click()
 }
 

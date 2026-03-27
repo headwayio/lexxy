@@ -126,11 +126,14 @@ export class CommandDispatcher {
     const anchorNode = selection.anchor.getNode()
     const listItem = getListItemNode(anchorNode)
 
-    if (this.selection.isInsideList && getListType(anchorNode) === "bullet") {
-      this.contents.applyParagraphFormat()
-    } else if (this.selection.isInsideList && listItem && this.editorElement.supportsMixedLists) {
-      listItem.setListItemType?.("bullet")
-      this.contents.unwrapListItemIfWrapped(listItem)
+    if (this.selection.isInsideList && listItem) {
+      const effectiveType = listItem.getEffectiveListType?.() ?? getListType(anchorNode)
+      if (effectiveType === "bullet") {
+        this.contents.applyParagraphFormat()
+      } else {
+        listItem.setListItemType?.("bullet")
+        this.contents.unwrapListItemIfWrapped(listItem)
+      }
     } else {
       this.editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
     }
@@ -143,11 +146,14 @@ export class CommandDispatcher {
     const anchorNode = selection.anchor.getNode()
     const listItem = getListItemNode(anchorNode)
 
-    if (this.selection.isInsideList && getListType(anchorNode) === "number") {
-      this.contents.applyParagraphFormat()
-    } else if (this.selection.isInsideList && listItem && this.editorElement.supportsMixedLists) {
-      listItem.setListItemType?.("number")
-      this.contents.unwrapListItemIfWrapped(listItem)
+    if (this.selection.isInsideList && listItem) {
+      const effectiveType = listItem.getEffectiveListType?.() ?? getListType(anchorNode)
+      if (effectiveType === "number") {
+        this.contents.applyParagraphFormat()
+      } else {
+        listItem.setListItemType?.("number")
+        this.contents.unwrapListItemIfWrapped(listItem)
+      }
     } else {
       this.editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
     }
@@ -392,7 +398,7 @@ export class CommandDispatcher {
     if (this.selection.isInsideList) {
       return this.#handleTabForList(event)
     } else if (this.selection.isInsideCodeBlock) {
-      return this.#handleTabForCode()
+      return this.#handleTabForCode(event)
     }
     return false
   }
@@ -405,9 +411,13 @@ export class CommandDispatcher {
     return this.editor.dispatchCommand(command)
   }
 
-  #handleTabForCode() {
+  #handleTabForCode(event) {
     const selection = $getSelection()
-    return $isRangeSelection(selection) && selection.isCollapsed()
+    if ($isRangeSelection(selection) && selection.isCollapsed()) {
+      event?.preventDefault()
+      return true
+    }
+    return false
   }
 
   // Not using TOGGLE_LINK_COMMAND because it's not handled unless you use React/LinkPlugin
