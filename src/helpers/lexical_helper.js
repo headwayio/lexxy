@@ -1,6 +1,6 @@
 import { $createNodeSelection, $createParagraphNode, $isDecoratorNode, $isElementNode, $isLineBreakNode, $isTextNode, TextNode } from "lexical"
 import { HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG } from "lexical"
-import { ListNode } from "@lexical/list"
+import { ListItemNode, ListNode } from "@lexical/list"
 import { $getNearestNodeOfType, $lastToFirstIterator } from "@lexical/utils"
 import { $wrapNodeInElement } from "@lexical/utils"
 import { $isAtNodeEnd } from "@lexical/selection"
@@ -29,6 +29,10 @@ export function $makeSafeForRoot(node) {
 export function getListType(node) {
   const list = $getNearestNodeOfType(node, ListNode)
   return list?.getListType() ?? null
+}
+
+export function getListItemNode(node) {
+  return $getNearestNodeOfType(node, ListItemNode)
 }
 
 export function $isAtNodeEdge(point, atStart = null) {
