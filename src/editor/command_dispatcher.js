@@ -132,6 +132,7 @@ export class CommandDispatcher {
         this.contents.applyParagraphFormat()
       } else {
         listItem.setListItemType?.("bullet")
+        this.contents.unwrapListItemIfWrapped(listItem)
       }
     } else {
       this.editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
@@ -151,6 +152,7 @@ export class CommandDispatcher {
         this.contents.applyParagraphFormat()
       } else {
         listItem.setListItemType?.("number")
+        this.contents.unwrapListItemIfWrapped(listItem)
       }
     } else {
       this.editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
