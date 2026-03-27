@@ -33,6 +33,7 @@ const COMMANDS = [
   "unlink",
   "toggleHighlight",
   "removeHighlight",
+  "setFormatHeadingXLarge",
   "setFormatHeadingLarge",
   "setFormatHeadingMedium",
   "setFormatHeadingSmall",
@@ -209,6 +210,10 @@ export class CommandDispatcher {
   dispatchInsertHorizontalDivider() {
     this.contents.insertAtCursorEnsuringLineBelow(new HorizontalDividerNode())
     this.editor.focus()
+  }
+
+  dispatchSetFormatHeadingXLarge() {
+    this.contents.applyHeadingFormat("h1")
   }
 
   dispatchSetFormatHeadingLarge() {

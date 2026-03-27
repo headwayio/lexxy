@@ -217,6 +217,7 @@ export class LexicalToolbarElement extends HTMLElement {
 
     this.#setButtonPressed("format", isInHeading || isStrikethrough || isUnderline)
     this.#setButtonPressed("paragraph", !isInHeading)
+    this.#setButtonPressed("heading-xlarge", headingTag === "h1")
     this.#setButtonPressed("heading-large", headingTag === "h2")
     this.#setButtonPressed("heading-medium", headingTag === "h3")
     this.#setButtonPressed("heading-small", headingTag === "h4")
@@ -363,14 +364,17 @@ export class LexicalToolbarElement extends HTMLElement {
           <button type="button" name="paragraph" data-command="setFormatParagraph" title="Paragraph">
             ${ToolbarIcons.paragraph} <span>Normal</span>
           </button>
-          <button type="button" name="heading-large" data-command="setFormatHeadingLarge" title="Large heading">
-            ${ToolbarIcons.h2} <span>Large Heading</span>
+          <button type="button" name="heading-xlarge" data-command="setFormatHeadingXLarge" title="Heading 1">
+            ${ToolbarIcons.h1} <span>Heading 1</span>
           </button>
-          <button type="button" name="heading-medium" data-command="setFormatHeadingMedium" title="Medium heading">
-            ${ToolbarIcons.h3} <span>Medium Heading</span>
+          <button type="button" name="heading-large" data-command="setFormatHeadingLarge" title="Heading 2">
+            ${ToolbarIcons.h2} <span>Heading 2</span>
           </button>
-          <button class="lexxy-editor__toolbar-group-end" type="button" name="heading-small" data-command="setFormatHeadingSmall" title="Small heading">
-            ${ToolbarIcons.h4} <span>Small Heading</span>
+          <button type="button" name="heading-medium" data-command="setFormatHeadingMedium" title="Heading 3">
+            ${ToolbarIcons.h3} <span>Heading 3</span>
+          </button>
+          <button type="button" name="heading-small" data-command="setFormatHeadingSmall" title="Heading 4">
+            ${ToolbarIcons.h4} <span>Heading 4</span>
           </button>
           <div class="lexxy-editor__toolbar-separator" role="separator"></div>
           <button type="button" name="strikethrough" data-command="strikethrough" title="Strikethrough">
