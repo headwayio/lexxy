@@ -82,5 +82,6 @@
     "@rails/activestorage": {
       "optional": true
     }
-  }
+  },
+  "packageManager": "yarn@1.22.22"
 }
