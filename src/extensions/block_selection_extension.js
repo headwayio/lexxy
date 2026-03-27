@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, no-unused-private-class-members */
 import LexxyExtension from "./lexxy_extension"
 import {
   $createParagraphNode,
@@ -18,15 +19,17 @@ import {
   FORMAT_TEXT_COMMAND,
   HISTORY_MERGE_TAG,
   INDENT_CONTENT_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
-  OUTDENT_CONTENT_COMMAND
+  OUTDENT_CONTENT_COMMAND,
+  ParagraphNode
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $isCodeNode } from "@lexical/code"
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
-import { TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
+import { BLANK_STYLES, REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
@@ -37,12 +40,14 @@ export class BlockSelectionExtension extends LexxyExtension {
   #previousSelectedKeys = new Set()
   #anchorKey = null
   #focusKey = null
+  #savedSelection = null
   #savedHighlightStyles = new Map() // nodeKey → original style string (before parent color was applied)
   #dragAndDrop = null
   #cleanupFns = []
   #wrappedBlockKeys = new Set() // ListItemNode keys created by block movement
   #blockActionsMenu = null
   #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
+  #deferredPlacement = null
 
   get enabled() {
     return this.editorElement.supportsRichText
@@ -86,6 +91,12 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   enterBlockSelectMode(nodeKey) {
     if (this.#mode === "block-select" && this.#selectedBlockKeys.has(nodeKey)) return
+
+    this.editor.getEditorState().read(() => {
+      if (this.#mode === "edit") {
+        this.#savedSelection = $getSelection()
+      }
+    })
 
     this.#mode = "block-select"
     this.root?.classList.add("block-selection-active")
@@ -509,6 +520,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Block-select → exit and blur the editor. The next Esc will bubble
       // to the parent (slide-over/modal close) since the editor isn't focused.
       this.#exitBlockSelectMode()
+      this.#savedSelection = null
       this.editor.update(() => { $setSelection(null) })
       this.root?.blur()
       return true
@@ -881,6 +893,91 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Track as a wrapped block
     this.#wrappedBlockKeys.add(node.getKey())
+  }
+
+  // Extract a list item from its parent list, convert it to the target
+  // block type, and split the list around it. Items after the extracted
+  // item (including nested children) form a new list below the new block.
+  #extractListItemAsBlock(node, command) {
+    const list = node.getParent()
+    if (!$isListNode(list)) return
+
+    // Create the target block
+    const newBlock = this.#createBlockForCommand(command)
+    if (!newBlock) return
+
+    // Move children from the list item to the new block.
+    // If the target is a paragraph and a child IS a paragraph, unwrap it
+    // (move its children directly) to avoid nested <p><p>...</p></p>.
+    const isParagraphTarget = $isParagraphNode(newBlock)
+    for (const child of [ ...node.getChildren() ]) {
+      if ($isListNode(child)) continue
+      if (isParagraphTarget && $isParagraphNode(child)) {
+        // Unwrap: move the paragraph's children into the new block
+        for (const grandchild of [ ...child.getChildren() ]) {
+          newBlock.append(grandchild)
+        }
+        child.remove()
+      } else {
+        newBlock.append(child)
+      }
+    }
+
+    // Collect items after this node (they'll form the "after" list).
+    // If this node has a structural wrapper, extract its nested children
+    // into the after-items and skip the wrapper.
+    const afterItems = []
+    let nextSibling = node.getNextSibling()
+
+    // Check if the next sibling is this node's structural wrapper
+    if (nextSibling && $isListItemNode(nextSibling) && this.#isStructuralWrapper(nextSibling)) {
+      // Promote nested children into afterItems
+      for (const wrapperChild of nextSibling.getChildren()) {
+        if ($isListNode(wrapperChild)) {
+          for (const nested of [ ...wrapperChild.getChildren() ]) {
+            afterItems.push(nested)
+          }
+        }
+      }
+      const wrapperToRemove = nextSibling
+      nextSibling = nextSibling.getNextSibling()
+      wrapperToRemove.remove()
+    }
+
+    // Collect remaining siblings
+    while (nextSibling) {
+      const next = nextSibling.getNextSibling()
+      afterItems.push(nextSibling)
+      nextSibling = next
+    }
+
+    // Remove the original list item
+    const nodeKey = node.getKey()
+    node.remove()
+
+    // Insert the new block after the list
+    list.insertAfter(newBlock)
+
+    // If there are after-items, create a new list for them
+    if (afterItems.length > 0) {
+      const newList = $createListNode(list.getListType())
+      for (const item of afterItems) {
+        newList.append(item)
+      }
+      newBlock.insertAfter(newList)
+    }
+
+    // Clean up the original list if empty
+    this.#cleanupEmptyList(list)
+
+    // Update selection to track the new block
+    const newKey = newBlock.getKey()
+    if (this.#selectedBlockKeys.has(nodeKey)) {
+      this.#selectedBlockKeys.delete(nodeKey)
+      this.#selectedBlockKeys.add(newKey)
+      if (this.#anchorKey === nodeKey) this.#anchorKey = newKey
+      if (this.#focusKey === nodeKey) this.#focusKey = newKey
+    }
   }
 
   #createBlockForCommand(command) {
@@ -1279,6 +1376,8 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
     }
+
+    const nodeKey = node.getKey()
 
     // Capture the node's own structural wrapper (children) BEFORE the move.
     // It travels with the node as a unit.
@@ -1792,6 +1891,24 @@ export class BlockSelectionExtension extends LexxyExtension {
     return target
   }
 
+  // Walk up the tree from a parent node after its child was deleted,
+  // removing any empty containers: ListItemNode → ListNode → structural wrapper
+  #cleanupAfterDelete(parent) {
+    if (!parent || !parent.getParent()) return
+
+    if ($isListItemNode(parent) && parent.getChildrenSize() === 0) {
+      // Deleted content from inside a list item — remove the empty item
+      const list = parent.getParent()
+      parent.remove()
+      if ($isListNode(list)) {
+        this.#cleanupEmptyList(list)
+      }
+    } else if ($isListNode(parent)) {
+      // Deleted a list item from a list — check if the list is now empty
+      this.#cleanupEmptyList(parent)
+    }
+  }
+
   #cleanupEmptyList(listNode) {
     if (!$isListNode(listNode)) return
 
@@ -1832,6 +1949,16 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#forceDestroyWrapper(parent.getKey())
     } else {
       listNode.remove()
+    }
+  }
+
+  // Walk all lists in the document and merge adjacent wrappers at every level.
+  #mergeAllAdjacentWrappers() {
+    const root = $getRoot()
+    for (const child of root.getChildren()) {
+      if ($isListNode(child)) {
+        this.#mergeAdjacentWrappersRecursive(child)
+      }
     }
   }
 
@@ -2513,12 +2640,11 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Schedule handle reposition after indent/outdent. These may not run if
     // the Lexical extension's CRITICAL handler consumes first, but the wrapped
     // block handler at HIGH also schedules repositioning as a fallback.
-    const self = this
-    function scheduleReposition() {
+    const scheduleReposition = () => { // eslint-disable-line func-style
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          self.#dragAndDrop?.repositionHandle()
-          self.#syncBulletOffsets()
+          this.#dragAndDrop?.repositionHandle()
+          this.#syncBulletOffsets()
         })
       })
       return false
@@ -2563,6 +2689,17 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   static MAX_NESTING_DEPTH = 10
+
+  // Count how many ListNode ancestors a node has (= its nesting depth).
+  #getListDepth(node) {
+    let depth = 0
+    let current = node.getParent()
+    while (current) {
+      if ($isListNode(current)) depth++
+      current = current.getParent()
+    }
+    return depth
+  }
 
   // Indent: nest the wrapped block under its previous sibling (same visual position).
   // carryChildren: true = move structural wrapper with node (block-select mode),
