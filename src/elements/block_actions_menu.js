@@ -63,7 +63,6 @@ export class BlockActionsMenu extends HTMLElement {
     this.#position(rect)
     this.hidden = false
     this.#focusItem(0)
-    this.#autoRevealSubmenuForFocused()
     this.#addClickOutsideListener()
     this.#addScrollResizeListeners()
   }
@@ -463,9 +462,7 @@ export class BlockActionsMenu extends HTMLElement {
         event.preventDefault()
         event.stopPropagation()
         if (!this.#openSubmenuName) {
-          // In main panel: move focus and auto-reveal submenu if landing on a trigger
           this.#focusItem(this.#focusedIndex + 1)
-          this.#autoRevealSubmenuForFocused()
         } else {
           this.#focusItem(this.#focusedIndex + 1)
         }
@@ -475,7 +472,6 @@ export class BlockActionsMenu extends HTMLElement {
         event.stopPropagation()
         if (!this.#openSubmenuName) {
           this.#focusItem(this.#focusedIndex - 1)
-          this.#autoRevealSubmenuForFocused()
         } else {
           this.#focusItem(this.#focusedIndex - 1)
         }
