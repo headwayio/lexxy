@@ -34,6 +34,14 @@ export async function applyHighlightOption(page, attribute, buttonIndex) {
   await buttons.nth(buttonIndex - 1).click()
 }
 
+export async function clickToolbarButton(page, command) {
+  const button = page.locator(`lexxy-toolbar [data-command='${command}']`)
+  if (!(await button.isVisible())) {
+    await openFormatDropdown(page)
+  }
+  await button.click()
+}
+
 export async function placeCaretAtEndOfInlineCode(editor) {
   await editor.content.evaluate((content) => {
     const code = content.querySelector("code")
