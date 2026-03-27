@@ -4,13 +4,6 @@ import { createAttachmentFigure, createElement, isPreviewableImage } from "../he
 import { bytesToHumanSize, extractFileName } from "../helpers/storage_helper"
 import { parseBoolean } from "../helpers/string_helper"
 
-const PREVIEW_ICON = `<svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-  <path d="M10 2H5C3.89543 2 3 2.89543 3 4V14C3 15.1046 3.89543 16 5 16H13C14.1046 16 15 15.1046 15 14V7H12C10.8954 7 10 6.10457 10 5V2ZM12 2.41421L14.5858 5H12V2.41421ZM5 1C3.34315 1 2 2.34315 2 4V14C2 15.6569 3.34315 17 5 17H13C14.6569 17 16 15.6569 16 14V6.41421C16 6.01639 15.842 5.63486 15.5607 5.35355L11.6464 1.43934C11.3651 1.15804 10.9836 1 10.5858 1H5Z"/>
-</svg>`
-
-const DOWNLOAD_ICON = `<svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-  <path d="M9 1C9.55228 1 10 1.44772 10 2V9.58579L12.2929 7.29289C12.6834 6.90237 13.3166 6.90237 13.7071 7.29289C14.0976 7.68342 14.0976 8.31658 13.7071 8.70711L9.70711 12.7071C9.31658 13.0976 8.68342 13.0976 8.29289 12.7071L4.29289 8.70711C3.90237 8.31658 3.90237 7.68342 4.29289 7.29289C4.68342 6.90237 5.31658 6.90237 5.70711 7.29289L8 9.58579V2C8 1.44772 8.44772 1 9 1ZM3 14C3 13.4477 2.55228 13 2 13C1.44772 13 1 13.4477 1 14V15C1 16.1046 1.89543 17 3 17H15C16.1046 17 17 16.1046 17 15V14C17 13.4477 16.5523 13 16 13C15.4477 13 15 13.4477 15 14V15H3V14Z"/>
-</svg>`
 
 export class ActionTextAttachmentNode extends DecoratorNode {
   static getType() {
@@ -180,7 +173,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const attachment = createElement(this.tagName, {
       sgid: this.sgid,
       previewable: this.previewable || null,
-      collapsed: this.isPreviewableAttachment ? String(this.collapsed) : null,
+      collapsed: this.collapsed ? "true" : null,
       url: this.src,
       "blob-url": this.blobUrl || null,
       alt: this.altText,

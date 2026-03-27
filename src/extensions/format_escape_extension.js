@@ -1,4 +1,4 @@
-import { $createParagraphNode, $getSelection, $isParagraphNode, $isRangeSelection, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, ParagraphNode, TextNode, defineExtension } from "lexical"
+import { $createParagraphNode, $getSelection, $isParagraphNode, $isRangeSelection, $isTextNode, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, KEY_SPACE_COMMAND, ParagraphNode, defineExtension } from "lexical"
 import { CodeNode } from "@lexical/code"
 import { $isListItemNode, ListItemNode } from "@lexical/list"
 import { $isQuoteNode } from "@lexical/rich-text"
@@ -15,6 +15,19 @@ export class FormatEscapeExtension extends LexxyExtension {
   }
 
   get lexicalExtension() {
+    const mixedLists = this.editorElement.supportsMixedLists
+
+    const htmlImport = { }
+    if (mixedLists) {
+      htmlImport.li = (element) => {
+        if (!element.dataset?.listItemType) return null
+        return {
+          conversion: extendConversion(ListItemNode, "li", $applyListItemType),
+          priority: 1
+        }
+      }
+    }
+
     return defineExtension({
       name: "lexxy/format-escape",
       nodes: [
@@ -23,23 +36,13 @@ export class FormatEscapeExtension extends LexxyExtension {
         EarlyEscapeListItemNode,
         { replace: ListItemNode, with: (node) => {
           const replacement = new EarlyEscapeListItemNode(node.__value, node.__checked)
-          if (node.__listItemType) replacement.setListItemType(node.__listItemType)
+          if (mixedLists && node.__listItemType) replacement.setListItemType(node.__listItemType)
           return replacement
         }, withKlass: EarlyEscapeListItemNode },
       ],
-      html: {
-        import: {
-          li: (element) => {
-            if (!element.dataset?.listItemType) return null
-            return {
-              conversion: extendConversion(ListItemNode, "li", $applyListItemType),
-              priority: 1
-            }
-          }
-        }
-      },
+      html: { import: htmlImport },
       register(editor) {
-        return mergeRegister(
+        const registrations = [
           editor.registerCommand(
             INSERT_PARAGRAPH_COMMAND,
             () => $escapeFromBlockquote(),
@@ -49,9 +52,18 @@ export class FormatEscapeExtension extends LexxyExtension {
             KEY_ARROW_DOWN_COMMAND,
             (event) => $handleArrowDownInCodeBlock(event),
             COMMAND_PRIORITY_NORMAL
-          ),
-          editor.registerNodeTransform(TextNode, $toggleListItemTypeFromShortcut)
-        )
+          )
+        ]
+
+        if (mixedLists) {
+          registrations.push(
+            editor.registerCommand(KEY_SPACE_COMMAND, () => {
+              return $toggleListItemTypeOnSpace()
+            }, COMMAND_PRIORITY_HIGH)
+          )
+        }
+
+        return mergeRegister(...registrations)
       }
     })
   }
@@ -92,37 +104,50 @@ function $applyListItemType(conversionOutput, element) {
   }
 }
 
-const BULLET_TRIGGER = /^[-*+]\s/
-const NUMBER_TRIGGER = /^\d{1,}\.\s/
+const BULLET_TRIGGER = /^[-*+]$/
+const NUMBER_TRIGGER = /^\d{1,}\.$/
 
-function $toggleListItemTypeFromShortcut(textNode) {
-  const parent = textNode.getParent()
+// Called only when space is typed. Checks if the text before the cursor
+// matches a list type trigger (e.g., "- " or "1. ") and toggles the
+// list item type accordingly. Uses INSERT_TEXT_COMMAND instead of a
+// TextNode transform to avoid running on every text mutation.
+function $toggleListItemTypeOnSpace() {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
 
-  // Text can be a direct child of ListItemNode, or inside a ParagraphNode within one
+  const anchor = selection.anchor.getNode()
+  if (!$isTextNode(anchor)) return false
+
+  const parent = anchor.getParent()
   let listItem
   if ($isListItemNode(parent)) {
     listItem = parent
   } else if ($isParagraphNode(parent) && $isListItemNode(parent.getParent())) {
     listItem = parent.getParent()
   } else {
-    return
+    return false
   }
 
-  if (!listItem.getEffectiveListType) return
+  if (!listItem.getEffectiveListType) return false
+  if (parent.getFirstChild() !== anchor) return false
 
-  // Only trigger on the first text node at the start of the container
-  if (parent.getFirstChild() !== textNode) return
-
-  const text = textNode.getTextContent()
+  // Text content before the space is inserted
+  const text = anchor.getTextContent().slice(0, selection.anchor.offset)
   const effectiveType = listItem.getEffectiveListType()
 
   if (effectiveType === "number" && BULLET_TRIGGER.test(text)) {
     listItem.setListItemType("bullet")
-    textNode.setTextContent(text.replace(BULLET_TRIGGER, ""))
+    anchor.setTextContent(anchor.getTextContent().slice(selection.anchor.offset))
+    anchor.select(0, 0)
+    return true // consume the space
   } else if (effectiveType === "bullet" && NUMBER_TRIGGER.test(text)) {
     listItem.setListItemType("number")
-    textNode.setTextContent(text.replace(NUMBER_TRIGGER, ""))
+    anchor.setTextContent(anchor.getTextContent().slice(selection.anchor.offset))
+    anchor.select(0, 0)
+    return true
   }
+
+  return false
 }
 
 function $handleArrowDownInCodeBlock(event) {
