@@ -1814,7 +1814,8 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
       line-height: 24px;
     }
 
-    &.lexxy-block-hovered::before {
+    &.lexxy-block-hovered::before,
+    &.block--selected::before {
       opacity: 0.4;
     }
   }

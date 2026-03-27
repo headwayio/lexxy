@@ -49,6 +49,7 @@ export class BlockDragAndDrop {
   #lastPointerX = 0
   #lastPointerY = 0
   #showHandles = true
+  #hoverSuppressed = false
 
   constructor(editor, editorElement, blockSelectionExtension) {
     this.#editor = editor
@@ -298,6 +299,82 @@ export class BlockDragAndDrop {
     }
   }
 
+  // Compute and set --bullet-offset-y on a list item so the bullet ::before
+  // aligns with the content center (same calculation as #positionHandle).
+  // Called from block_selection_extension after keyboard moves and turn-into.
+  syncBulletOffset(blockElement) {
+    if (!blockElement || blockElement.tagName !== "LI") return
+
+    const blockRect = blockElement.getBoundingClientRect()
+    const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || 24
+    let handleCenter = blockRect.top + (liLineHeight / 2) - 1
+
+    const innerHeading = blockElement.querySelector("h1, h2, h3, h4, h5, h6")
+    const innerTable = blockElement.querySelector("table, .lexxy-content__table-wrapper")
+    const innerAttachment = blockElement.querySelector("figure.attachment, .attachment-gallery, .attachment")
+    const innerHR = blockElement.querySelector(".horizontal-divider, hr")
+    const innerCode = blockElement.querySelector("pre, code[data-language]")
+    const innerBlockquote = !innerCode ? blockElement.querySelector("blockquote") : null
+
+    if (innerHR) {
+      const hrLine = innerHR.tagName === "HR" ? innerHR : innerHR.querySelector("hr")
+      const hrRect = (hrLine || innerHR).getBoundingClientRect()
+      handleCenter = hrRect.top + (hrRect.height / 2) - 1
+    } else if (innerTable) {
+      const firstRow = innerTable.querySelector("tr")
+      if (firstRow) {
+        const rowRect = firstRow.getBoundingClientRect()
+        handleCenter = rowRect.top + (rowRect.height / 2) - 1
+      }
+    } else if (innerAttachment) {
+      handleCenter = innerAttachment.getBoundingClientRect().top + 12
+    } else if (innerHeading) {
+      const charRect = this.#getFirstCharRect(innerHeading)
+      if (charRect && charRect.height > 0) {
+        handleCenter = charRect.top + (charRect.height / 2)
+      }
+    } else if (innerCode) {
+      const codeRect = innerCode.getBoundingClientRect()
+      const paddingTop = parseFloat(getComputedStyle(innerCode).paddingTop) || 0
+      handleCenter = codeRect.top + (paddingTop / 2)
+    } else if (innerBlockquote) {
+      const charRect = this.#getFirstCharRect(innerBlockquote)
+      if (charRect && charRect.height > 0) {
+        handleCenter = charRect.top + (charRect.height / 2)
+      }
+    } else {
+      // Regular text list item — no offset needed
+      blockElement.style.removeProperty("--bullet-offset-y")
+      return
+    }
+
+    const bulletTop = handleCenter - blockRect.top - 11
+    if (Math.abs(bulletTop) > 1) {
+      blockElement.style.setProperty("--bullet-offset-y", `${bulletTop}px`)
+    } else {
+      blockElement.style.removeProperty("--bullet-offset-y")
+    }
+  }
+
+  // Suppress hover-driven handle positioning during keyboard moves to prevent
+  // stale layout measurements from racing with the double-rAF sync.
+  suppressHover() {
+    this.#hoverSuppressed = true
+    // Hide handle immediately so stale positions don't flash
+    if (this.#handleElement) {
+      this.#handleElement.classList.remove("lexxy-block-handle--visible")
+    }
+    if (this.#addButtonElement) {
+      this.#addButtonElement.classList.remove("lexxy-block-add--visible")
+    }
+    this.#currentHoveredBlock?.classList.remove("lexxy-block-hovered")
+    this.#currentHoveredBlock = null
+  }
+
+  unsuppressHover() {
+    this.#hoverSuppressed = false
+  }
+
   // Get the visual left edge of a block for handle/indicator positioning.
   // For all list items, account for the bullet ::before area so handles
   // sit to the left of the bullet marker.
@@ -425,6 +502,7 @@ export class BlockDragAndDrop {
   }
 
   #updateHoveredBlock(event) {
+    if (this.#hoverSuppressed) return
     const root = this.#editor.getRootElement()
     if (!root) return
 
