@@ -309,7 +309,9 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #closeDropdowns() {
    this.#dropdowns.forEach((details) => {
-     details.open = false
+     if (!details.hasAttribute("data-pinned")) {
+       details.open = false
+     }
    })
  }
 
@@ -398,7 +400,7 @@ export class LexicalToolbarElement extends HTMLElement {
         </summary>
         <lexxy-link-dropdown class="lexxy-editor__toolbar-dropdown-content">
           <form method="dialog">
-            <input type="url" placeholder="Enter a URL…" class="input">
+            <input type="text" placeholder="Enter a URL…" class="input">
             <div class="lexxy-editor__toolbar-dropdown-actions">
               <button type="submit" class="lexxy-editor__toolbar-button" value="link">Link</button>
               <button type="button" class="lexxy-editor__toolbar-button" value="unlink">Unlink</button>
