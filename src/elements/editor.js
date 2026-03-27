@@ -48,8 +48,6 @@ export class LexicalEditorElement extends HTMLElement {
 
   #initialValue = ""
   #validationTextArea = document.createElement("textarea")
-  #extensionInitId = null
-
   constructor() {
     super()
     this.internals = this.attachInternals()
@@ -79,10 +77,6 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this.#extensionInitId != null) {
-      (typeof cancelIdleCallback === "function" ? cancelIdleCallback : clearTimeout)(this.#extensionInitId)
-      this.#extensionInitId = null
-    }
     this.valueBeforeDisconnect = this.value
     this.#reset() // Prevent hangs with Safari when morphing
   }
@@ -256,22 +250,9 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFocusEvents()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.extensions.initializeEditors()
     this.#loadInitialValue()
-    this.#deferExtensionInitialization()
     this.#resetBeforeTurboCaches()
-  }
-
-  #deferExtensionInitialization() {
-    const init = () => {
-      this.#extensionInitId = null
-      if (this.isConnected) this.extensions.initializeEditors()
-    }
-
-    if (typeof requestIdleCallback === "function") {
-      this.#extensionInitId = requestIdleCallback(init)
-    } else {
-      this.#extensionInitId = setTimeout(init, 0)
-    }
   }
 
   #createEditor() {

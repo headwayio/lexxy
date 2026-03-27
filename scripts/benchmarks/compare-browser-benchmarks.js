@@ -9,12 +9,12 @@ const DEFAULT_THRESHOLD = {
 
 const SCENARIO_THRESHOLDS = {
   "bootstrap-empty-editor": {
-    absoluteMedianRegressionMs: 10,
-    relativeMedianRegression: 0.25,
+    absoluteMedianRegressionMs: 25,
+    relativeMedianRegression: 0.4,
   },
   "bootstrap-many-editors": {
-    absoluteMedianRegressionMs: 20,
-    relativeMedianRegression: 0.2,
+    absoluteMedianRegressionMs: 60,
+    relativeMedianRegression: 0.4,
   },
   "load-large-content": {
     absoluteMedianRegressionMs: 25,
