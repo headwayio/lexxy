@@ -48,14 +48,20 @@ export class BlockDragAndDrop {
   #scrollableContainers = null
   #lastPointerX = 0
   #lastPointerY = 0
+  #showHandles = true
 
   constructor(editor, editorElement, blockSelectionExtension) {
     this.#editor = editor
     this.#editorElement = editorElement
     this.#blockSelectionExtension = blockSelectionExtension
 
-    this.#createAddButton()
-    this.#createHandleElement()
+    // Drag handles shown by default. Set block-handles="false" on <lexxy-editor>
+    // to hide them (compact editors like comments/chat that don't need drag UX).
+    this.#showHandles = editorElement.getAttribute("block-handles") !== "false"
+    if (this.#showHandles) {
+      this.#createAddButton()
+      this.#createHandleElement()
+    }
     this.#createDropIndicator()
     this.#registerListeners()
   }
@@ -158,7 +164,7 @@ export class BlockDragAndDrop {
   }
 
   #positionHandle(blockElement) {
-    if (!this.#handleElement || !blockElement) return
+    if (!this.#showHandles || !this.#handleElement || !blockElement) return
     this.#cancelHideTimer()
     blockElement.classList.add("lexxy-block-hovered")
 

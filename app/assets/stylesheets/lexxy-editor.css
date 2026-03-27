@@ -3,6 +3,12 @@
 :where(lexxy-editor) {
   --lexxy-editor-padding: 1ch;
   --lexxy-block-handle-gutter: 48px;
+  --lexxy-content-padding-block: 48px;
+
+  &[block-handles="false"] {
+    --lexxy-block-handle-gutter: var(--lexxy-editor-padding);
+    --lexxy-content-padding-block: var(--lexxy-editor-padding);
+  }
   --lexxy-editor-rows: 8lh;
   @supports (min-block-size: attr(rows lh)) {
     --lexxy-editor-rows: attr(rows lh, 8lh);
@@ -643,10 +649,53 @@
 :where(.lexxy-editor__content) {
   min-block-size: var(--lexxy-editor-rows);
   outline: 0;
-  padding: var(--lexxy-editor-padding);
-  padding-inline-start: var(--lexxy-block-handle-gutter);
-  padding-inline-end: var(--lexxy-block-handle-gutter);
+  padding: var(--lexxy-content-padding-block) var(--lexxy-block-handle-gutter);
 
+  /* !! IMPORTANT — FIRST-ELEMENT SPACING RULES !!
+     ============================================
+     These rules ensure EXACTLY 48px between the editor's top border and the
+     first visible glyph/content, regardless of which element type renders first.
+
+     Each element has different built-in margins, padding, and line-height leading
+     that must be compensated with a negative margin-top offset.
+
+     HOW TO ADD A NEW ELEMENT TYPE:
+     1. Place the new element as the first item in the editor
+     2. Measure the pixel distance from editor top border to the first visible
+        content (glyph top for text, line/edge for decorators)
+     3. Calculate offset: if measured > 48, use more negative (pull up);
+        if measured < 48, use less negative (push down)
+     4. Add a rule following the pattern below
+     5. Test BOTH cases: fresh (with provisional-paragraph.hidden before it)
+        AND saved/reloaded (without the provisional paragraph)
+     6. If the element gets wrapped in a <p> after save (like HR does),
+        add a :has() rule AND exclude it from the p:not(.hidden) rule
+
+     Matches both :first-child AND .hidden + * (element after Lexical's
+     hidden provisional paragraph). */
+  > :is(:first-child, .hidden + *):is(h1)     { margin-top: -11px !important; }
+  > :is(:first-child, .hidden + *):is(h2)     { margin-top: -8px !important; }
+  > :is(:first-child, .hidden + *):is(h3)     { margin-top: -7px !important; }
+  > :is(:first-child, .hidden + *):is(h4)     { margin-top: -5.5px !important; }
+  > :is(:first-child, .hidden + *):is(p:not(.hidden):not(:has(> .horizontal-divider)), .attachment, .attachment-gallery) { margin-top: -5.5px !important; }
+  > :is(:first-child, .hidden + *):is(ul, ol) { margin-top: -11.5px !important; }
+  > :is(:first-child, .hidden + *):is(table)  { margin-top: -28px !important; }
+  > :is(:first-child, .hidden + *):is(blockquote) { margin-top: -0.5px !important; }
+  /* HR fresh (provisional-p → figure): measured 42 → 48 */
+  > :is(:first-child, .hidden + *):is(figure.horizontal-divider) { margin-top: -5px !important; padding-top: 0 !important; }
+  /* HR saved (p wraps figure): measured 51 → 48 */
+  > :is(:first-child, .hidden + *):has(> .horizontal-divider) { margin-top: -8px !important; padding-top: 0 !important; }
+  /* Other figures (attachments etc.) */
+  > :is(:first-child, .hidden + *):is(figure:not(.horizontal-divider)) { margin-top: -8px !important; }
+}
+
+/* Compact editors (block-handles=false): reset first-child offsets that
+   are designed for the 48px padding. These editors use 1ch padding. */
+lexxy-editor[block-handles="false"] .lexxy-editor__content {
+  > :is(:first-child, .hidden + *) { margin-top: 0 !important; padding-top: revert !important; }
+}
+
+:where(.lexxy-editor__content) {
   /* Strikethrough + underline combination */
   s u, u s {
     text-decoration: line-through underline;
