@@ -6,5 +6,8 @@ export function normalizeHtml(html) {
     .replace(/\n/g, "")
     .replace(/>\s+</g, "><")
     .replace(/\s+/g, " ")
+    .replace(/\s*data-bullet-depth="[^"]*"/g, "")
+    .replace(/\s*data-list-item-type="[^"]*"/g, "")
+    .replace(/\s*collapsed="[^"]*"/g, "")
     .trim()
 }
