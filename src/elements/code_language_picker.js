@@ -46,12 +46,25 @@ export class CodeLanguagePicker extends HTMLElement {
   get #languages() {
     const languages = { ...CODE_LANGUAGE_FRIENDLY_NAME_MAP }
 
+    // Add languages supported by Lexxy's Prism config but not in Lexical's default map
     if (!languages.ruby) languages.ruby = "Ruby"
     if (!languages.php) languages.php = "PHP"
     if (!languages.go) languages.go = "Go"
     if (!languages.bash) languages.bash = "Bash"
     if (!languages.json) languages.json = "JSON"
     if (!languages.diff) languages.diff = "Diff"
+    if (!languages.yaml) languages.yaml = "YAML"
+    if (!languages.kotlin) languages.kotlin = "Kotlin"
+    if (!languages.docker) languages.docker = "Docker"
+    if (!languages.graphql) languages.graphql = "GraphQL"
+    if (!languages.jsx) languages.jsx = "JSX"
+    if (!languages.tsx) languages.tsx = "TSX"
+    if (!languages.scss) languages.scss = "SCSS"
+    if (!languages.toml) languages.toml = "TOML"
+    if (!languages.lua) languages.lua = "Lua"
+    if (!languages.elixir) languages.elixir = "Elixir"
+    if (!languages.erlang) languages.erlang = "Erlang"
+    if (!languages.hcl) languages.hcl = "HCL"
 
     const sortedEntries = Object.entries(languages)
       .sort(([ , a ], [ , b ]) => a.localeCompare(b))
