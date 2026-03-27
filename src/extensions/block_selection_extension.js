@@ -6,6 +6,7 @@ import {
   $getSelection,
   $isElementNode,
   $isParagraphNode,
+  ParagraphNode,
   $parseSerializedNode,
   $isDecoratorNode,
   $isRangeSelection,
@@ -17,13 +18,14 @@ import {
   HISTORY_MERGE_TAG,
   INDENT_CONTENT_COMMAND,
   $isTextNode,
+  INSERT_PARAGRAPH_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
   COMMAND_PRIORITY_LOW,
   OUTDENT_CONTENT_COMMAND
 } from "lexical"
-import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $isCodeNode } from "@lexical/code"
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
 import { TOGGLE_HIGHLIGHT_COMMAND, REMOVE_HIGHLIGHT_COMMAND, BLANK_STYLES } from "./highlight_extension"
@@ -55,7 +57,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   get root() {
-    return this.editor.getRootElement()
+    return this.editor?.getRootElement()
   }
 
   get isBlockSelectMode() {
@@ -68,10 +70,13 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#registerDecoratorClickInterceptor()
     this.#registerDirectKeydownHandler()
     this.#registerWrappedBlockIndentHandler()
+    this.#registerEnterOnWrappedBlock()
     this.#registerHighlightClearOnEnter()
     this.#registerHighlightPropagation()
+    this.#registerBulletMarkerColorSync()
     this.#registerBlockSelectFormatHandler()
     this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
+    this.#registerBulletOffsetSyncListener()
   }
 
   destroy() {
@@ -362,6 +367,8 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #handleKeydown(event) {
+    if (!this.editor) return
+
     // ⌘⇧H applies last used color in both edit and block select modes
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "h" || event.key === "H")) {
       event.preventDefault()
@@ -768,13 +775,39 @@ export class BlockSelectionExtension extends LexxyExtension {
 
         if ($isListItemNode(node)) {
           if (isListCommand) {
-            // List-to-list: just change the item's list type
+            // List-to-list: change the item's list type AND unwrap if wrapped
             if (node.setListItemType) node.setListItemType(listType)
+            const wrappedChild = node.getChildren().find(c =>
+              $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+            )
+            if (wrappedChild) {
+              for (const child of [...wrappedChild.getChildren()]) {
+                node.append(child)
+              }
+              wrappedChild.remove()
+              this.#wrappedBlockKeys.delete(node.getKey())
+            }
+            newSelectedKeys.add(node.getKey())
+          } else if (command === "setFormatParagraph") {
+            // Wrapped → paragraph: unwrap back to regular list item content
+            const children = node.getChildren()
+            const wrappedChild = children.find(c =>
+              $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+            )
+            if (wrappedChild) {
+              // Move wrapped content's children into the list item directly
+              for (const child of [...wrappedChild.getChildren()]) {
+                node.append(child)
+              }
+              wrappedChild.remove()
+              this.#wrappedBlockKeys.delete(node.getKey())
+            }
             newSelectedKeys.add(node.getKey())
           } else {
-            // List item → non-list block: extract and split list
-            this.#extractListItemAsBlock(node, command)
-            // #extractListItemAsBlock updates selection keys internally
+            // List item → wrapped block: convert inline content to a wrapped
+            // block element (e.g., heading, quote) inside the list item.
+            this.#wrapListItemContent(node, command)
+            newSelectedKeys.add(node.getKey())
           }
         } else {
           // Non-list block: use temporary selection + command dispatch.
@@ -821,6 +854,44 @@ export class BlockSelectionExtension extends LexxyExtension {
     }, { tag: HISTORY_MERGE_TAG })
 
     this.#syncAndRefocus()
+  }
+
+  // Convert a list item's inline content into a wrapped block element
+  // (heading, quote, etc.) that stays inside the list. If the item already
+  // contains a wrapped block, change its type instead of double-wrapping.
+  #wrapListItemContent(node, command) {
+    const newBlock = this.#createBlockForCommand(command)
+    if (!newBlock) return
+
+    const children = node.getChildren()
+
+    // Already wrapped? Just swap the wrapped element type.
+    const existingWrapped = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (existingWrapped) {
+      // Move existing wrapped content's children into the new block
+      for (const child of [...existingWrapped.getChildren()]) {
+        newBlock.append(child)
+      }
+      existingWrapped.replace(newBlock)
+    } else {
+      // Regular list item with inline content → wrap in block element
+      for (const child of [...children]) {
+        if ($isListNode(child)) continue // skip nested lists
+        newBlock.append(child)
+      }
+      // Insert the block as the first child (before any nested lists)
+      const firstChild = node.getFirstChild()
+      if (firstChild) {
+        firstChild.insertBefore(newBlock)
+      } else {
+        node.append(newBlock)
+      }
+    }
+
+    // Track as a wrapped block
+    this.#wrappedBlockKeys.add(node.getKey())
   }
 
   // Extract a list item from its parent list, convert it to the target
@@ -969,7 +1040,13 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Sync selection classes after a block action. The document-level keydown
   // listener doesn't depend on focus, so no re-focus is needed.
   #syncAndRefocus() {
-    requestAnimationFrame(() => this.#syncSelectionClasses())
+    requestAnimationFrame(() => {
+      this.#syncSelectionClasses()
+      requestAnimationFrame(() => {
+        this.#dragAndDrop?.repositionHandle()
+        this.#syncBulletOffsets()
+      })
+    })
   }
 
   #handleIndentOutdent(outdent) {
@@ -1008,6 +1085,14 @@ export class BlockSelectionExtension extends LexxyExtension {
           this.editor.dispatchCommand(
             outdent ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND
           )
+          // After indent, inherit parent highlight color. Re-fetch the node
+          // since indent may have changed internal state.
+          if (!outdent) {
+            const movedNode = $getNodeByKey(key)
+            if (movedNode && $isListItemNode(movedNode)) {
+              this.#inheritParentHighlight(movedNode)
+            }
+          }
         }
       }
 
@@ -1018,6 +1103,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       requestAnimationFrame(() => {
         this.#syncSelectionClasses()
         this.#dragAndDrop?.repositionHandle()
+        this.#syncBulletOffsets()
       })
     })
   }
@@ -1041,6 +1127,10 @@ export class BlockSelectionExtension extends LexxyExtension {
   #moveSelectedBlocks(direction) {
     const selectedKeys = [...this.#selectedBlockKeys]
     if (selectedKeys.length === 0) return
+
+    // Suppress hover-driven handle positioning during the move to prevent
+    // stale layout measurements from racing with our double-rAF sync.
+    this.#dragAndDrop?.suppressHover()
 
     // Filter to only "root" keys — parents whose children are also selected.
     // When a parent is selected with its children, only move the parent;
@@ -1082,6 +1172,13 @@ export class BlockSelectionExtension extends LexxyExtension {
     requestAnimationFrame(() => {
       this.#syncSelectionClasses()
       this.#syncWrappedBlockAttributes()
+      // Double-RAF: first waits for Lexical's DOM reconciliation,
+      // second ensures layout is computed before positioning
+      requestAnimationFrame(() => {
+        this.#dragAndDrop?.repositionHandle()
+        this.#syncBulletOffsets()
+        this.#dragAndDrop?.unsuppressHover()
+      })
     })
   }
 
@@ -1144,6 +1241,27 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (keyProp) {
         this.#wrappedBlockKeys.add(el[keyProp])
       }
+    }
+  }
+
+  // Sync bullet ::before offset on all selected list items with wrapped content.
+  // Listen for wrapped-block sync requests from edit-mode operations
+  // (e.g., turn-into wrapping in contents.js). Syncs both bullet offset
+  // and drag handle position.
+  #registerBulletOffsetSyncListener() {
+    const handler = (event) => {
+      this.#dragAndDrop?.syncBulletOffset(event.target)
+      this.#dragAndDrop?.repositionHandle()
+    }
+    this.root?.addEventListener("lexxy:sync-wrapped-block", handler)
+    this.#cleanupFns.push(() => this.root?.removeEventListener("lexxy:sync-wrapped-block", handler))
+  }
+
+  #syncBulletOffsets() {
+    if (!this.#dragAndDrop) return
+    for (const key of this.#selectedBlockKeys) {
+      const el = this.editor.getElementByKey(key)
+      if (el) this.#dragAndDrop.syncBulletOffset(el)
     }
   }
 
@@ -1963,14 +2081,33 @@ export class BlockSelectionExtension extends LexxyExtension {
         if ($isTextNode(firstChild)) {
           anchor = firstChild
         } else {
-          // No text node — clear selection style so new text won't inherit color
-          const selStyle = selection.style
-          if (selStyle && hasHighlightStyles(selStyle)) {
-            const styles = getStyleObjectFromCSS(selStyle)
-            delete styles.color
-            delete styles["background-color"]
-            selection.setStyle(getCSSFromStyleObject(styles))
+          // No text node — clear selection style and ListItemNode textStyle
+          // so new text won't inherit highlight color.
+          const checkStyle = selection.style ||
+            ($isListItemNode(anchor) ? anchor.getTextStyle() : "")
+          if (checkStyle && this.#extractHighlightFromCSS(checkStyle)) {
+            if (this.#shouldRetainHighlightFromParent(anchor, checkStyle)) {
+              // Retaining parent color — set the <li> element style so the
+              // bullet marker is colored immediately (the transform can't
+              // detect color from an empty item with no text nodes yet).
+              if ($isListItemNode(anchor)) {
+                const highlight = this.#extractHighlightFromCSS(checkStyle)
+                if (highlight?.color) {
+                  anchor.setStyle(this.#mergeHighlightIntoCSS(anchor.getStyle(), { color: highlight.color }))
+                }
+              }
+              return
+            }
+            const cleared = this.#removeHighlightFromCSS(checkStyle) ?? ""
+            selection.setStyle(cleared)
+            if ($isListItemNode(anchor)) {
+              anchor.setTextStyle(this.#removeHighlightFromCSS(anchor.getTextStyle()) ?? "")
+            }
           }
+          // Always try to inherit parent color — handles cases where the new
+          // item has no highlight to clear (e.g., exiting a code block) but
+          // is nested under a colored parent.
+          this.#inheritFromParentListItem(anchor)
           return
         }
       }
@@ -1979,15 +2116,115 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (text.length > 0) return
 
       const style = anchor.getStyle()
-      if (!hasHighlightStyles(style)) return
+      if (this.#extractHighlightFromCSS(style)) {
+        // Has highlight — check if parent retains it
+        if (this.#shouldRetainHighlightFromParent(anchor, style)) {
+          let listItem = anchor.getParent()
+          while (listItem && !$isListItemNode(listItem)) listItem = listItem.getParent()
+          if (listItem) {
+            const highlight = this.#extractHighlightFromCSS(style)
+            if (highlight?.color) {
+              listItem.setStyle(this.#mergeHighlightIntoCSS(listItem.getStyle(), { color: highlight.color }))
+            }
+          }
+          return
+        }
+        const cleared = this.#removeHighlightFromCSS(style)
+        anchor.setStyle(cleared ?? "")
+        selection.setStyle(cleared ?? "")
+      }
 
-      const styles = getStyleObjectFromCSS(style)
-      delete styles.color
-      delete styles["background-color"]
-      const newCSS = getCSSFromStyleObject(styles)
-      anchor.setStyle(newCSS)
-      selection.setStyle(newCSS)
+      // Always try to inherit parent color after any clearing/checking.
+      this.#inheritFromParentListItem(anchor)
     })
+  }
+
+  // Walk up from any node to find the containing ListItemNode and apply
+  // parent highlight inheritance.
+  #inheritFromParentListItem(node) {
+    let listItem = node
+    while (listItem && !$isListItemNode(listItem)) listItem = listItem.getParent()
+    if (listItem) this.#inheritParentHighlight(listItem)
+  }
+
+  // Pressing Enter inside a wrapped block (heading, table, etc. in a list item)
+  // creates a new empty list item below as a sibling — not a paragraph inside
+  // the same list item.
+  //
+  // Handles KEY_ENTER_COMMAND (not INSERT_PARAGRAPH_COMMAND) at CRITICAL priority.
+  // Calls event.preventDefault() to stop the browser from firing beforeinput,
+  // then defers node creation to a queueMicrotask — a clean, separate update
+  // cycle. This avoids two problems:
+  //   1. KEY_ENTER_COMMAND runs nested inside KEY_DOWN_COMMAND's $beginUpdate,
+  //      so creating nodes here would have their selection invalidated by
+  //      post-transform validation.
+  //   2. INSERT_PARAGRAPH_COMMAND handlers that modify nodes can leave the
+  //      committed state with an invalid selection, causing the NEXT keydown's
+  //      $beginUpdate to throw "selection has been lost."
+  //
+  // Must be registered BEFORE #registerHighlightClearOnEnter so that returning
+  // true here prevents the highlight clear setTimeout from being scheduled.
+  #registerEnterOnWrappedBlock() {
+    this.#cleanupFns.push(
+      this.editor.registerCommand(KEY_ENTER_COMMAND, (event) => {
+        // Don't intercept Enter when a prompt menu (slash commands, turn-into,
+        // etc.) or block actions menu is open — Enter selects the menu item.
+        // Option+Enter falls through to Lexical's default (paragraph inside the LI).
+        if (this.editorElement.hasOpenPrompt || this.#isBlockActionsMenuOpen()) return false
+        if (event.altKey) return false
+
+        const selection = $getSelection()
+        if (!$isRangeSelection(selection)) return false
+
+        // Walk up to find the containing list item, but bail if we're
+        // inside a code block or table (they handle Enter internally)
+        let current = selection.anchor.getNode()
+        let listItem = null
+        while (current) {
+          if ($isCodeNode(current)) return false
+          if ($isElementNode(current) && current.getType()?.includes("table")) return false
+          if ($isListItemNode(current)) { listItem = current; break }
+          current = current.getParent()
+        }
+        if (!listItem) return false
+
+        // Only act on wrapped blocks (heading, quote, etc. in a list item)
+        if (!this.#isWrappedBlock(listItem)) return false
+
+        // Prevent browser from firing beforeinput/insertParagraph
+        event.preventDefault()
+
+        // Save key for deferred node creation — don't create nodes here
+        // because we're nested inside KEY_DOWN_COMMAND's $beginUpdate.
+        const listItemKey = listItem.getKey()
+
+        queueMicrotask(() => {
+          this.editor.update(() => {
+            const li = $getNodeByKey(listItemKey)
+            if (!li || !$isListItemNode(li)) return
+
+            // Create a bare ListItemNode — no ParagraphNode wrapper.
+            // Lexical's list model expects inline content directly in list
+            // items; ParagraphNode children get stripped by transforms.
+            const newItem = $createListItemNode()
+
+            // Insert after the structural wrapper if one exists (so we don't
+            // break the wrapped item ↔ children relationship), otherwise
+            // insert directly after the list item.
+            const ownWrapper = this.#getOwnStructuralWrapper(li)
+            if (ownWrapper) {
+              ownWrapper.insertAfter(newItem)
+            } else {
+              li.insertAfter(newItem)
+            }
+
+            newItem.select()
+          })
+        })
+
+        return true // consume — prevent highlight clear and default Enter
+      }, COMMAND_PRIORITY_CRITICAL)
+    )
   }
 
   // After indent, if the new parent is uniformly highlighted, apply its color
@@ -2003,7 +2240,9 @@ export class BlockSelectionExtension extends LexxyExtension {
     const textItem = wrapper.getPreviousSibling()
     if (!textItem || !$isListItemNode(textItem)) return
 
-    // Check if ALL text nodes in the parent item share the same color
+    // Check if the parent item has highlight color. Compare only the
+    // highlight properties (color/background-color), not full style strings,
+    // so bold/italic/etc. differences don't prevent inheritance.
     const textNodes = []
     const collectText = (n) => {
       if ($isTextNode(n)) textNodes.push(n)
@@ -2012,25 +2251,84 @@ export class BlockSelectionExtension extends LexxyExtension {
     textItem.getChildren().forEach(c => { if (!$isListNode(c)) collectText(c) })
 
     if (textNodes.length === 0) return
-    const parentColor = textNodes[0].getStyle()
-    if (!parentColor || !hasHighlightStyles(parentColor)) return
-    if (!textNodes.every(t => t.getStyle() === parentColor)) return
+    const rawStyle = textNodes[0].getStyle()
+    // Parse highlight properties directly from the raw CSS string.
+    // getStyleObjectFromCSS can fail to parse var() values in some build
+    // configurations, so we extract color/background-color manually.
+    const firstHighlight = this.#extractHighlightFromCSS(rawStyle)
+    if (!firstHighlight) return
 
-    // Apply the parent's color to the node AND all its descendants
-    // (including children in the structural wrapper)
+    // Verify all parent text nodes share the same highlight colors
+    const allMatch = textNodes.every(t => {
+      const h = this.#extractHighlightFromCSS(t.getStyle())
+      return h &&
+        (h.color || "") === (firstHighlight.color || "") &&
+        (h["background-color"] || "") === (firstHighlight["background-color"] || "")
+    })
+    if (!allMatch) return
+
+    // Apply the parent's color to existing text nodes in the child
     const childTextNodes = []
     this.#collectTextNodes(node, childTextNodes)
     const ownWrapper = this.#getOwnStructuralWrapper(node)
     if (ownWrapper) this.#collectAllDescendantTextNodes(ownWrapper, childTextNodes)
 
-    const parentStyles = getStyleObjectFromCSS(parentColor)
-
     for (const textNode of childTextNodes) {
-      const existing = getStyleObjectFromCSS(textNode.getStyle() || "")
-      if (parentStyles.color) existing.color = parentStyles.color
-      if (parentStyles["background-color"]) existing["background-color"] = parentStyles["background-color"]
-      textNode.setStyle(getCSSFromStyleObject(existing))
+      const newStyle = this.#mergeHighlightIntoCSS(textNode.getStyle(), firstHighlight)
+      textNode.setStyle(newStyle)
     }
+
+    // Always set the ListItemNode text style and selection style so that
+    // continued typing inherits the parent's color. The bullet marker color
+    // is handled by the #registerBulletMarkerColorSync transform.
+    if ($isListItemNode(node)) {
+      node.setTextStyle(this.#mergeHighlightIntoCSS(node.getTextStyle(), firstHighlight))
+    }
+    const selection = $getSelection()
+    if ($isRangeSelection(selection)) {
+      selection.setStyle(this.#mergeHighlightIntoCSS(selection.style, firstHighlight))
+    }
+  }
+
+  // Extract color and background-color from a raw CSS string. Returns an
+  // object with those properties, or null if neither is present. Uses manual
+  // parsing because getStyleObjectFromCSS (from @lexical/selection) fails to
+  // parse CSS var() values in some Rollup build configurations.
+  #extractHighlightFromCSS(css) {
+    if (!css) return null
+    const result = {}
+    const colorMatch = css.match(/(?:^|;\s*)color\s*:\s*([^;]+)/)
+    const bgMatch = css.match(/(?:^|;\s*)background-color\s*:\s*([^;]+)/)
+    if (colorMatch) result.color = colorMatch[1].trim()
+    if (bgMatch) result["background-color"] = bgMatch[1].trim()
+    return (result.color || result["background-color"]) ? result : null
+  }
+
+  // Merge highlight properties into an existing CSS string, preserving
+  // other properties (bold, italic, font-size, etc.).
+  #mergeHighlightIntoCSS(existingCSS, highlight) {
+    const parts = (existingCSS || "").split(";").filter(s => s.trim())
+    const nonHighlight = parts.filter(p => {
+      const key = p.split(":")[0]?.trim()
+      return key !== "color" && key !== "background-color"
+    })
+    if (highlight.color) nonHighlight.push(`color: ${highlight.color}`)
+    if (highlight["background-color"]) nonHighlight.push(`background-color: ${highlight["background-color"]}`)
+    return nonHighlight.join(";") + ";"
+  }
+
+  // Remove color and background-color from a CSS string, preserving other props.
+  // Returns null (not "") when no properties remain — callers should skip
+  // setStyle entirely for null to avoid setting an explicit empty style that
+  // overrides the CSS-inherited default text color.
+  #removeHighlightFromCSS(css) {
+    if (!css) return null
+    const parts = css.split(";").filter(s => s.trim())
+    const kept = parts.filter(p => {
+      const key = p.split(":")[0]?.trim()
+      return key !== "color" && key !== "background-color"
+    })
+    return kept.length > 0 ? kept.join(";") + ";" : null
   }
 
   // When a highlight color is applied to a parent list item, propagate it to
@@ -2088,6 +2386,48 @@ export class BlockSelectionExtension extends LexxyExtension {
         textNode.setStyle(getCSSFromStyleObject(existing))
       }
     })
+  }
+
+  // Sync the <li> element's color from its text content so that bullet markers
+  // (which use currentColor via ::before) match the text color. Runs as a
+  // node transform on every dirty ListItemNode, covering all highlight paths:
+  // direct toggle, indent inheritance, paste, undo, etc.
+  #registerBulletMarkerColorSync() {
+    this.#cleanupFns.push(
+      this.editor.registerNodeTransform(ListItemNode, (node) => {
+        if (this.#isStructuralWrapper(node)) return
+
+        const textNodes = []
+        node.getChildren().forEach(c => {
+          if (!$isListNode(c)) this.#collectTextNodes(c, textNodes)
+        })
+
+        const highlight = textNodes.length > 0
+          ? this.#extractHighlightFromCSS(textNodes[0].getStyle())
+          : null
+
+        const liHighlight = this.#extractHighlightFromCSS(node.getStyle())
+
+        // For empty items, fall back to textStyle (controls what color new
+        // text will be typed in — set by inheritance or Enter retention).
+        const effectiveHighlight = highlight
+          || this.#extractHighlightFromCSS(node.getTextStyle())
+
+        if (effectiveHighlight?.color) {
+          // Text (or pending text) is colored → set <li> color for bullet marker
+          const allSameColor = !highlight || textNodes.every(t => {
+            const h = this.#extractHighlightFromCSS(t.getStyle())
+            return h && (h.color || "") === (effectiveHighlight.color || "")
+          })
+          if (allSameColor && (liHighlight?.color || "") !== effectiveHighlight.color) {
+            node.setStyle(this.#mergeHighlightIntoCSS(node.getStyle(), { color: effectiveHighlight.color }))
+          }
+        } else if (liHighlight?.color) {
+          // No text or pending highlight → clear <li> color
+          node.setStyle(this.#removeHighlightFromCSS(node.getStyle()) ?? "")
+        }
+      })
+    )
   }
 
   // Collect text nodes, skipping code blocks (they have their own syntax colors)
@@ -2193,6 +2533,59 @@ export class BlockSelectionExtension extends LexxyExtension {
     return null
   }
 
+  // Like #getUniformParentHighlight but only checks the immediate parent,
+  // not ancestors further up the tree.
+  #getImmediateParentHighlight(listItem) {
+    const parentList = listItem.getParent()
+    if (!$isListNode(parentList)) return null
+
+    const wrapper = parentList.getParent()
+    if (!$isListItemNode(wrapper)) return null
+
+    const textItem = wrapper.getPreviousSibling()
+    if (!textItem || !$isListItemNode(textItem)) return null
+
+    const textNodes = []
+    textItem.getChildren().forEach(c => {
+      if (!$isListNode(c)) this.#collectTextNodes(c, textNodes)
+    })
+
+    if (textNodes.length === 0) return null
+
+    const firstHighlight = this.#extractHighlightFromCSS(textNodes[0].getStyle())
+    if (!firstHighlight) return null
+
+    // Verify all parent text nodes share the same highlight
+    const allMatch = textNodes.every(t => {
+      const h = this.#extractHighlightFromCSS(t.getStyle())
+      return h &&
+        (h.color || "") === (firstHighlight.color || "") &&
+        (h["background-color"] || "") === (firstHighlight["background-color"] || "")
+    })
+    return allMatch ? textNodes[0].getStyle() : null
+  }
+
+  #highlightColorsMatch(style1, style2) {
+    const s1 = this.#extractHighlightFromCSS(style1) || {}
+    const s2 = this.#extractHighlightFromCSS(style2) || {}
+    return (s1.color || "") === (s2.color || "") &&
+      (s1["background-color"] || "") === (s2["background-color"] || "")
+  }
+
+  // Check if a node is inside a list item whose immediate parent has the
+  // same highlight color — if so, Enter should retain the color.
+  #shouldRetainHighlightFromParent(node, currentStyle) {
+    let current = node
+    while (current) {
+      if ($isListItemNode(current)) {
+        const parentColor = this.#getImmediateParentHighlight(current)
+        return parentColor !== null && this.#highlightColorsMatch(currentStyle, parentColor)
+      }
+      current = current.getParent()
+    }
+    return false
+  }
+
   // -- Wrapped block indent/outdent -------------------------------------------
 
   // When Tab/Shift+Tab fires inside a wrapped block (heading, blockquote, etc.
@@ -2228,7 +2621,10 @@ export class BlockSelectionExtension extends LexxyExtension {
               // Double-RAF: first waits for Lexical's DOM reconciliation,
               // second ensures layout is computed before repositioning
               requestAnimationFrame(() => {
-                requestAnimationFrame(() => this.#dragAndDrop?.repositionHandle())
+                requestAnimationFrame(() => {
+                  this.#dragAndDrop?.repositionHandle()
+                  this.#syncBulletOffsets()
+                })
               })
             }
             return result
@@ -2240,11 +2636,15 @@ export class BlockSelectionExtension extends LexxyExtension {
       return false
     }
 
-    // Schedule handle reposition after ANY indent/outdent (CRITICAL runs first,
-    // returns false to let actual handlers proceed)
+    // Schedule handle reposition after indent/outdent. These may not run if
+    // the Lexical extension's CRITICAL handler consumes first, but the wrapped
+    // block handler at HIGH also schedules repositioning as a fallback.
     const scheduleReposition = () => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => this.#dragAndDrop?.repositionHandle())
+        requestAnimationFrame(() => {
+          this.#dragAndDrop?.repositionHandle()
+          this.#syncBulletOffsets()
+        })
       })
       return false
     }
@@ -2254,24 +2654,29 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, scheduleReposition, COMMAND_PRIORITY_CRITICAL),
       this.editor.registerCommand(INDENT_CONTENT_COMMAND, () => handleIndent(false), COMMAND_PRIORITY_HIGH),
       this.editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => handleIndent(true), COMMAND_PRIORITY_HIGH),
-      // After any indent, inherit parent highlight color (runs after all handlers)
-      this.editor.registerCommand(INDENT_CONTENT_COMMAND, () => {
-        setTimeout(() => {
-          this.editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
-            const anchor = selection.anchor.getNode()
-            let listItem = $isListItemNode(anchor) ? anchor : null
-            if (!listItem) {
-              let current = anchor.getParent()
-              while (current && !$isListItemNode(current)) current = current.getParent()
-              listItem = current
-            }
-            if (listItem) this.#inheritParentHighlight(listItem)
-          })
-        }, 0)
+      // Schedule highlight inheritance on Tab indent. Hooks into KEY_TAB_COMMAND
+      // at HIGH (before the command_dispatcher at NORMAL) because
+      // INDENT_CONTENT_COMMAND handlers at CRITICAL/HIGH don't reliably run —
+      // the Lexical extension's own CRITICAL handler may consume the command first.
+      this.editor.registerCommand(KEY_TAB_COMMAND, (event) => {
+        if (!event.shiftKey) {
+          setTimeout(() => {
+            this.editor.update(() => {
+              const selection = $getSelection()
+              if (!$isRangeSelection(selection)) return
+              const anchor = selection.anchor.getNode()
+              let listItem = $isListItemNode(anchor) ? anchor : null
+              if (!listItem) {
+                let current = anchor.getParent()
+                while (current && !$isListItemNode(current)) current = current.getParent()
+                listItem = current
+              }
+              if (listItem) this.#inheritParentHighlight(listItem)
+            })
+          }, 0)
+        }
         return false
-      }, COMMAND_PRIORITY_LOW),
+      }, COMMAND_PRIORITY_HIGH),
       // Prevent Tab from moving focus out of the editor. Runs at LOW priority
       // so list/code handlers get first shot. If they don't handle it, consume
       // the event to keep focus inside the editor.
