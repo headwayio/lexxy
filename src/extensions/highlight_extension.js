@@ -1,7 +1,8 @@
-import { $getNodeByKey, $getState, $hasUpdateTag, $setState, COMMAND_PRIORITY_NORMAL, PASTE_TAG, TextNode, createCommand, createState, defineExtension } from "lexical"
+import { $getNodeByKey, $getState, $hasUpdateTag, $isTextNode, $setState, COMMAND_PRIORITY_CRITICAL, COMMAND_PRIORITY_LOW, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, PASTE_TAG, TextNode, createCommand, createState, defineExtension } from "lexical"
 import { $getSelection, $isRangeSelection } from "lexical"
 import { $getSelectionStyleValueForProperty, $patchStyleText, getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { $createCodeHighlightNode, $createCodeNode, $isCodeHighlightNode, $isCodeNode, CodeHighlightNode, CodeNode } from "@lexical/code"
+import { $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { extendTextNodeConversion } from "../helpers/lexical_helper"
 import { StyleCanonicalizer, applyCanonicalizers, hasHighlightStyles } from "../helpers/format_helper"
 import { RichTextExtension } from "@lexical/rich-text"
@@ -57,7 +58,11 @@ export class HighlightExtension extends LexxyExtension {
           editor.registerNodeTransform(TextNode, (textNode) => $canonicalizePastedStyles(textNode, canonicalizers)),
           editor.registerMutationListener(CodeNode, (mutations) => {
             $applyPendingCodeHighlights(editor, mutations)
-          }, { skipInitialization: true })
+          }, { skipInitialization: true }),
+          $registerMarkPaddingSync(editor),
+          $registerHighlightClearOnEnter(editor),
+          $registerHighlightPropagation(editor),
+          $registerBulletMarkerColorSync(editor)
         )
       }
     })
@@ -459,4 +464,327 @@ function $setPastedStyles(textNode, value = true) {
 
 function $hasPastedStyles(textNode) {
   return $getState(textNode, hasPastedStylesState)
+}
+
+// After DOM reconciliation, scan <mark> elements and set data-pad-start /
+// data-pad-end attributes based on whether the mark sits at a word boundary.
+// Marks mid-word get no horizontal padding; marks at word edges get padding.
+function $registerMarkPaddingSync(editor) {
+  return editor.registerUpdateListener(() => {
+    requestAnimationFrame(() => {
+      const root = editor.getRootElement()
+      if (!root) return
+
+      for (const mark of root.querySelectorAll("mark")) {
+        const prev = mark.previousSibling
+        const next = mark.nextSibling
+
+        const padStart = !prev || (prev.textContent && /\s$/.test(prev.textContent))
+        const padEnd = !next || (next.textContent && /^\s/.test(next.textContent))
+
+        mark.toggleAttribute("data-pad-start", padStart)
+        mark.toggleAttribute("data-pad-end", padEnd)
+      }
+    })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Highlight inheritance for lists
+// ---------------------------------------------------------------------------
+
+// CSS parsing helpers — use manual regex instead of getStyleObjectFromCSS
+// because getStyleObjectFromCSS fails on CSS var() values in Rollup production.
+
+export function $extractHighlightFromCSS(css) {
+  if (!css) return null
+  const result = {}
+  const colorMatch = css.match(/(?:^|;\s*)color\s*:\s*([^;]+)/)
+  const bgMatch = css.match(/(?:^|;\s*)background-color\s*:\s*([^;]+)/)
+  if (colorMatch) result.color = colorMatch[1].trim()
+  if (bgMatch) result["background-color"] = bgMatch[1].trim()
+  return (result.color || result["background-color"]) ? result : null
+}
+
+export function $mergeHighlightIntoCSS(existingCSS, highlight) {
+  const parts = (existingCSS || "").split(";").filter(s => s.trim())
+  const nonHighlight = parts.filter(p => {
+    const key = p.split(":")[0]?.trim()
+    return key !== "color" && key !== "background-color"
+  })
+  if (highlight.color) nonHighlight.push(`color: ${highlight.color}`)
+  if (highlight["background-color"]) nonHighlight.push(`background-color: ${highlight["background-color"]}`)
+  return nonHighlight.join(";") + ";"
+}
+
+export function $removeHighlightFromCSS(css) {
+  if (!css) return null
+  const parts = css.split(";").filter(s => s.trim())
+  const kept = parts.filter(p => {
+    const key = p.split(":")[0]?.trim()
+    return key !== "color" && key !== "background-color"
+  })
+  return kept.length > 0 ? kept.join(";") + ";" : null
+}
+
+// List structure helpers
+
+export function $isStructuralWrapper(listItemNode) {
+  const children = listItemNode.getChildren()
+  return children.length > 0 && children.every(c => $isListNode(c))
+}
+
+export function $getOwnStructuralWrapper(node) {
+  const next = node.getNextSibling()
+  if (next && $isListItemNode(next) && $isStructuralWrapper(next)) return next
+  return null
+}
+
+// Tree traversal — collect text nodes, skipping code blocks
+
+export function $collectTextNodes(node, result) {
+  if ($isCodeNode(node)) return
+  if ($isTextNode(node)) result.push(node)
+  else if (node.getChildren) node.getChildren().forEach(c => $collectTextNodes(c, result))
+}
+
+export function $collectAllDescendantTextNodes(node, result) {
+  if ($isCodeNode(node)) return
+  if ($isTextNode(node)) { result.push(node); return }
+  if (node.getChildren) {
+    for (const child of node.getChildren()) {
+      $collectAllDescendantTextNodes(child, result)
+    }
+  }
+}
+
+// Highlight comparison helpers
+
+export function $highlightColorsMatch(style1, style2) {
+  const h1 = $extractHighlightFromCSS(style1)
+  const h2 = $extractHighlightFromCSS(style2)
+  if (!h1 && !h2) return true
+  if (!h1 || !h2) return false
+  return (h1.color || "") === (h2.color || "") &&
+    (h1["background-color"] || "") === (h2["background-color"] || "")
+}
+
+export function $getImmediateParentHighlight(listItem) {
+  if (!$isListItemNode(listItem)) return null
+  const parentList = listItem.getParent()
+  if (!$isListNode(parentList)) return null
+  const wrapper = parentList.getParent()
+  if (!$isListItemNode(wrapper)) return null
+  const textItem = wrapper.getPreviousSibling()
+  if (!textItem || !$isListItemNode(textItem)) return null
+
+  const textNodes = []
+  textItem.getChildren().forEach(c => { if (!$isListNode(c)) $collectTextNodes(c, textNodes) })
+  if (textNodes.length === 0) return null
+
+  const firstHighlight = $extractHighlightFromCSS(textNodes[0].getStyle())
+  if (!firstHighlight) return null
+
+  const allMatch = textNodes.every(t => {
+    const h = $extractHighlightFromCSS(t.getStyle())
+    return h &&
+      (h.color || "") === (firstHighlight.color || "") &&
+      (h["background-color"] || "") === (firstHighlight["background-color"] || "")
+  })
+
+  return allMatch ? firstHighlight : null
+}
+
+export function $shouldRetainHighlightFromParent(node, currentStyle) {
+  const parentHighlight = $getImmediateParentHighlight(node)
+  if (!parentHighlight) return false
+  return $highlightColorsMatch(currentStyle, $mergeHighlightIntoCSS("", parentHighlight))
+}
+
+// Apply parent list item's highlight color to a child node on indent
+export function $inheritParentHighlight(node) {
+  const parent = node.getParent()
+  if (!$isListNode(parent)) return
+
+  const wrapper = parent.getParent()
+  if (!$isListItemNode(wrapper)) return
+  const textItem = wrapper.getPreviousSibling()
+  if (!textItem || !$isListItemNode(textItem)) return
+
+  const textNodes = []
+  textItem.getChildren().forEach(c => { if (!$isListNode(c)) $collectTextNodes(c, textNodes) })
+  if (textNodes.length === 0) return
+
+  const rawStyle = textNodes[0].getStyle()
+  const firstHighlight = $extractHighlightFromCSS(rawStyle)
+  if (!firstHighlight) return
+
+  const allMatch = textNodes.every(t => {
+    const h = $extractHighlightFromCSS(t.getStyle())
+    return h &&
+      (h.color || "") === (firstHighlight.color || "") &&
+      (h["background-color"] || "") === (firstHighlight["background-color"] || "")
+  })
+  if (!allMatch) return
+
+  const childTextNodes = []
+  $collectTextNodes(node, childTextNodes)
+  const ownWrapper = $getOwnStructuralWrapper(node)
+  if (ownWrapper) $collectAllDescendantTextNodes(ownWrapper, childTextNodes)
+
+  for (const textNode of childTextNodes) {
+    const newStyle = $mergeHighlightIntoCSS(textNode.getStyle(), firstHighlight)
+    textNode.setStyle(newStyle)
+  }
+
+  if ($isListItemNode(node)) {
+    node.setTextStyle($mergeHighlightIntoCSS(node.getTextStyle(), firstHighlight))
+  }
+  const selection = $getSelection()
+  if ($isRangeSelection(selection)) {
+    selection.setStyle($mergeHighlightIntoCSS(selection.style, firstHighlight))
+  }
+}
+
+// Clear highlight on Enter: when creating a new empty block, remove inherited
+// color/background-color unless the parent list item is uniformly highlighted.
+function $registerHighlightClearOnEnter(editor) {
+  return editor.registerCommand(KEY_ENTER_COMMAND, () => {
+    $clearHighlightOnNewBlock(editor)
+    return false // don't consume — let Lexical create the new block
+  }, COMMAND_PRIORITY_LOW)
+}
+
+function $clearHighlightOnNewBlock(editor) {
+  editor.update(() => {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return
+
+    let anchor = selection.anchor.getNode()
+
+    if (!$isTextNode(anchor)) {
+      const firstChild = anchor.getFirstChild?.()
+      if ($isTextNode(firstChild)) {
+        anchor = firstChild
+      } else {
+        const selStyle = selection.style
+        if (selStyle && hasHighlightStyles(selStyle)) {
+          if (!$shouldRetainHighlightForAnchor(anchor, selStyle)) {
+            const styles = getStyleObjectFromCSS(selStyle)
+            delete styles.color
+            delete styles["background-color"]
+            selection.setStyle(getCSSFromStyleObject(styles))
+          }
+        }
+        return
+      }
+    }
+
+    // eslint-disable-next-line no-misleading-character-class
+    const text = anchor.getTextContent().replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+    if (text.length > 0) return
+
+    const style = anchor.getStyle()
+    if (!hasHighlightStyles(style)) return
+
+    if ($shouldRetainHighlightForAnchor(anchor, style)) return
+
+    const styles = getStyleObjectFromCSS(style)
+    delete styles.color
+    delete styles["background-color"]
+    const newCSS = getCSSFromStyleObject(styles)
+    anchor.setStyle(newCSS)
+    selection.setStyle(newCSS)
+  })
+}
+
+function $shouldRetainHighlightForAnchor(anchor, style) {
+  let listItem = anchor
+  while (listItem && !$isListItemNode(listItem)) {
+    listItem = listItem.getParent()
+  }
+  return listItem ? $shouldRetainHighlightFromParent(listItem, style) : false
+}
+
+// When a highlight color is applied to a parent list item, propagate it to
+// all children in the structural wrapper so the whole subtree matches.
+function $registerHighlightPropagation(editor) {
+  return editor.registerCommand(TOGGLE_HIGHLIGHT_COMMAND, (styles) => {
+    setTimeout(() => $propagateHighlightToChildren(editor, styles), 0)
+    return false // don't consume — let the highlight extension handle it
+  }, COMMAND_PRIORITY_CRITICAL)
+}
+
+function $propagateHighlightToChildren(editor, _styles) {
+  editor.update(() => {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return
+
+    let listItem = null
+    let current = selection.anchor.getNode()
+    while (current) {
+      if ($isListItemNode(current)) { listItem = current; break }
+      current = current.getParent()
+    }
+    if (!listItem) return
+
+    const wrapper = $getOwnStructuralWrapper(listItem)
+    if (!wrapper) return
+
+    const parentTextNodes = []
+    listItem.getChildren().forEach(c => {
+      if (!$isListNode(c)) $collectTextNodes(c, parentTextNodes)
+    })
+    if (parentTextNodes.length === 0) return
+
+    const parentStyle = parentTextNodes[0].getStyle()
+    if (!parentTextNodes.every(t => t.getStyle() === parentStyle)) return
+
+    const childTextNodes = []
+    $collectAllDescendantTextNodes(wrapper, childTextNodes)
+    const parentStyles = getStyleObjectFromCSS(parentStyle)
+
+    for (const textNode of childTextNodes) {
+      const existing = getStyleObjectFromCSS(textNode.getStyle() || "")
+      if (parentStyles.color) existing.color = parentStyles.color
+      else delete existing.color
+      if (parentStyles["background-color"]) existing["background-color"] = parentStyles["background-color"]
+      else delete existing["background-color"]
+      textNode.setStyle(getCSSFromStyleObject(existing))
+    }
+  })
+}
+
+// Sync the <li> element's color from its text content so that bullet markers
+// (which use currentColor via ::before) match the text color.
+function $registerBulletMarkerColorSync(editor) {
+  return editor.registerNodeTransform(ListItemNode, (node) => {
+    if ($isStructuralWrapper(node)) return
+
+    const textNodes = []
+    node.getChildren().forEach(c => {
+      if (!$isListNode(c)) $collectTextNodes(c, textNodes)
+    })
+
+    const highlight = textNodes.length > 0
+      ? $extractHighlightFromCSS(textNodes[0].getStyle())
+      : null
+
+    const liHighlight = $extractHighlightFromCSS(node.getStyle())
+
+    const effectiveHighlight = highlight
+      || $extractHighlightFromCSS(node.getTextStyle())
+
+    if (effectiveHighlight?.color) {
+      const allSameColor = !highlight || textNodes.every(t => {
+        const h = $extractHighlightFromCSS(t.getStyle())
+        return h && (h.color || "") === (effectiveHighlight.color || "")
+      })
+      if (allSameColor && (liHighlight?.color || "") !== effectiveHighlight.color) {
+        node.setStyle($mergeHighlightIntoCSS(node.getStyle(), { color: effectiveHighlight.color }))
+      }
+    } else if (liHighlight?.color) {
+      node.setStyle($removeHighlightFromCSS(node.getStyle()) ?? "")
+    }
+  })
 }
