@@ -1000,6 +1000,33 @@
       pointer-events: auto;
     }
 
+    .lexxy-node-action {
+      align-items: center;
+      aspect-ratio: 1;
+      background: transparent;
+      block-size: var(--button-size);
+      border-radius: var(--floating-tools-radius);
+      color: var(--lexxy-color-ink-inverted);
+      display: flex;
+      justify-content: center;
+      min-block-size: var(--button-size);
+      min-inline-size: var(--button-size);
+      text-decoration: none;
+
+      svg {
+        block-size: 1.125em;
+        inline-size: 1.125em;
+        fill: currentColor;
+        opacity: 0.8;
+      }
+
+      &:hover {
+        background: var(--lexxy-color-ink-medium);
+
+        svg { opacity: 1; }
+      }
+    }
+
     .lexxy-node-delete:hover {
       background-color: var(--lexxy-color-red);
     }
