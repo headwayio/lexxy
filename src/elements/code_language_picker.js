@@ -71,6 +71,17 @@ export class CodeLanguagePicker extends HTMLElement {
     languages.json ||= "JSON"
     languages.diff ||= "Diff"
     languages.kotlin ||= "Kotlin"
+    languages.yaml ||= "YAML"
+    languages.docker ||= "Docker"
+    languages.graphql ||= "GraphQL"
+    languages.jsx ||= "JSX"
+    languages.tsx ||= "TSX"
+    languages.scss ||= "SCSS"
+    languages.toml ||= "TOML"
+    languages.lua ||= "Lua"
+    languages.elixir ||= "Elixir"
+    languages.erlang ||= "Erlang"
+    languages.hcl ||= "HCL"
 
 
     // Place the "plain" entry first, then the rest of language sorted alphabetically

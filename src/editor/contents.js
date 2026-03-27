@@ -6,8 +6,8 @@ import {
 } from "lexical"
 
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
-import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
-import { $createListItemNode, $createListNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
+import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from "@lexical/rich-text"
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
 import { parseHtml } from "../helpers/html_helper"
@@ -85,16 +85,140 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    const listItem = this.#findContainingListItem(selection)
+    if (listItem) {
+      this.#unwrapListItemContent(listItem)
+      return
+    }
+
     $expandSelectionToLineBreaksAndSplitAtEdges(selection, (node) => $getNearestBlockElementAncestorOrThrow(node))
+    const savedStyles = this.#captureTextStyles(selection)
     $setBlocksType(selection, () => $createParagraphNode())
+    this.#restoreTextStyles(savedStyles)
   }
 
   applyHeadingFormat(tag) {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    const listItem = this.#findContainingListItem(selection)
+    if (listItem) {
+      this.#wrapListItemContent(listItem, $createHeadingNode(tag))
+      return
+    }
+
     $expandSelectionToLineBreaksAndSplitAtEdges(selection)
+    const savedStyles = this.#captureTextStyles(selection)
     $setBlocksType(selection, () => $createHeadingNode(tag))
+    this.#restoreTextStyles(savedStyles)
+  }
+
+  // Save inline styles (keyed by text content + offset) from text nodes in
+  // the selected blocks so they can be restored after $setBlocksType, which
+  // can strip styles when converting list items to other block types.
+  #captureTextStyles(selection) {
+    const styles = new Map()
+    for (const node of selection.getNodes()) {
+      if ($isTextNode(node)) {
+        const style = node.getStyle()
+        if (style) styles.set(node.getKey(), style)
+      }
+    }
+    return styles
+  }
+
+  #restoreTextStyles(savedStyles) {
+    if (savedStyles.size === 0) return
+    for (const [ key, style ] of savedStyles) {
+      const node = $getNodeByKey(key)
+      if ($isTextNode(node) && !node.getStyle()) {
+        node.setStyle(style)
+      }
+    }
+  }
+
+  // Find the ListItemNode containing the selection anchor, if any.
+  #findContainingListItem(selection) {
+    let current = selection.anchor.getNode()
+    while (current) {
+      if ($isListItemNode(current)) return current
+      current = current.getParent()
+    }
+    return null
+  }
+
+  // Wrap a list item's inline content in a block element (heading, quote).
+  // If already wrapped, swap the wrapper type. Schedules a bullet offset
+  // resync after the DOM reconciles.
+  #wrapListItemContent(listItem, newBlock) {
+    const listItemKey = listItem.getKey()
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = this.editor.getElementByKey(listItemKey)
+        if (el) dispatch(el, "lexxy:sync-wrapped-block")
+      })
+    })
+    const children = listItem.getChildren()
+
+    // Already wrapped in a non-paragraph block? Swap the wrapper.
+    const existingWrapped = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (existingWrapped) {
+      for (const child of [ ...existingWrapped.getChildren() ]) {
+        newBlock.append(child)
+      }
+      existingWrapped.replace(newBlock)
+      newBlock.selectEnd()
+      return
+    }
+
+    // Regular inline content → wrap in the new block
+    for (const child of [ ...children ]) {
+      if ($isListNode(child)) continue
+      newBlock.append(child)
+    }
+    const firstChild = listItem.getFirstChild()
+    if (firstChild) {
+      firstChild.insertBefore(newBlock)
+    } else {
+      listItem.append(newBlock)
+    }
+    newBlock.selectEnd()
+  }
+
+  // Unwrap a wrapped block inside a list item if one exists. No-op for
+  // regular (non-wrapped) list items. Public so command_dispatcher can call it.
+  unwrapListItemIfWrapped(listItem) {
+    const children = listItem.getChildren()
+    const wrappedChild = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (wrappedChild) this.#unwrapListItemContent(listItem)
+  }
+
+  // Unwrap a wrapped block back to regular inline list item content.
+  #unwrapListItemContent(listItem) {
+    const children = listItem.getChildren()
+    const wrappedChild = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (wrappedChild) {
+      for (const child of [ ...wrappedChild.getChildren() ]) {
+        listItem.append(child)
+      }
+      wrappedChild.remove()
+    }
+    listItem.selectEnd()
+
+    // Schedule bullet offset + drag handle sync after DOM reconciles
+    const listItemKey = listItem.getKey()
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = this.editor.getElementByKey(listItemKey)
+        if (el) dispatch(el, "lexxy:sync-wrapped-block")
+      })
+    })
   }
 
   applyUnorderedListFormat() {
@@ -127,6 +251,14 @@ export default class Contents {
 
     if (this.#insertNodeIfRoot($createCodeNode("plain"))) return
 
+    // Inside a list item → wrap content in a code block, keeping the item a
+    // proper list citizen (mirrors toggleBlockquote below).
+    const containingListItem = this.#findContainingListItem(selection)
+    if (containingListItem) {
+      this.#wrapListItemContent(containingListItem, $createCodeNode("plain"))
+      return
+    }
+
     const blockElements = this.#blockLevelElementsInSelection(selection)
     const allCode = blockElements.every($isCodeNode)
 
@@ -149,6 +281,13 @@ export default class Contents {
     if (!$isRangeSelection(selection)) return
 
     if (this.#insertNodeIfRoot($createQuoteNode())) return
+
+    // Inside a list item → wrap content in a blockquote
+    const listItem = this.#findContainingListItem(selection)
+    if (listItem) {
+      this.#wrapListItemContent(listItem, $createQuoteNode())
+      return
+    }
 
     const topLevelElements = this.#topLevelElementsInSelection(selection)
 

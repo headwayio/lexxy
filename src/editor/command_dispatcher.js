@@ -23,7 +23,7 @@ import { INSERT_TABLE_COMMAND } from "@lexical/table"
 
 import { createElement } from "../helpers/html_helper"
 import { ListenerBin, registerEventListener } from "../helpers/listener_helper"
-import { $normalizeBlockContainerSelection, getListType } from "../helpers/lexical_helper"
+import { $normalizeBlockContainerSelection, getListItemNode, getListType } from "../helpers/lexical_helper"
 import { HorizontalDividerNode } from "../nodes/horizontal_divider_node"
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "../extensions/highlight_extension"
 
@@ -36,6 +36,7 @@ const COMMANDS = [
   "unlink",
   "toggleHighlight",
   "removeHighlight",
+  "setFormatHeadingXLarge",
   "setFormatHeadingLarge",
   "setFormatHeadingMedium",
   "setFormatHeadingSmall",
@@ -134,9 +135,16 @@ export class CommandDispatcher {
     if (!$isRangeSelection(selection)) return
 
     const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
 
-    if (this.selection.isInsideList && anchorNode && getListType(anchorNode) === "bullet") {
-      this.contents.applyParagraphFormat()
+    if (this.selection.isInsideList && listItem) {
+      const effectiveType = listItem.getEffectiveListType?.() ?? getListType(anchorNode)
+      if (effectiveType === "bullet") {
+        this.contents.applyParagraphFormat()
+      } else {
+        listItem.setListItemType?.("bullet")
+        this.contents.unwrapListItemIfWrapped(listItem)
+      }
     } else {
       this.contents.applyUnorderedListFormat()
     }
@@ -147,9 +155,16 @@ export class CommandDispatcher {
     if (!$isRangeSelection(selection)) return
 
     const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
 
-    if (this.selection.isInsideList && anchorNode && getListType(anchorNode) === "number") {
-      this.contents.applyParagraphFormat()
+    if (this.selection.isInsideList && listItem) {
+      const effectiveType = listItem.getEffectiveListType?.() ?? getListType(anchorNode)
+      if (effectiveType === "number") {
+        this.contents.applyParagraphFormat()
+      } else {
+        listItem.setListItemType?.("number")
+        this.contents.unwrapListItemIfWrapped(listItem)
+      }
     } else {
       this.contents.applyOrderedListFormat()
     }
@@ -230,6 +245,10 @@ export class CommandDispatcher {
 
   dispatchInsertHorizontalDivider() {
     $insertNodeToNearestRoot(new HorizontalDividerNode)
+  }
+
+  dispatchSetFormatHeadingXLarge() {
+    this.contents.applyHeadingFormat("h1")
   }
 
   dispatchSetFormatHeadingLarge() {
@@ -434,7 +453,7 @@ export class CommandDispatcher {
     if (this.selection.isInsideList) {
       return this.#handleTabForList(event)
     } else if (this.selection.isInsideCodeBlock) {
-      return this.#handleTabForCode()
+      return this.#handleTabForCode(event)
     }
     return false
   }
@@ -447,9 +466,13 @@ export class CommandDispatcher {
     return this.editor.dispatchCommand(command)
   }
 
-  #handleTabForCode() {
+  #handleTabForCode(event) {
     const selection = $getSelection()
-    return $isRangeSelection(selection) && selection.isCollapsed()
+    if ($isRangeSelection(selection) && selection.isCollapsed()) {
+      event?.preventDefault()
+      return true
+    }
+    return false
   }
 
 }

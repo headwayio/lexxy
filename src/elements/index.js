@@ -4,6 +4,7 @@ import HeadingDropdown from "./dropdown/heading"
 import HighlightDropdown from "./dropdown/highlight"
 import LinkDropdown from "./dropdown/link"
 import Editor from "./editor"
+import BlockActionsMenu from "./block_actions_menu"
 import Prompt from "./prompt"
 import CodeLanguagePicker from "./code_language_picker"
 import NodeDeleteButton from "./node_delete_button"
@@ -19,6 +20,7 @@ export function defineElements() {
     "lexxy-link-dropdown": LinkDropdown,
 
     "lexxy-editor": Editor,
+    "lexxy-block-actions": BlockActionsMenu,
 
     // Prompt must be registered AFTER Editor
     "lexxy-prompt": Prompt,

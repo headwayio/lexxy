@@ -1,4 +1,4 @@
-import { $addUpdateTag, $createParagraphNode, $getRoot, $getSelection, $hasUpdateTag, $isElementNode, $isLineBreakNode, $isRangeSelection, $isTextNode, $onUpdate, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, CONTROLLED_TEXT_INSERTION_COMMAND, KEY_ENTER_COMMAND, PASTE_TAG, SKIP_DOM_SELECTION_TAG, TextNode } from "lexical"
+import { $addUpdateTag, $createParagraphNode, $getRoot, $getSelection, $hasUpdateTag, $isElementNode, $isLineBreakNode, $isParagraphNode, $isRangeSelection, $isTextNode, $onUpdate, CAN_REDO_COMMAND, CAN_UNDO_COMMAND, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, CONTROLLED_TEXT_INSERTION_COMMAND, KEY_ENTER_COMMAND, PASTE_TAG, SKIP_DOM_SELECTION_TAG, TextNode } from "lexical"
 import { buildEditorFromExtensions } from "@lexical/extension"
 import { ListItemNode, ListNode, registerList } from "@lexical/list"
 import { AutoLinkNode, LinkNode } from "@lexical/link"
@@ -8,10 +8,12 @@ import { HeadingNode, QuoteNode, registerRichText } from "@lexical/rich-text"
 import { $generateHtmlFromNodes, $generateNodesFromDOM as $generateLexicalNodesFromDOM } from "@lexical/html"
 import { filterDisallowedAttachmentNodes } from "../helpers/attachment_filter_helper"
 import { $convertInlineImageDataURIs } from "../helpers/inline_image_uri_helper"
-import { CodeHighlightNode, CodeNode } from "@lexical/code"
+import { $createCodeNode, CodeHighlightNode, CodeNode } from "@lexical/code"
 import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
 import { HORIZONTAL_DIVIDER } from "../editor/markdown/horizontal_divider_transformer"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
+import { registerImmediateBlockShortcuts } from "../editor/markdown/horizontal_rule_transformer"
+import { QUOTE_DOUBLEQUOTE_TRANSFORMER, QUOTE_PIPE_TRANSFORMER } from "../editor/markdown/quote_alias_transformers"
 
 import theme from "../config/theme"
 import { HorizontalDividerNode } from "../nodes/horizontal_divider_node"
@@ -46,6 +48,8 @@ import { LinkOpenerExtension } from "../extensions/link_opener_extension.js"
 import { PreventLexicalTripleClickExtension } from "../extensions/prevent_lexical_triple_click_extension.js"
 import { CustomAttachmentDragAndDropExtension } from "../extensions/custom_attachment_drag_and_drop_extension.js"
 import { nextFrame } from "../helpers/timing_helper.js"
+import { SlashCommandsExtension } from "../extensions/slash_commands_extension.js"
+import { BlockSelectionExtension } from "../extensions/block_selection_extension.js"
 
 
 export class LexicalEditorElement extends HTMLElement {
@@ -53,7 +57,7 @@ export class LexicalEditorElement extends HTMLElement {
   static debug = false
   static commands = [ "bold", "italic", "strikethrough" ]
 
-  static observedAttributes = [ "autocapitalize", "connected", "required" ]
+  static observedAttributes = [ "autocapitalize", "connected", "required", "block-handles" ]
 
   #initialValue = ""
   #previousInternalFormValue = null
@@ -147,6 +151,14 @@ export class LexicalEditorElement extends HTMLElement {
     if (this.isConnected) this.#requestValidityRefresh()
   }
 
+  "block-handlesChangedCallback"(_oldValue, newValue) {
+    if (!this.isConnected) return
+
+    const show = newValue !== "false"
+    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+    ext?.setShowHandles(show)
+  }
+
   formResetCallback() {
     this.value = this.#initialValue
     this.editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined)
@@ -187,6 +199,12 @@ export class LexicalEditorElement extends HTMLElement {
     this.#requestValidityRefresh()
   }
 
+  /** True when one or more blocks are selected via drag-handle click or Cmd+click. */
+  get hasBlockSelection() {
+    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+    return ext?.hasBlockSelection ?? false
+  }
+
   get toolbarElement() {
     if (!this.#hasToolbar) return null
 
@@ -206,7 +224,9 @@ export class LexicalEditorElement extends HTMLElement {
       FormatEscapeExtension,
       LinkOpenerExtension,
       PreventLexicalTripleClickExtension,
-      CustomAttachmentDragAndDropExtension
+      CustomAttachmentDragAndDropExtension,
+      SlashCommandsExtension,
+      BlockSelectionExtension
     ]
   }
 
@@ -400,6 +420,7 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFileAcceptFilter()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.extensions.initializeEditors()
     this.#resetBeforeTurboCaches()
 
     this.#setInternalFormValue(this.value, { suppressEvent: true })
@@ -470,7 +491,7 @@ export class LexicalEditorElement extends HTMLElement {
   #createEditorContentElement() {
     const editorContentElement = createElement("div", {
       id: `${this.id}-content`,
-      classList: "lexxy-editor__content",
+      classList: "lexxy-editor__content lexxy-content",
       contenteditable: true,
       role: "textbox",
       "aria-multiline": true,
@@ -607,9 +628,11 @@ export class LexicalEditorElement extends HTMLElement {
       )
       this.#registerTableComponents()
       this.#registerCodeLanguagePicker()
+      registered.push(registerCodeFenceShortcut(this.editor))
       if (this.supportsMarkdown) {
-        const transformers = [ ...TRANSFORMERS, HORIZONTAL_DIVIDER ]
+        const transformers = [ ...TRANSFORMERS, HORIZONTAL_DIVIDER, QUOTE_PIPE_TRANSFORMER, QUOTE_DOUBLEQUOTE_TRANSFORMER ]
         registered.push(
+          registerImmediateBlockShortcuts(this.editor),
           registerMarkdownShortcuts(this.editor, transformers),
           registerMarkdownLeadingTagHandler(this.editor, transformers)
         )
@@ -919,6 +942,24 @@ export class LexicalEditorElement extends HTMLElement {
 }
 
 export default LexicalEditorElement
+
+const CODE_FENCE_REGEX = /^`{3,}([\w-]*)$/
+
+function registerCodeFenceShortcut(editor) {
+  return editor.registerNodeTransform(TextNode, (textNode) => {
+    const parent = textNode.getParent()
+    if (!$isParagraphNode(parent)) return
+    if (parent.getChildrenSize() !== 1) return
+
+    const text = textNode.getTextContent()
+    if (!text.match(CODE_FENCE_REGEX)) return
+
+    const language = text.replace(/^`+/, "") || undefined
+    const codeNode = $createCodeNode(language)
+    parent.replace(codeNode)
+    codeNode.select()
+  })
+}
 
 // Like $getRoot().getTextContent() but uses readable text for custom attachment nodes
 // (e.g., mentions) instead of their single-character cursor placeholder.

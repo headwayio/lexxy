@@ -96,6 +96,8 @@ export default class Selection {
 
     const topLevelElement = anchorNode.getTopLevelElementOrThrow()
     const listType = getListType(anchorNode)
+    const listItem = $getNearestNodeOfType(anchorNode, ListItemNode)
+    const effectiveListType = listItem?.getEffectiveListType?.() ?? listType
     const headingNode = this.#getNearestHeadingNode(anchorNode)
 
     return {
@@ -110,7 +112,7 @@ export default class Selection {
       isInCode: this.#isInCode(selection, anchorNode),
       headingTag: headingNode?.getTag() ?? null,
       isInList: listType !== null,
-      listType,
+      listType: effectiveListType,
       isInTable: $getTableCellNodeFromLexicalNode(anchorNode) !== null
     }
   }

@@ -3,6 +3,7 @@ import { $getSelectionStyleValueForProperty } from "@lexical/selection"
 import { ToolbarDropdown } from "../toolbar_dropdown"
 import { registerEventListener } from "../../helpers/listener_helper"
 import { createElement } from "../../helpers/html_helper"
+import { BlockActionsMenu } from "../block_actions_menu"
 
 const APPLY_HIGHLIGHT_SELECTOR = "button.lexxy-highlight-button"
 const REMOVE_HIGHLIGHT_SELECTOR = "[data-command='removeHighlight']"
@@ -67,6 +68,7 @@ export class HighlightDropdown extends ToolbarDropdown {
 
     const { style, value } = button.dataset
 
+    BlockActionsMenu.saveLastUsedColor(style, value)
     this.editor.dispatchCommand("toggleHighlight", { [style]: value })
     this.close()
   }

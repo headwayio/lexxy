@@ -217,7 +217,13 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #updateButtonStates() {
     const selection = $getSelection()
-    if (!$isRangeSelection(selection)) return
+
+    // In block select mode, the selection is an internal implementation detail
+    // (used temporarily for commands like color/highlight). Don't reflect it.
+    if (!$isRangeSelection(selection) || this.editor.getRootElement()?.classList.contains("block-selection-active")) {
+      this.#clearAllPressedStates()
+      return
+    }
 
     const anchorNode = selection.anchor.getNode()
     if (!anchorNode.getParent()) { return }
@@ -246,6 +252,12 @@ export class LexicalToolbarElement extends HTMLElement {
     this.#setButtonPressed("code", isInCode)
 
     this.#setButtonPressed("table", isInTable)
+  }
+
+  #clearAllPressedStates() {
+    for (const button of this.querySelectorAll("[aria-pressed='true']")) {
+      button.setAttribute("aria-pressed", "false")
+    }
   }
 
   #setButtonPressed(name, isPressed) {

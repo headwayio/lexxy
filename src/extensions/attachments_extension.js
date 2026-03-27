@@ -9,7 +9,7 @@ import { AttachmentDragAndDrop } from "../editor/attachments/drag_and_drop"
 import LexxyExtension from "./lexxy_extension"
 import { $isAtNodeEdge } from "../helpers/lexical_helper.js"
 
-const ATTACHMENT_ATTRIBUTES = [ "alt", "caption", "content", "content-type", "data-direct-upload-id",
+const ATTACHMENT_ATTRIBUTES = [ "alt", "blob-url", "caption", "collapsed", "content", "content-type", "data-direct-upload-id",
   "data-sgid", "filename", "filesize", "height", "presentation", "previewable", "sgid", "url", "width" ]
 
 const UPLOADS_BUSY_MESSAGE = "Please wait for all files to upload"

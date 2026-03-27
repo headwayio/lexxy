@@ -1,5 +1,6 @@
 import { $createParagraphNode, $hasUpdateTag, PASTE_TAG } from "lexical"
 import { CodeNode } from "@lexical/code"
+import { $createListItemNode, $isListItemNode } from "@lexical/list"
 import { $getNearestNodeOfType } from "@lexical/utils"
 import { $isAtNodeStart, $isCursorOnLastLine, $trimTrailingBlankNodes } from "../helpers/lexical_helper"
 
@@ -65,6 +66,18 @@ export class EarlyEscapeCodeNode extends CodeNode {
 
   #escapeToNewParagraphAfter() {
     $trimTrailingBlankNodes(this)
+
+    // If the code block is wrapped inside a ListItemNode, create a new
+    // sibling list item (not a paragraph inside the wrapper) so the new
+    // item is a proper list citizen that inherits parent highlighting.
+    const parentListItem = this.getParent()
+    if ($isListItemNode(parentListItem)) {
+      const newItem = $createListItemNode()
+      parentListItem.insertAfter(newItem)
+      newItem.select()
+      return newItem
+    }
+
     const paragraph = $createParagraphNode()
     this.insertAfter(paragraph)
     return paragraph

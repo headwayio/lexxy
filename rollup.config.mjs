@@ -17,11 +17,13 @@ export default [
       {
         file: "./app/assets/javascript/lexxy.js",
         format: "esm",
-        sourcemap: true
+        sourcemap: true,
+        inlineDynamicImports: true
       },
       {
         file: "./app/assets/javascript/lexxy.min.js",
         format: "esm",
+        inlineDynamicImports: true,
         plugins: [ terser() ]
       }
     ],
