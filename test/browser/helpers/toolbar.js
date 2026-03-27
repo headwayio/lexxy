@@ -17,7 +17,7 @@ export async function clickToolbarButton(page, command) {
   if (FORMAT_DROPDOWN_COMMANDS.has(command)) {
     await openFormatDropdown(page)
   }
-  await page.locator(`[data-command='${command}']`).click()
+  await page.locator(`lexxy-toolbar [data-command='${command}']`).click()
 }
 
 export async function applyHighlightOption(page, attribute, buttonIndex) {

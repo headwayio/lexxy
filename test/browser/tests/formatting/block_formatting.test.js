@@ -136,7 +136,7 @@ test.describe("Block formatting", () => {
     await editor.setValue("<p>First line<br>Second line<br>Third line</p>")
     await editor.select("Second line")
 
-    await page.locator("[data-command='insertQuoteBlock']").click()
+    await page.locator("lexxy-toolbar [data-command='insertQuoteBlock']").click()
 
     await assertEditorHtml(
       editor,
