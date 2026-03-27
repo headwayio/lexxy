@@ -9,9 +9,9 @@ import { $createCodeNode, CodeHighlightNode, CodeNode, registerCodeHighlighting 
 import { TRANSFORMERS as LEXICAL_TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
 import { HORIZONTAL_RULE_TRANSFORMER, registerImmediateBlockShortcuts } from "../editor/markdown/horizontal_rule_transformer"
-import { QUOTE_PIPE_TRANSFORMER, QUOTE_DOUBLEQUOTE_TRANSFORMER } from "../editor/markdown/quote_alias_transformers"
+import { QUOTE_DOUBLEQUOTE_TRANSFORMER, QUOTE_PIPE_TRANSFORMER } from "../editor/markdown/quote_alias_transformers"
 
-const TRANSFORMERS = [...LEXICAL_TRANSFORMERS, HORIZONTAL_RULE_TRANSFORMER, QUOTE_PIPE_TRANSFORMER, QUOTE_DOUBLEQUOTE_TRANSFORMER]
+const TRANSFORMERS = [ ...LEXICAL_TRANSFORMERS, HORIZONTAL_RULE_TRANSFORMER, QUOTE_PIPE_TRANSFORMER, QUOTE_DOUBLEQUOTE_TRANSFORMER ]
 import { createEmptyHistoryState, registerHistory } from "@lexical/history"
 
 import theme from "../config/theme"

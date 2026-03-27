@@ -2,7 +2,7 @@ import LexxyExtension from "./lexxy_extension"
 import { createElement } from "../helpers/html_helper"
 import ToolbarIcons from "../elements/toolbar_icons"
 
-const COLOR_NAMES = ["Yellow", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Brown", "Gray"]
+const COLOR_NAMES = [ "Yellow", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Brown", "Gray" ]
 
 function colorName(cssVar) {
   const match = cssVar.match(/--highlight-(?:bg-)?(\d+)/)
@@ -17,7 +17,7 @@ const CONVERTIBLE_BLOCK_ITEMS = [
   { command: "setFormatHeadingSmall", label: "Heading 4", search: "heading 4 title h4 small", icon: ToolbarIcons.h4, shortcut: "####" },
   { command: "insertUnorderedList", label: "Bullet list", search: "bullet list unordered", icon: ToolbarIcons.ul, shortcut: "-" },
   { command: "insertOrderedList", label: "Numbered list", search: "numbered list ordered", icon: ToolbarIcons.ol, shortcut: "1." },
-  { command: "insertQuoteBlock", label: "Quote", search: "quote blockquote", icon: ToolbarIcons.quote, shortcut: '> | "' },
+  { command: "insertQuoteBlock", label: "Quote", search: "quote blockquote", icon: ToolbarIcons.quote, shortcut: "> | \"" },
   { command: "insertCodeBlock", label: "Code block", search: "code block pre", icon: ToolbarIcons.code, shortcut: "```" },
 ]
 

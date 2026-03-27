@@ -12,7 +12,7 @@ const TURN_INTO_OPTIONS = [
   { command: "insertCodeBlock", label: "Code block", icon: ToolbarIcons.code },
 ]
 
-const COLOR_NAMES = ["Yellow", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Brown", "Gray"]
+const COLOR_NAMES = [ "Yellow", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Brown", "Gray" ]
 
 function colorLabel(cssVar, style) {
   const match = cssVar.match(/--highlight-(?:bg-)?(\d+)/)
@@ -117,7 +117,7 @@ export class BlockActionsMenu extends HTMLElement {
   }
 
   #buildColorSubmenu(colorConfig) {
-    const panel = this.querySelector('[data-panel="color"]')
+    const panel = this.querySelector("[data-panel=\"color\"]")
     if (!panel) return
 
     let html = ""
@@ -138,7 +138,7 @@ export class BlockActionsMenu extends HTMLElement {
     }
 
     if (colorConfig.color?.length) {
-      html += `<div class="lexxy-block-actions__color-label">Text color</div>`
+      html += "<div class=\"lexxy-block-actions__color-label\">Text color</div>"
       html += colorConfig.color.map(c => `
         <button type="button" role="menuitem" class="lexxy-block-actions__item" data-action="color" data-style="color" data-value="${c}">
           <span class="lexxy-block-actions__color-swatch" style="color:${c}">A</span>
@@ -148,7 +148,7 @@ export class BlockActionsMenu extends HTMLElement {
     }
 
     if (colorConfig["background-color"]?.length) {
-      html += `<div class="lexxy-block-actions__color-label">Background color</div>`
+      html += "<div class=\"lexxy-block-actions__color-label\">Background color</div>"
       html += colorConfig["background-color"].map(c => `
         <button type="button" role="menuitem" class="lexxy-block-actions__item" data-action="color" data-style="background-color" data-value="${c}">
           <span class="lexxy-block-actions__color-swatch" style="background-color:${c}"></span>
@@ -180,7 +180,7 @@ export class BlockActionsMenu extends HTMLElement {
   }
 
   #position(anchorRect) {
-    const mainPanel = this.querySelector('[data-panel="main"]')
+    const mainPanel = this.querySelector("[data-panel=\"main\"]")
 
     // Measure dimensions — if menu is already visible we can read directly,
     // otherwise show off-screen momentarily to measure.
@@ -269,12 +269,12 @@ export class BlockActionsMenu extends HTMLElement {
     if (this.#openSubmenuName) {
       return this.querySelector(`[data-panel="${this.#openSubmenuName}"]`)
     }
-    return this.querySelector('[data-panel="main"]')
+    return this.querySelector("[data-panel=\"main\"]")
   }
 
   get #menuItems() {
     const panel = this.#activePanel
-    return panel ? [...panel.querySelectorAll("button[role='menuitem']")] : []
+    return panel ? [ ...panel.querySelectorAll("button[role='menuitem']") ] : []
   }
 
   #focusItem(index, { openSubmenu = false } = {}) {
@@ -350,7 +350,7 @@ export class BlockActionsMenu extends HTMLElement {
     if (!trigger) return
 
     const triggerRect = trigger.getBoundingClientRect()
-    const mainPanel = this.querySelector('[data-panel="main"]')
+    const mainPanel = this.querySelector("[data-panel=\"main\"]")
     const mainRect = mainPanel.getBoundingClientRect()
 
     // Reset positioning so we can measure the flyout's natural height
@@ -398,7 +398,7 @@ export class BlockActionsMenu extends HTMLElement {
     const button = event.target.closest("button[role='menuitem']")
     if (!button) return
 
-    const mainPanel = this.querySelector('[data-panel="main"]')
+    const mainPanel = this.querySelector("[data-panel=\"main\"]")
     if (!mainPanel?.contains(button)) return
 
     if (button.dataset.submenu) {
@@ -522,16 +522,6 @@ export class BlockActionsMenu extends HTMLElement {
     }
   }
 
-  #autoRevealSubmenuForFocused() {
-    const items = this.#menuItems
-    const focused = items[this.#focusedIndex]
-    if (focused?.dataset.submenu) {
-      // Reveal submenu but keep keyboard focus on the main panel trigger
-      this.#openSubmenu(focused.dataset.submenu, { focusSubmenu: false })
-    } else {
-      this.#closeAllSubmenus()
-    }
-  }
 }
 
 const PALETTE_ICON = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

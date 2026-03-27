@@ -1,10 +1,10 @@
-import { $createParagraphNode, $createTextNode, $getSelection, $isRangeSelection, $isTextNode, KEY_DOWN_COMMAND, COMMAND_PRIORITY_CRITICAL } from "lexical"
+import { $createParagraphNode, $createTextNode, $getSelection, $isRangeSelection, $isTextNode, COMMAND_PRIORITY_CRITICAL, KEY_DOWN_COMMAND } from "lexical"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
 import { HorizontalDividerNode } from "../../nodes/horizontal_divider_node"
 
 // Markdown export transformer for serialization
 export const HORIZONTAL_RULE_TRANSFORMER = {
-  dependencies: [HorizontalDividerNode],
+  dependencies: [ HorizontalDividerNode ],
   export: (node) => {
     if (node instanceof HorizontalDividerNode) {
       return "---"

@@ -440,7 +440,7 @@ export class LexicalPromptElement extends HTMLElement {
   #buildFooter() {
     const footer = createElement("li", { role: "presentation" })
     footer.classList.add("lexxy-prompt-menu__footer")
-    footer.innerHTML = `<span>Close menu</span><span class="lexxy-prompt-menu__footer-key">esc</span>`
+    footer.innerHTML = "<span>Close menu</span><span class=\"lexxy-prompt-menu__footer-key\">esc</span>"
     return footer
   }
 

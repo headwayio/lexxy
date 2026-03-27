@@ -1,6 +1,6 @@
 import { $createParagraphNode } from "lexical"
 import { CodeNode } from "@lexical/code"
-import { $isListItemNode, $createListItemNode } from "@lexical/list"
+import { $createListItemNode, $isListItemNode } from "@lexical/list"
 import { $getNearestNodeOfType } from "@lexical/utils"
 import { $isCursorOnLastLine, $trimTrailingBlankNodes } from "../helpers/lexical_helper"
 

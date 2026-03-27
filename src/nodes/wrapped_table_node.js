@@ -1,5 +1,5 @@
 import { TableNode } from "@lexical/table"
-import { $isListItemNode, $createListItemNode } from "@lexical/list"
+import { $createListItemNode, $isListItemNode } from "@lexical/list"
 import { createElement } from "../helpers/html_helper"
 
 export class WrappedTableNode extends TableNode {

@@ -6,7 +6,7 @@ import {
 
 import { $generateNodesFromDOM } from "@lexical/html"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
-import { $createHeadingNode, $createQuoteNode, $isQuoteNode, $isHeadingNode } from "@lexical/rich-text"
+import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
 import { $isListItemNode, $isListNode } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
@@ -112,7 +112,7 @@ export default class Contents {
 
   #restoreTextStyles(savedStyles) {
     if (savedStyles.size === 0) return
-    for (const [key, style] of savedStyles) {
+    for (const [ key, style ] of savedStyles) {
       const node = $getNodeByKey(key)
       if ($isTextNode(node) && !node.getStyle()) {
         node.setStyle(style)
@@ -148,7 +148,7 @@ export default class Contents {
       $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
     )
     if (existingWrapped) {
-      for (const child of [...existingWrapped.getChildren()]) {
+      for (const child of [ ...existingWrapped.getChildren() ]) {
         newBlock.append(child)
       }
       existingWrapped.replace(newBlock)
@@ -157,7 +157,7 @@ export default class Contents {
     }
 
     // Regular inline content → wrap in the new block
-    for (const child of [...children]) {
+    for (const child of [ ...children ]) {
       if ($isListNode(child)) continue
       newBlock.append(child)
     }
@@ -187,7 +187,7 @@ export default class Contents {
       $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
     )
     if (wrappedChild) {
-      for (const child of [...wrappedChild.getChildren()]) {
+      for (const child of [ ...wrappedChild.getChildren() ]) {
         listItem.append(child)
       }
       wrappedChild.remove()

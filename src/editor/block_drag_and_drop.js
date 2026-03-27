@@ -102,7 +102,7 @@ export class BlockDragAndDrop {
     const btn = document.createElement("div")
     btn.className = "lexxy-block-add"
     btn.setAttribute("aria-label", "Add block")
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/></svg>`
+    btn.innerHTML = "<svg width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" xmlns=\"http://www.w3.org/2000/svg\"><line x1=\"7\" y1=\"1\" x2=\"7\" y2=\"13\"/><line x1=\"1\" y1=\"7\" x2=\"13\" y2=\"7\"/></svg>"
 
     btn.addEventListener("click", this.#onAddButtonClick)
 
@@ -574,20 +574,6 @@ export class BlockDragAndDrop {
     return null
   }
 
-  // Find the deepest last content item inside a structural wrapper.
-  // Walks into nested sublists to find the bottom-most visible item.
-  #findDeepestLastItem(wrapperElement) {
-    const lists = wrapperElement.querySelectorAll("ul, ol")
-    let deepest = null
-    for (const list of lists) {
-      const items = list.querySelectorAll(":scope > li:not(.lexxy-nested-listitem)")
-      if (items.length > 0) {
-        deepest = items[items.length - 1]
-      }
-    }
-    return deepest
-  }
-
   // Find the <li> inside a list that is closest to the given clientY
   #findNearestListItem(listElement, clientY) {
     let best = null
@@ -785,7 +771,7 @@ export class BlockDragAndDrop {
     const isAboveContent = event.clientY < rootRect.top
     const isBelowContent = event.clientY > rootRect.bottom
     if (isAboveContent || isBelowContent || element === root) {
-      const children = [...root.children].filter(c =>
+      const children = [ ...root.children ].filter(c =>
         c.tagName !== "BR" && !c.classList.contains("lexxy-block-handle") &&
         !c.classList.contains("lexxy-block-add") &&
         !c.classList.contains("lexxy-drop-indicator"))
@@ -823,8 +809,8 @@ export class BlockDragAndDrop {
     const blockElement = this.#findNearestBlockElement(element, root, event.clientY)
     if (!blockElement) return null
 
-    let resolvedBlock = blockElement
-    let nodeKey = this.#getNodeKeyFromElement(resolvedBlock)
+    const resolvedBlock = blockElement
+    const nodeKey = this.#getNodeKeyFromElement(resolvedBlock)
     if (!nodeKey) return null
 
     // Self-targeting: allow the dragged item as its own drop target for
@@ -847,7 +833,7 @@ export class BlockDragAndDrop {
       }
     }
 
-    let position = isSelfTarget ? "after" : this.#computeVerticalPosition(resolvedBlock, event.clientY)
+    const position = isSelfTarget ? "after" : this.#computeVerticalPosition(resolvedBlock, event.clientY)
 
     // Skip "inside" when the dragged item is already nested under the target
     // (dropping would be a no-op). The user can outdent by dragging to "after"
@@ -916,7 +902,6 @@ export class BlockDragAndDrop {
     // root level adjacent to the list, not inside it. Show indicator at root.
     const isInList = resolvedBlock.tagName === "LI"
     if (isInList && !draggedIsListContent && position !== "inside") {
-      const rootList = resolvedBlock.closest(`.${root.className.split(" ")[0]} > ul, .${root.className.split(" ")[0]} > ol`) || root.querySelector("ul, ol")
       const rootRect = root.getBoundingClientRect()
       const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || 28
       const contentLeft = rootRect.left + rootPadding
@@ -1040,7 +1025,7 @@ export class BlockDragAndDrop {
     const points = []
     const seen = new Set()
 
-    const addPoint = (depth, pixelLeft) => {
+    function addPoint(depth, pixelLeft) {
       if (depth < minDepth) return
       if (seen.has(depth)) return
       seen.add(depth)
@@ -1304,7 +1289,7 @@ export class BlockDragAndDrop {
       // For outdent operations (moving to a shallower depth within a list),
       // capture trailing siblings from the original list. Standard outliner
       // behavior: items after the outdented item become its children.
-      let trailingSiblings = []
+      const trailingSiblings = []
       const draggedDepth = $isListItemNode(draggedNode) ? this.#getNodeDepth(draggedNode) : 0
       if (target.depth > 0 && target.depth < draggedDepth && $isListItemNode(draggedNode)) {
         let sib = draggedNode.getNextSibling()
@@ -1410,7 +1395,7 @@ export class BlockDragAndDrop {
               const assocList = associatedWrapper.getChildren().find(c => $isListNode(c))
               const existingList = existingWrapper.getChildren().find(c => $isListNode(c))
               if (assocList && existingList) {
-                for (const child of [...existingList.getChildren()]) {
+                for (const child of [ ...existingList.getChildren() ]) {
                   assocList.append(child)
                 }
                 // Remove the emptied list before removing the wrapper to
@@ -1443,7 +1428,7 @@ export class BlockDragAndDrop {
               const assocList = associatedWrapper.getChildren().find(c => $isListNode(c))
               const existingList = nextSib.getChildren().find(c => $isListNode(c))
               if (assocList && existingList) {
-                for (const child of [...existingList.getChildren()]) {
+                for (const child of [ ...existingList.getChildren() ]) {
                   assocList.append(child)
                 }
                 existingList.remove()
@@ -1658,7 +1643,7 @@ export class BlockDragAndDrop {
   // when those inner lists are empty. Never removes content list items.
   #cleanupEmptyStructuralWrappers(list) {
     if (!$isListNode(list)) return
-    for (const child of [...list.getChildren()]) {
+    for (const child of [ ...list.getChildren() ]) {
       if (!$isListItemNode(child)) continue
       if (this.#isStructuralWrapper(child)) {
         // Structural wrapper — remove if all inner lists are empty
@@ -1781,7 +1766,7 @@ export class BlockDragAndDrop {
       if (this.#isStructuralWrapper(nodeToInsert)) {
         const innerList = nodeToInsert.getChildren()[0]
         const firstChild = nestedList.getFirstChild()
-        for (const child of [...innerList.getChildren()]) {
+        for (const child of [ ...innerList.getChildren() ]) {
           if (firstChild) {
             firstChild.insertBefore(child)
           } else {
@@ -1803,7 +1788,7 @@ export class BlockDragAndDrop {
           nestedList.append(nodeToInsert)
         }
       } else if ($isListNode(nodeToInsert)) {
-        const items = [...nodeToInsert.getChildren()]
+        const items = [ ...nodeToInsert.getChildren() ]
         for (let i = items.length - 1; i >= 0; i--) {
           if (firstChild) {
             firstChild.insertBefore(items[i])
