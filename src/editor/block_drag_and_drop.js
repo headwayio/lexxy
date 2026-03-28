@@ -594,20 +594,6 @@ export class BlockDragAndDrop {
     return null
   }
 
-  // Find the deepest last content item inside a structural wrapper.
-  // Walks into nested sublists to find the bottom-most visible item.
-  #findDeepestLastItem(wrapperElement) {
-    const lists = wrapperElement.querySelectorAll("ul, ol")
-    let deepest = null
-    for (const list of lists) {
-      const items = list.querySelectorAll(":scope > li:not(.lexxy-nested-listitem)")
-      if (items.length > 0) {
-        deepest = items[items.length - 1]
-      }
-    }
-    return deepest
-  }
-
   // Find the <li> inside a list that is closest to the given clientY
   #findNearestListItem(listElement, clientY) {
     let best = null
@@ -936,6 +922,7 @@ export class BlockDragAndDrop {
     // root level adjacent to the list, not inside it. Show indicator at root.
     const isInList = resolvedBlock.tagName === "LI"
     if (isInList && !draggedIsListContent && position !== "inside") {
+      // eslint-disable-next-line no-unused-vars
       const rootList = resolvedBlock.closest(`.${root.className.split(" ")[0]} > ul, .${root.className.split(" ")[0]} > ol`) || root.querySelector("ul, ol")
       const rootRect = root.getBoundingClientRect()
       const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || 28
@@ -1060,7 +1047,7 @@ export class BlockDragAndDrop {
     const points = []
     const seen = new Set()
 
-    const addPoint = (depth, pixelLeft) => {
+    function addPoint(depth, pixelLeft) {
       if (depth < minDepth) return
       if (seen.has(depth)) return
       seen.add(depth)

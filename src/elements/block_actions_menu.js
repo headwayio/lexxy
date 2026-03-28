@@ -522,16 +522,6 @@ export class BlockActionsMenu extends HTMLElement {
     }
   }
 
-  #autoRevealSubmenuForFocused() {
-    const items = this.#menuItems
-    const focused = items[this.#focusedIndex]
-    if (focused?.dataset.submenu) {
-      // Reveal submenu but keep keyboard focus on the main panel trigger
-      this.#openSubmenu(focused.dataset.submenu, { focusSubmenu: false })
-    } else {
-      this.#closeAllSubmenus()
-    }
-  }
 }
 
 const PALETTE_ICON = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

@@ -6,7 +6,7 @@ import {
 
 import { $generateNodesFromDOM } from "@lexical/html"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
-import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from "@lexical/rich-text"
+import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
 import { $isListItemNode, $isListNode } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
