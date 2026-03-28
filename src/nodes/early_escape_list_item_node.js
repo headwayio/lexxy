@@ -5,52 +5,25 @@ import { $getNearestNodeOfType } from "@lexical/utils"
 import { $isBlankNode, $trimTrailingBlankNodes } from "../helpers/lexical_helper"
 
 export class EarlyEscapeListItemNode extends ListItemNode {
-  /** @type {'bullet' | 'number' | undefined} */
-  __listItemType
-
   $config() {
     return this.config("early_escape_listitem", { extends: ListItemNode })
   }
 
-  afterCloneFrom(prevNode) {
-    super.afterCloneFrom(prevNode)
-    this.__listItemType = prevNode.__listItemType
-  }
-
-  getListItemType() {
-    return this.getLatest().__listItemType
-  }
-
-  setListItemType(type) {
-    const self = this.getWritable()
-    self.__listItemType = type
-    return self
-  }
-
-  getEffectiveListType() {
-    const override = this.getListItemType()
-    if (override) return override
-
-    const parent = this.getParent()
-    return $isListNode(parent) ? parent.getListType() : "bullet"
-  }
-
   createDOM(config) {
     const element = super.createDOM(config)
-    element.dataset.listItemType = this.getEffectiveListType()
     this.#updateBulletDepth(element)
     return element
   }
 
   updateDOM(prevNode, dom, config) {
     const result = super.updateDOM(prevNode, dom, config)
-    dom.dataset.listItemType = this.getEffectiveListType()
     this.#updateBulletDepth(dom)
     return result
   }
 
   #updateBulletDepth(element) {
-    if (this.getEffectiveListType() === "bullet" && !this.getChildren().some(c => $isListNode(c))) {
+    const parentList = this.getParent()
+    if ($isListNode(parentList) && parentList.getListType() === "bullet" && !this.getChildren().some(c => $isListNode(c))) {
       const depth = ((this.#computeBulletDepth() - 1) % 3) + 1
       element.dataset.bulletDepth = depth
     } else {
@@ -66,37 +39,10 @@ export class EarlyEscapeListItemNode extends ListItemNode {
       if (!$isListItemNode(wrapper)) break
       const outerList = wrapper.getParent()
       if (!$isListNode(outerList)) break
-      const prev = wrapper.getPreviousSibling()
-      if (!prev || !$isListItemNode(prev)) break
-      if (prev.getChildren().some(c => $isListNode(c))) break
-      const isBullet = prev instanceof EarlyEscapeListItemNode &&
-        prev.getEffectiveListType() === "bullet"
-      if (!isBullet) break
       depth++
       node = outerList
     }
     return depth
-  }
-
-  exportDOM(editor) {
-    const result = super.exportDOM(editor)
-    if (this.getListItemType()) {
-      result.element.dataset.listItemType = this.getListItemType()
-    } else {
-      delete result.element.dataset.listItemType
-    }
-    return result
-  }
-
-  exportJSON() {
-    return {
-      ...super.exportJSON(),
-      listItemType: this.getListItemType()
-    }
-  }
-
-  updateFromJSON(serializedNode) {
-    return super.updateFromJSON(serializedNode).setListItemType(serializedNode.listItemType)
   }
 
   insertNewAfter(selection, restoreSelection) {
