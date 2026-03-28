@@ -5,9 +5,11 @@ import { ToolbarDropdown } from "../toolbar_dropdown"
 export class LinkDropdown extends ToolbarDropdown {
   initialize() {
     this.input = this.querySelector("input")
-    this.container.addEventListener("toggle", this.#handleToggle.bind(this))
+    if (this.container) {
+      this.container.addEventListener("toggle", this.#handleToggle.bind(this))
+    }
     this.addEventListener("submit", this.#handleSubmit.bind(this))
-    this.querySelector("[value='unlink']").addEventListener("click", this.#handleUnlink.bind(this))
+    this.querySelector("[value='unlink']")?.addEventListener("click", this.#handleUnlink.bind(this))
   }
 
   #handleToggle({ newState }) {
