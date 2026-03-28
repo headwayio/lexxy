@@ -39,7 +39,7 @@ test.describe("Non-previewable attachment", () => {
     await editor.setValue(pdfAttachment({ previewable: "true", url: brokenUrl }))
     await editor.flush()
 
-    const figure = page.locator("figure.attachment")
+    const figure = page.locator("figure.attachment").first()
     await expect(figure).toBeVisible()
 
     // After onerror fires, the figure should swap to file rendering
