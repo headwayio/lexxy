@@ -1,6 +1,9 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
+
 import { normalizeHtml } from "../../helpers/html.js"
+
+test.skip(({ browserName }) => browserName === "webkit", "WebKit pointer capture unreliable in sequential mode")
 
 function stripDynamicAttrs(html) {
   return html

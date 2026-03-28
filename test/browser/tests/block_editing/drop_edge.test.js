@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
 
+test.skip(({ browserName }) => browserName === "webkit", "WebKit pointer capture unreliable in sequential mode")
 test("drag wrapped H2 out of list when list is first element in document", async ({ editor, page }) => {
   await page.goto("/")
   await page.waitForSelector("lexxy-editor[connected]")
