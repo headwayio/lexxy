@@ -1,6 +1,7 @@
 import { $getSelection, $isRangeSelection } from "lexical"
 import { $getSelectionStyleValueForProperty } from "@lexical/selection"
 import { ToolbarDropdown } from "../toolbar_dropdown"
+import { BlockActionsMenu } from "../block_actions_menu"
 
 const APPLY_HIGHLIGHT_SELECTOR = "button.lexxy-highlight-button"
 const REMOVE_HIGHLIGHT_SELECTOR = "[data-command='removeHighlight']"
@@ -13,10 +14,13 @@ const NO_STYLE = Symbol("no_style")
 export class HighlightDropdown extends ToolbarDropdown {
   connectedCallback() {
     super.connectedCallback()
-    this.#registerToggleHandler()
+    // Setup moved to initialize() — connectedCallback runs before the base
+    // class has resolved this.container (deferred via queueMicrotask).
+    // initialize() is called after the editor is connected and container is set.
   }
 
   initialize() {
+    this.#registerToggleHandler()
     this.#setUpButtons()
     this.#registerButtonHandlers()
   }
@@ -73,6 +77,7 @@ export class HighlightDropdown extends ToolbarDropdown {
     const attribute = button.dataset.style
     const value = button.dataset.value
 
+    BlockActionsMenu.saveLastUsedColor(attribute, value)
     this.editor.dispatchCommand("toggleHighlight", { [attribute]: value })
     this.close()
   }

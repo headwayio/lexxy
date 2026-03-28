@@ -2,6 +2,13 @@
 
 :where(lexxy-editor) {
   --lexxy-editor-padding: 1ch;
+  --lexxy-block-handle-gutter: 48px;
+  --lexxy-content-padding-block: 48px;
+
+  &[block-handles="false"] {
+    --lexxy-block-handle-gutter: var(--lexxy-editor-padding);
+    --lexxy-content-padding-block: var(--lexxy-editor-padding);
+  }
   --lexxy-editor-rows: 8lh;
   @supports (min-block-size: attr(rows lh)) {
     --lexxy-editor-rows: attr(rows lh, 8lh);
@@ -49,7 +56,7 @@
     appearance: none;
     background: var(--lexxy-color-canvas);
     border: none;
-    border-radius: var(--lexxy-radius);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
     cursor: pointer;
     line-height: normal;
     font-size: inherit;
@@ -187,6 +194,7 @@
 
   .attachment {
     background-color: var(--lexxy-color-canvas);
+    position: relative;
 
     progress {
       max-inline-size: 10ch;
@@ -194,6 +202,8 @@
     }
 
     &.attachment--preview {
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+
       progress {
         inset-block-start: 2ch;
         inset-inline-start: 0;
@@ -231,6 +241,97 @@
         padding: 1ch;
         text-align: start;
       }
+    }
+  }
+
+  /* Preview / card toggle for previewable attachments */
+  .attachment--preview .attachment__card-view {
+    display: none;
+  }
+
+  .attachment--preview.attachment--collapsed {
+    background: transparent;
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+
+    .attachment__preview-view {
+      display: none;
+    }
+
+    .attachment__card-view {
+      align-items: center;
+      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+      display: flex;
+      gap: 0.75rem;
+      inline-size: 100%;
+      padding: 0.75rem;
+
+      .attachment__icon {
+        background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+        block-size: 2.5rem;
+        inline-size: 2.5rem;
+        border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+        border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+        box-sizing: border-box;
+        color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+        display: grid;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        overflow: hidden;
+        place-content: center;
+        text-transform: uppercase;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .attachment__caption {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        gap: 0.125rem;
+        min-width: 0;
+        text-align: start;
+      }
+
+      .attachment__name {
+        color: var(--lexxy-color-ink);
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attachment__meta {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+      }
+
+      .attachment__caption-text {
+        color: var(--lexxy-color-text-subtle, #9ca3af);
+        font-size: 0.8125rem;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attachment__subtitle {
+        color: var(--lexxy-color-text-subtle, #9ca3af);
+        font-size: 0.75rem;
+        flex-shrink: 0;
+      }
+    }
+
+    lexxy-node-delete-button {
+      inset-block-start: 50%;
+      inset-inline-end: 1ch;
+      inset-inline-start: unset;
+      transform: translate(0, -50%);
     }
   }
 
@@ -302,12 +403,160 @@
   }
 
   .attachment--file {
+    align-items: center;
+    border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+    display: flex;
+    gap: 0.75rem;
+    inline-size: 100%;
+    padding: 0.75rem;
+
+    .attachment__icon {
+      background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+      block-size: 2.5rem;
+      inline-size: 2.5rem;
+      border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+      box-sizing: border-box;
+      color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+      display: grid;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      place-content: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .attachment__caption {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 0.125rem;
+      min-width: 0;
+      text-align: start;
+    }
+
+    .attachment__name {
+      color: var(--lexxy-color-ink);
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment__meta {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    .attachment__caption-text {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.8125rem;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment__subtitle {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
     lexxy-node-delete-button {
       inset-block-start: 50%;
       inset-inline-end: 1ch;
       inset-inline-start: unset;
       transform: translate(0, -50%);
     }
+  }
+
+  /* File type icon colors — matching the files panel design */
+  .attachment--pdf {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(30% 0.05 27);
+  }
+
+  .attachment--md {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(40% 0 0);
+    --lexxy-attachment-icon-text: oklch(30% 0 0);
+  }
+
+  .attachment--csv,
+  .attachment--numbers {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: oklch(45% 0.15 160);
+  }
+
+  .attachment--xls,
+  .attachment--xlsx {
+    --lexxy-attachment-icon-bg: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--txt,
+  .attachment--rtf {
+    --lexxy-attachment-icon-bg: oklch(55% 0 0);
+    --lexxy-attachment-icon-border: oklch(55% 0 0);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--doc,
+  .attachment--docx,
+  .attachment--pages {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: oklch(45% 0.196 258);
+  }
+
+  .attachment--psd,
+  .attachment--key,
+  .attachment--sketch,
+  .attachment--ai,
+  .attachment--eps,
+  .attachment--indd,
+  .attachment--svg,
+  .attachment--ppt,
+  .attachment--pptx {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 27);
+  }
+
+  .attachment--css,
+  .attachment--php,
+  .attachment--json,
+  .attachment--htm,
+  .attachment--html,
+  .attachment--rb,
+  .attachment--erb,
+  .attachment--ts,
+  .attachment--js {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 305);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 305);
+  }
+
+  .attachment--png,
+  .attachment--jpg,
+  .attachment--jpeg,
+  .attachment--gif,
+  .attachment--webp {
+    --lexxy-attachment-icon-bg: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: white;
   }
 
   /* Image galleries */
@@ -351,7 +600,8 @@
       background: transparent;
       block-size: fit-content;
       border: 0;
-      border-radius: var(--lexxy-radius);
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+      box-shadow: none;
       box-sizing: border-box;
       color: inherit;
       display: block;
@@ -365,7 +615,8 @@
 
       &:focus {
         background: var(--lexxy-color-canvas);
-        outline: 0;
+        box-shadow: none;
+        outline: none;
       }
 
       &:placeholder-shown {
@@ -398,7 +649,175 @@
 :where(.lexxy-editor__content) {
   min-block-size: var(--lexxy-editor-rows);
   outline: 0;
-  padding: var(--lexxy-editor-padding);
+  padding: var(--lexxy-content-padding-block) var(--lexxy-block-handle-gutter);
+
+  /* !! IMPORTANT — FIRST-ELEMENT SPACING RULES !!
+     ============================================
+     These rules ensure EXACTLY 48px between the editor's top border and the
+     first visible glyph/content, regardless of which element type renders first.
+
+     Each element has different built-in margins, padding, and line-height leading
+     that must be compensated with a negative margin-top offset.
+
+     HOW TO ADD A NEW ELEMENT TYPE:
+     1. Place the new element as the first item in the editor
+     2. Measure the pixel distance from editor top border to the first visible
+        content (glyph top for text, line/edge for decorators)
+     3. Calculate offset: if measured > 48, use more negative (pull up);
+        if measured < 48, use less negative (push down)
+     4. Add a rule following the pattern below
+     5. Test BOTH cases: fresh (with provisional-paragraph.hidden before it)
+        AND saved/reloaded (without the provisional paragraph)
+     6. If the element gets wrapped in a <p> after save (like HR does),
+        add a :has() rule AND exclude it from the p:not(.hidden) rule
+
+     Matches both :first-child AND .hidden + * (element after Lexical's
+     hidden provisional paragraph). */
+  > :is(:first-child, .hidden + *):is(h1)     { margin-top: -11px !important; }
+  > :is(:first-child, .hidden + *):is(h2)     { margin-top: -8px !important; }
+  > :is(:first-child, .hidden + *):is(h3)     { margin-top: -7px !important; }
+  > :is(:first-child, .hidden + *):is(h4)     { margin-top: -5.5px !important; }
+  > :is(:first-child, .hidden + *):is(p:not(.hidden):not(:has(> .horizontal-divider)), .attachment, .attachment-gallery) { margin-top: -5.5px !important; }
+  > :is(:first-child, .hidden + *):is(ul, ol) { margin-top: -11.5px !important; }
+  > :is(:first-child, .hidden + *):is(table)  { margin-top: -28px !important; }
+  > :is(:first-child, .hidden + *):is(blockquote) { margin-top: -0.5px !important; }
+  /* HR fresh (provisional-p → figure): measured 42 → 48 */
+  > :is(:first-child, .hidden + *):is(figure.horizontal-divider) { margin-top: -5px !important; padding-top: 0 !important; }
+  /* HR saved (p wraps figure): measured 51 → 48 */
+  > :is(:first-child, .hidden + *):has(> .horizontal-divider) { margin-top: -8px !important; padding-top: 0 !important; }
+  /* Other figures (attachments etc.) */
+  > :is(:first-child, .hidden + *):is(figure:not(.horizontal-divider)) { margin-top: -8px !important; }
+}
+
+/* Compact editors (block-handles=false): reset first-child offsets that
+   are designed for the 48px padding. These editors use 1ch padding. */
+lexxy-editor[block-handles="false"] .lexxy-editor__content {
+  > :is(:first-child, .hidden + *) { margin-top: 0 !important; padding-top: revert !important; }
+}
+
+:where(.lexxy-editor__content) {
+  /* Strikethrough + underline combination */
+  s u, u s {
+    text-decoration: line-through underline;
+  }
+
+  /* Code blocks in editor */
+  code, pre {
+    background-color: var(--lexxy-color-code-bg, var(--lexxy-color-ink-lightest));
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
+    color: var(--lexxy-color-code-text, var(--lexxy-color-ink));
+    font-family: var(--lexxy-font-mono);
+    font-size: 0.9em;
+    padding: 0.25ch 0.5ch;
+
+    &:is(pre),
+    &[data-language] {
+      display: block;
+      hyphens: none;
+      margin-block: 0 var(--lexxy-content-margin, 1rem);
+      overflow-x: auto;
+      padding: 1ch;
+      padding-block-start: 2.5em;
+      tab-size: 2;
+      text-wrap: nowrap;
+      white-space: pre;
+      word-break: break-word;
+    }
+  }
+
+  /* Syntax highlighting token colors */
+  .code-token__attr { color: var(--lexxy-color-code-token-att); }
+  .code-token__property { color: var(--lexxy-color-code-token-property); }
+  .code-token__selector { color: var(--lexxy-color-code-token-selector); }
+  .code-token__comment { color: var(--lexxy-color-code-token-comment); font-style: italic; }
+  .code-token__operator { color: var(--lexxy-color-code-token-operator); }
+  .code-token__function { color: var(--lexxy-color-code-token-function); }
+  .code-token__variable { color: var(--lexxy-color-code-token-variable); }
+  .code-token__punctuation { color: var(--lexxy-color-code-token-punctuation); }
+
+  /* Blockquotes in editor */
+  blockquote {
+    border-inline-start: 3px solid var(--lexxy-color-ink-lighter);
+    color: var(--lexxy-color-ink-medium);
+    margin-block: 0 var(--lexxy-content-margin, 1rem);
+    margin-inline: 0;
+    padding: 0.25lh 2ch;
+
+    p:last-child {
+      margin-block-end: 0;
+    }
+  }
+
+  /* Mixed list support: CSS counters for per-item bullet/number types */
+  ol, ul:not(.lexxy-prompt-menu) {
+    margin-inline-start: 0;
+    padding-inline-start: 2em;
+    counter-reset: mixed-list;
+    list-style-type: none;
+  }
+
+  li[data-list-item-type="number"],
+  li[data-list-item-type="bullet"] {
+    position: relative;
+    line-height: 1.75;
+    margin-block-start: 4px;
+
+    &::marker {
+      content: none;
+    }
+
+    &::before {
+      position: absolute;
+      right: 100%;
+      width: 2em;
+      display: inline-block;
+      text-align: center;
+    }
+  }
+
+  li[data-list-item-type="number"]:not(.lexxy-nested-listitem) {
+    counter-increment: mixed-list;
+
+    &::before {
+      content: counter(mixed-list) ".";
+    }
+  }
+
+  li[data-list-item-type="bullet"] {
+    &::before {
+      content: "";
+      transform: none;
+      height: 1lh;
+    }
+  }
+
+  li[data-bullet-depth="1"]::before {
+    background: radial-gradient(circle, currentColor 3px, transparent 3px) center / 6px 6px no-repeat;
+  }
+
+  li[data-bullet-depth="2"]::before {
+    background: radial-gradient(circle, transparent 1.5px, currentColor 1.5px, currentColor 3px, transparent 3px) center / 6px 6px no-repeat;
+  }
+
+  li[data-bullet-depth="3"]::before {
+    background: linear-gradient(currentColor, currentColor) center / 6px 6px no-repeat;
+  }
+
+  /* Tighter indent for nested lists */
+  .lexxy-nested-listitem ol,
+  .lexxy-nested-listitem ul:not(.lexxy-prompt-menu) {
+    padding-inline-start: 2em;
+  }
+
+  li.lexxy-nested-listitem {
+    &::marker {
+      content: none;
+    }
+
+    &::before {
+      content: none;
+    }
+  }
 }
 
 :where(.lexxy-editor--drag-over) {
@@ -453,7 +872,7 @@
     aspect-ratio: 1;
     block-size: var(--lexxy-toolbar-button-size);
     border: 0;
-    border-radius: var(--lexxy-radius);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
     color: currentColor;
     display: grid;
     line-height: inherit;
@@ -512,25 +931,27 @@
 :where(.lexxy-editor__toolbar-dropdown) {
   user-select: none;
   -webkit-user-select: none;
+}
 
-  &.lexxy-editor__toolbar-dropdown--chevron {
-    summary {
-      aspect-ratio: unset;
-      gap: 0.5ch;
-      grid-template-columns: 2fr 1fr;
-      padding-inline: 0.75ch;
+/* Chevron variant — matches upstream Lexxy exactly */
+.lexxy-editor__toolbar-dropdown--chevron summary.lexxy-editor__toolbar-button {
+  aspect-ratio: unset;
+  gap: 0.5ch;
+  grid-template-columns: 2fr 1fr;
+  padding-inline: 0.75ch;
+}
 
-      &:after {
-        block-size: 0.3ch;
-        border-block-end: 2px solid currentcolor;
-        border-inline-end: 2px solid currentcolor;
-        content: "";
-        display: inline-block;
-        inline-size: 0.3ch;
-        transform: rotate(45deg);
-      }
-    }
-  }
+.lexxy-editor__toolbar-dropdown--chevron summary.lexxy-editor__toolbar-button::after {
+  block-size: 0.3ch;
+  border-block-end: 2px solid currentcolor;
+  border-inline-end: 2px solid currentcolor;
+  content: "";
+  display: inline-block;
+  inline-size: 0.3ch;
+  transform: rotate(45deg);
+}
+
+:where(.lexxy-editor__toolbar-dropdown) {
 
   summary ~ * {
     background-color: var(--lexxy-color-canvas);
@@ -637,48 +1058,46 @@
 
   lexxy-link-dropdown {
     font-size: var(--lexxy-text-small);
-    inset-inline-start: var(--lexxy-toolbar-spacing);
-    inset-inline-end: var(--lexxy-toolbar-spacing);
+    min-inline-size: 320px;
 
     form {
       display: flex;
       flex: 1;
-      gap: var(--lexxy-toolbar-spacing);
-
-      [overflowing] & {
-        display: block;
-
-        .lexxy-editor__toolbar-dropdown-actions {
-          margin-block-start: var(--lexxy-toolbar-spacing);
-        }
-      }
+      gap: 6px;
+      align-items: stretch;
     }
 
     .lexxy-editor__toolbar-dropdown-actions {
       display: flex;
-      flex: 1;
-      gap: var(--lexxy-toolbar-spacing);
+      gap: 4px;
+      flex-shrink: 0;
     }
 
-    input[type="url"] {
+    input[type="text"] {
       background-color: var(--lexxy-color-canvas);
       border: 1px solid var(--lexxy-color-ink-lighter);
-      border-radius: var(--lexxy-radius);
+      border-radius: 4px;
       color: var(--lexxy-color-text);
-      block-size: var(--lexxy-toolbar-button-size);
+      block-size: 30px;
       box-sizing: border-box;
       font-size: var(--lexxy-text-small);
-      flex: 2;
+      flex: 1;
       inline-size: 100%;
       line-height: normal;
       padding-block: 0;
-      padding-inline: 1ch;
+      padding-inline: 8px;
     }
 
-    button {
-      background-color: var(--lexxy-color-ink-lightest);
-      inline-size: 100%;
-      padding-inline: 2ch;
+    .lexxy-editor__toolbar-button {
+      aspect-ratio: unset;
+      block-size: 30px;
+      box-sizing: border-box;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      font-size: var(--lexxy-text-small);
+      font-weight: 500;
+      padding-inline: 12px;
+      white-space: nowrap;
     }
 
     button[type="submit"] {
@@ -688,6 +1107,10 @@
       &:hover {
         background-color: var(--lexxy-color-accent-medium);
       }
+    }
+
+    button[type="button"] {
+      background-color: var(--lexxy-color-ink-lightest);
     }
   }
 
@@ -832,6 +1255,8 @@
   .lexxy-floating-controls__group {
     background-color: var(--lexxy-color-ink);
     border-radius: var(--floating-tools-radius);
+    display: flex;
+    flex-direction: row;
     padding: 0.25ch;
   }
 
@@ -938,7 +1363,7 @@
 
 
   /* --------------------------------------------------------------------------
-  /* Attachment delete button */
+  /* Attachment controls (preview, download, delete) */
 
   &:is(lexxy-node-delete-button) {
     inset-block-start: 0;
@@ -949,6 +1374,33 @@
     .node--selected & {
       opacity: 1;
       pointer-events: auto;
+    }
+
+    .lexxy-node-action {
+      align-items: center;
+      aspect-ratio: 1;
+      background: transparent;
+      block-size: var(--button-size);
+      border-radius: var(--floating-tools-radius);
+      color: var(--lexxy-color-ink-inverted);
+      display: flex;
+      justify-content: center;
+      min-block-size: var(--button-size);
+      min-inline-size: var(--button-size);
+      text-decoration: none;
+
+      svg {
+        block-size: 1.125em;
+        inline-size: 1.125em;
+        fill: currentColor;
+        opacity: 0.8;
+      }
+
+      &:hover {
+        background: var(--lexxy-color-ink-medium);
+
+        svg { opacity: 1; }
+      }
     }
 
     .lexxy-node-delete:hover {
@@ -973,7 +1425,7 @@
       background-size: 1ch;
       block-size: 1.5lh;
       border: 1px solid var(--lexxy-color-ink-lighter);
-      border-radius: var(--lexxy-radius);
+      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
       color: var(--lexxy-color-ink);
       font-family: var(--lexxy-font-base);
       font-size: var(--lexxy-text-small);
@@ -990,6 +1442,15 @@
 }
 
 
+/* Link selection highlight overlay (matches native ::selection height) */
+.lexxy-link-selection-overlay {
+  background-color: #B7D9FF;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
 /* --------------------------------------------------------------------------
 /* Prompt */
 
@@ -1001,8 +1462,9 @@
   --lexxy-prompt-offset-y: 0;
 
   background-color: var(--lexxy-color-canvas);
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
   border-radius: calc(var(--lexxy-prompt-padding) * 2);
-  box-shadow: var(--lexxy-shadow);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
   color: var(--lexxy-color-ink);
   font-family: var(--lexxy-font-base);
   font-size: var(--lexxy-text-small);
@@ -1010,24 +1472,42 @@
   inset-block-start: var(--lexxy-prompt-offset-y);
   inset-inline-start: var(--lexxy-prompt-offset-x);
   margin: 0;
-  max-block-size: 200px;
-  max-inline-size: min(20ch, calc(100% - var(--lexxy-prompt-offset-x)));
+  max-block-size: 40vh;
+  max-inline-size: 300px;
   min-inline-size: 20ch;
   overflow: auto;
-  padding: var(--lexxy-prompt-padding);
-  position: absolute;
+  padding: 6px var(--lexxy-prompt-padding);
+  position: fixed;
   visibility: hidden;
   z-index: var(--lexxy-z-popup);
 
-  &[data-clipped-at-right] {
-    inset-inline-start: unset;
-    inset-inline-end: 1ch;
-  }
+}
 
-  &[data-clipped-at-bottom] {
-    inset-block-start: unset;
-    inset-block-end: var(--lexxy-prompt-offset-y);
-  }
+/* Override browser default ul padding-inline-start: 40px which beats :where() specificity */
+.lexxy-prompt-menu {
+  padding: 2px var(--lexxy-prompt-padding);
+  min-inline-size: 300px;
+  scroll-padding: 6px 0 32px;
+  position: fixed;
+}
+
+.lexxy-prompt-menu::before {
+  content: "";
+  position: sticky;
+  top: -2px;
+  display: block;
+  height: 24px;
+  margin-bottom: -24px;
+  background: linear-gradient(to bottom, var(--lexxy-color-canvas, #fff), transparent);
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.lexxy-prompt-menu--fade-top::before {
+  opacity: 1;
 }
 
 :where(.lexxy-prompt-menu--visible) {
@@ -1047,7 +1527,17 @@
   }
 
   &[aria-selected] {
-    background-color: var(--lexxy-color-selected);
+    background-color: var(--lexxy-color-ink-lightest);
+  }
+
+  &[data-keyboard-focus] {
+    outline: 2px solid var(--lexxy-color-accent, #2563eb);
+    outline-offset: -2px;
+    background-color: var(--lexxy-color-ink-lightest);
+  }
+
+  .lexxy-prompt-menu--keyboard-active &:not([data-keyboard-focus]):hover {
+    background-color: transparent;
   }
 
   img {
@@ -1066,6 +1556,116 @@
 :where(.lexxy-prompt-menu__item--empty) {
   color: var(--lexxy-color-ink-medium);
   padding: var(--lexxy-prompt-padding);
+}
+
+/* Slash command items */
+
+:where(.lexxy-slash-command__icon) {
+  align-items: center;
+  color: var(--lexxy-color-ink-medium);
+  display: flex;
+  flex-shrink: 0;
+
+  svg {
+    block-size: 1.125em;
+    fill: currentColor;
+    inline-size: 1.125em;
+  }
+}
+
+:where(.lexxy-slash-command__label) {
+  white-space: nowrap;
+  flex: 1;
+}
+
+:where(.lexxy-slash-command__filter-suffix) {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+}
+
+:where(.lexxy-slash-command__shortcut) {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: 12px;
+  font-family: var(--lexxy-font-mono, ui-monospace, monospace);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+:where(.lexxy-slash-command__color-swatch) {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Section headers in prompt menus */
+
+:where(.lexxy-prompt-menu__section-header) {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  padding: 8px var(--lexxy-prompt-padding) 2px;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  user-select: none;
+}
+
+:where(.lexxy-prompt-menu__section-header:first-child) {
+  padding-top: 2px;
+}
+
+/* Close menu footer */
+
+:where(.lexxy-prompt-menu__footer) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px var(--lexxy-prompt-padding);
+  margin-top: 6px;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: var(--lexxy-text-small);
+  border-top: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  margin-top: 4px;
+  cursor: pointer;
+  position: sticky;
+  bottom: -2px;
+  background: var(--lexxy-color-canvas, #fff);
+  z-index: 1;
+}
+
+.lexxy-prompt-menu__footer::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 34px;
+  background: linear-gradient(to top, var(--lexxy-color-canvas, #fff), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.lexxy-prompt-menu--fade-bottom .lexxy-prompt-menu__footer::before {
+  opacity: 1;
+}
+
+
+:where(.lexxy-prompt-menu__footer:hover) {
+  color: var(--lexxy-color-ink);
+}
+
+:where(.lexxy-prompt-menu__footer-key) {
+  background: var(--lexxy-color-ink-lightest, #e5e7eb);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
 }
 
 
@@ -1094,4 +1694,415 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
       }
     }
   }
+}
+
+/* Block selection mode -------------------------------------------------------- */
+
+:where(.lexxy-editor__content).block-selection-active {
+  caret-color: transparent;
+  user-select: none;
+}
+
+:where(.lexxy-editor__content) {
+  /* Notion-style uniform block highlight — opaque color (mixed with canvas)
+     prevents visual stacking when nested elements overlap. */
+  .block--selected,
+  .block--selected.block--focused {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
+    background-color: var(--block-select-bg);
+  }
+
+  /* Structural wrappers get highlighted only when their preceding sibling
+     is selected — this means the parent item is part of the selection, so
+     all children should be too. Prevents ancestor wrappers from lighting
+     up when only a deeply nested item is selected. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
+    background-color: var(--block-select-bg);
+    margin-top: 0;
+    box-shadow: -2em 0 0 0 var(--block-select-bg);
+  }
+
+  /* The parent item extends its highlight DOWNWARD to cover the collapsed
+     heading margin gap between itself and the structural wrapper. Downward
+     shadow (not upward) avoids bleeding into the previous section. */
+  li.block--selected:has(+ li.lexxy-nested-listitem .block--selected) {
+    box-shadow:
+      -2em 0 0 0 var(--block-select-bg),
+      0 1.5em 0 0 var(--block-select-bg),
+      -2em 1.5em 0 0 var(--block-select-bg);
+  }
+
+  /* Children inside a highlighted wrapper: suppress their own background
+     so the wrapper provides a single continuous highlight surface. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected,
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected.block--focused {
+    background-color: transparent;
+    box-shadow: none;
+  }
+
+  /* The parent item above the wrapper should also use the uniform shade
+     when its children are selected (not the darker focused shade). */
+  .block--focused:has(+ li.lexxy-nested-listitem .block--selected) {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
+  }
+
+  /* Extend highlight leftward on list items to cover the bullet/number marker.
+     Hidden-bullet items don't need the extension since they have no marker. */
+  li.block--selected:not([data-block-movement-wrapped]) {
+    box-shadow: -2em 0 0 0 var(--block-select-bg);
+  }
+
+  /* Bridge the 4px margin gap between adjacent selected items and between
+     a wrapper and the next selected item. The -4px upward shadow exactly
+     fills the gap without overlapping the previous item's text. */
+  .block--selected + li.block--selected:not([data-block-movement-wrapped]),
+  li.lexxy-nested-listitem:has(.block--selected) + li.block--selected:not([data-block-movement-wrapped]) {
+    box-shadow:
+      -2em 0 0 0 var(--block-select-bg),
+      0 -4px 0 0 var(--block-select-bg),
+      -2em -4px 0 0 var(--block-select-bg);
+  }
+
+  /* Code blocks: keep the code block's own background intact.
+     Layer a translucent overlay via inset box-shadow + outline border. */
+  pre.block--selected,
+  code.block--selected,
+  pre.block--selected.block--focused,
+  code.block--selected.block--focused {
+    background-color: var(--lexxy-color-code-bg, var(--lexxy-color-ink-lightest)) !important;
+    box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 12%, transparent);
+    outline: 1.5px solid color-mix(in oklch, var(--lexxy-color-accent-dark) 40%, transparent);
+    outline-offset: 3px;
+  }
+
+  figure.horizontal-divider {
+    margin: 0;
+    padding: 8px 0;
+    cursor: pointer;
+  }
+
+  /* Horizontal dividers: outline in block-select mode */
+  .horizontal-divider.block--selected,
+  .horizontal-divider.block--selected.block--focused,
+  .block--selected > .horizontal-divider,
+  .block--focused > .horizontal-divider {
+    background-color: transparent !important;
+    outline: 4px solid color-mix(in oklch, var(--lexxy-color-accent-dark) 40%, transparent);
+    border-radius: 1px;
+  }
+
+  /* When an HR is inside a selected list item, suppress the li background
+     so only the HR's outline ring shows */
+  li.block--selected:has(> .horizontal-divider),
+  li.block--focused:has(> .horizontal-divider) {
+    background-color: transparent !important;
+    box-shadow: none;
+  }
+
+  /* Wrapped non-text blocks (headings, tables, code blocks, etc.) inside lists.
+     The bullet marker is hidden by default but shown on hover so users can see
+     where the wrapped content sits in the hierarchy. Wrapped blocks sit at their
+     natural structural depth (li → block) — no margin offset needed. */
+  /* Hide bullet on all wrapped items. Show on hover for non-text blocks. */
+  li[data-list-item-type]:has(> h1, > h2, > h3, > h4, > h5, > h6, > table, > figure, > pre, > code[data-language], > blockquote, > hr, > .lexxy-content__table-wrapper, > .attachment-gallery, > .horizontal-divider),
+  li[data-block-movement-wrapped] {
+    &::before {
+      opacity: 0;
+      top: var(--bullet-offset-y, 0px);
+      block-size: 24px;
+      line-height: 24px;
+    }
+
+    &.lexxy-block-hovered::before,
+    &.block--selected::before {
+      opacity: 0.4;
+    }
+  }
+
+  /* Hide the trailing <br> Lexical adds after decorator figures inside list
+     items. Without this, attachments/HRs in lists have an extra blank line. */
+  li:has(> figure[data-lexical-decorator]) > br,
+  li:has(> figure.attachment) > br {
+    display: none;
+  }
+
+  /* Dragged items: lighter shade + faded text instead of element opacity.
+     Element opacity creates separate stacking contexts per element, causing
+     double-layered shadows where parent and wrapper overlap. Uses a fixed
+     base color (not currentColor) to avoid recursive compounding on nested
+     elements where each child would get 30% of the already-faded parent. */
+  /* Dragged items: faded text + lighter selection background.
+     Color is set via inheritance (no * selector) so syntax tokens in code
+     blocks keep their explicit theme colors. Elements with their own color
+     rules (blockquote, links) get explicit overrides below. */
+  .lexxy-dragging,
+  .lexxy-dragging .block--selected,
+  .lexxy-dragging li.lexxy-nested-listitem {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 5%, var(--lexxy-color-canvas)) !important;
+  }
+  .lexxy-dragging {
+    color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent) !important;
+  }
+
+  /* Elements with their own color rules need explicit fade override */
+  .lexxy-dragging blockquote,
+  .lexxy-dragging a,
+  .lexxy-dragging figcaption,
+  .lexxy-dragging .lexxy-placeholder {
+    color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent) !important;
+  }
+
+  /* Code blocks: ::after overlay dims uniformly while keeping the dark
+     background opaque (no parent blue bleeding through) and preserving
+     syntax highlighting colors underneath. */
+  .lexxy-dragging pre,
+  .lexxy-dragging code[data-language] {
+    position: relative;
+  }
+  .lexxy-dragging pre::after,
+  .lexxy-dragging code[data-language]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: color-mix(in oklch, var(--lexxy-color-canvas, #fff) 40%, transparent);
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* Block drop indicator (Notion-style hierarchy line) -------------------------- */
+
+:where(lexxy-editor) {
+  .lexxy-drop-indicator {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 80ms ease;
+  }
+
+  .lexxy-drop-indicator--visible {
+    opacity: 1;
+  }
+
+  .lexxy-drop-indicator__circle {
+    flex-shrink: 0;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    border: 1.5px solid var(--lexxy-focus-ring-color);
+    background: var(--lexxy-color-surface, #fff);
+    margin-inline-start: -3px;
+    margin-inline-end: var(--indicator-gap, 0px);
+  }
+
+  .lexxy-drop-indicator__line {
+    flex: 1;
+    block-size: 2px;
+    background: var(--lexxy-focus-ring-color);
+    border-radius: 1px;
+  }
+}
+
+/* Drag ghost: match text dimness, background, and code treatment to originals */
+.lexxy-drag-ghost .lexxy-editor__content {
+  color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
+}
+.lexxy-drag-ghost .lexxy-editor__content blockquote,
+.lexxy-drag-ghost .lexxy-editor__content a {
+  color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
+}
+.lexxy-drag-ghost pre,
+.lexxy-drag-ghost code[data-language] {
+  position: relative;
+}
+.lexxy-drag-ghost pre::after,
+.lexxy-drag-ghost code[data-language]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--lexxy-color-canvas, #fff) 40%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Block drag handle ----------------------------------------------------------- */
+
+:where(lexxy-editor) {
+  .lexxy-block-handle {
+    position: absolute;
+    inline-size: 20px;
+    block-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 100ms ease;
+    border-radius: var(--lexxy-radius);
+    color: var(--lexxy-color-ink-lighter);
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .lexxy-block-handle--visible {
+    opacity: 0.7;
+  }
+
+  .lexxy-block-handle--visible:hover {
+    opacity: 1;
+    background: var(--lexxy-color-ink-lightest);
+    color: var(--lexxy-color-ink);
+  }
+
+  .lexxy-block-handle:active {
+    cursor: grabbing;
+  }
+
+  /* Add block button (+ icon, to the left of the drag handle) */
+  .lexxy-block-add {
+    position: absolute;
+    inline-size: 20px;
+    block-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 100ms ease;
+    border-radius: var(--lexxy-radius);
+    color: var(--lexxy-color-ink-lighter);
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .lexxy-block-add--visible {
+    opacity: 0.7;
+  }
+
+  .lexxy-block-add--visible:hover {
+    opacity: 1;
+    background: var(--lexxy-color-ink-lightest);
+    color: var(--lexxy-color-ink);
+  }
+}
+
+/* Block actions menu (Cmd+/) ------------------------------------------------ */
+
+lexxy-block-actions {
+  position: fixed;
+  z-index: 10000;
+  outline: none;
+  font-family: var(--lexxy-font-sans, system-ui, sans-serif);
+  font-size: 14px;
+}
+
+.lexxy-block-actions__panel {
+  background: var(--lexxy-color-surface, #fff);
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  padding: 4px;
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.lexxy-block-actions__flyout {
+  position: absolute;
+  left: calc(100% - 4px);
+  z-index: 1;
+}
+
+lexxy-block-actions[hidden] {
+  display: none;
+}
+
+.lexxy-block-actions__divider {
+  height: 1px;
+  background: var(--lexxy-color-ink-lightest, #e5e7eb);
+  margin: 4px 0;
+}
+
+.lexxy-block-actions__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lexxy-color-ink, #1f2937);
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lexxy-block-actions__item:hover,
+.lexxy-block-actions__item--focused,
+.lexxy-block-actions__item--active {
+  background: var(--lexxy-color-ink-lightest, #f3f4f6);
+}
+
+.lexxy-block-actions__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.lexxy-block-actions__icon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.lexxy-block-actions__label {
+  flex: 1;
+}
+
+.lexxy-block-actions__chevron {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: 16px;
+}
+
+.lexxy-block-actions__shortcut {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: 12px;
+}
+
+.lexxy-block-actions__flyout[hidden] {
+  display: none;
+}
+
+.lexxy-block-actions__color-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  padding: 8px 10px 2px;
+  letter-spacing: 0.05em;
+}
+
+.lexxy-block-actions__color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
 }
