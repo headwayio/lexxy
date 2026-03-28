@@ -65,7 +65,7 @@ test.describe("Horizontal divider", () => {
     ).toBeVisible()
     await editor.locator
       .locator("lexxy-node-delete-button button[aria-label='Remove']")
-      .click()
+      .click({ force: true })
 
     await assertEditorContent(editor, async (content) => {
       await expect(

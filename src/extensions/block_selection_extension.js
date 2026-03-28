@@ -398,7 +398,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       case "ArrowUp":
         event.preventDefault()
         event.stopPropagation()
-        if (event.metaKey && event.shiftKey) {
+        if ((event.metaKey || event.ctrlKey) && event.shiftKey) {
           this.#moveSelectedBlocks("up")
         } else if (!this.#focusKey && this.#deleteNeighbors) {
           // After a delete with no selection, pick the block above the deletion
@@ -417,7 +417,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       case "ArrowDown":
         event.preventDefault()
         event.stopPropagation()
-        if (event.metaKey && event.shiftKey) {
+        if ((event.metaKey || event.ctrlKey) && event.shiftKey) {
           this.#moveSelectedBlocks("down")
         } else if (!this.#focusKey && this.#deleteNeighbors) {
           // After a delete with no selection, pick the block below the deletion
