@@ -3,14 +3,8 @@ import { $isLinkNode } from "@lexical/link"
 import { ToolbarDropdown } from "../toolbar_dropdown"
 
 export class LinkDropdown extends ToolbarDropdown {
-  connectedCallback() {
-    super.connectedCallback()
+  initialize() {
     this.input = this.querySelector("input")
-
-    this.#registerHandlers()
-  }
-
-  #registerHandlers() {
     this.container.addEventListener("toggle", this.#handleToggle.bind(this))
     this.addEventListener("submit", this.#handleSubmit.bind(this))
     this.querySelector("[value='unlink']").addEventListener("click", this.#handleUnlink.bind(this))
