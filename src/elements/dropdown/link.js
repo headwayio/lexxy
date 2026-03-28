@@ -3,8 +3,7 @@ import { $isLinkNode } from "@lexical/link"
 import { ToolbarDropdown } from "../toolbar_dropdown"
 
 export class LinkDropdown extends ToolbarDropdown {
-  connectedCallback() {
-    super.connectedCallback()
+  initialize() {
     this.input = this.querySelector("input")
 
     this.container.addEventListener("toggle", this.#handleToggle)
