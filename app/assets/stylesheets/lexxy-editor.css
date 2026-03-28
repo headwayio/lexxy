@@ -512,25 +512,27 @@
 :where(.lexxy-editor__toolbar-dropdown) {
   user-select: none;
   -webkit-user-select: none;
+}
 
-  &.lexxy-editor__toolbar-dropdown--chevron {
-    summary {
-      aspect-ratio: unset;
-      gap: 0.5ch;
-      grid-template-columns: 2fr 1fr;
-      padding-inline: 0.75ch;
+/* Chevron variant needs class specificity to override .lexxy-editor__toolbar-button's aspect-ratio */
+.lexxy-editor__toolbar-dropdown--chevron summary.lexxy-editor__toolbar-button {
+  aspect-ratio: unset;
+  gap: 0.5ch;
+  grid-template-columns: 2fr 1fr;
+  padding-inline: 0.75ch;
+}
 
-      &:after {
-        block-size: 0.3ch;
-        border-block-end: 2px solid currentcolor;
-        border-inline-end: 2px solid currentcolor;
-        content: "";
-        display: inline-block;
-        inline-size: 0.3ch;
-        transform: rotate(45deg);
-      }
-    }
-  }
+.lexxy-editor__toolbar-dropdown--chevron summary.lexxy-editor__toolbar-button:after {
+  block-size: 0.3ch;
+  border-block-end: 2px solid currentcolor;
+  border-inline-end: 2px solid currentcolor;
+  content: "";
+  display: inline-block;
+  inline-size: 0.3ch;
+  transform: rotate(45deg);
+}
+
+:where(.lexxy-editor__toolbar-dropdown) {
 
   summary ~ * {
     background-color: var(--lexxy-color-canvas);
@@ -1001,8 +1003,9 @@
   --lexxy-prompt-offset-y: 0;
 
   background-color: var(--lexxy-color-canvas);
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
   border-radius: calc(var(--lexxy-prompt-padding) * 2);
-  box-shadow: var(--lexxy-shadow);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
   color: var(--lexxy-color-ink);
   font-family: var(--lexxy-font-base);
   font-size: var(--lexxy-text-small);
@@ -1010,24 +1013,42 @@
   inset-block-start: var(--lexxy-prompt-offset-y);
   inset-inline-start: var(--lexxy-prompt-offset-x);
   margin: 0;
-  max-block-size: 200px;
-  max-inline-size: min(20ch, calc(100% - var(--lexxy-prompt-offset-x)));
+  max-block-size: 40vh;
+  max-inline-size: 300px;
   min-inline-size: 20ch;
   overflow: auto;
-  padding: var(--lexxy-prompt-padding);
-  position: absolute;
+  padding: 6px var(--lexxy-prompt-padding);
+  position: fixed;
   visibility: hidden;
   z-index: var(--lexxy-z-popup);
 
-  &[data-clipped-at-right] {
-    inset-inline-start: unset;
-    inset-inline-end: 1ch;
-  }
+}
 
-  &[data-clipped-at-bottom] {
-    inset-block-start: unset;
-    inset-block-end: var(--lexxy-prompt-offset-y);
-  }
+/* Override browser default ul padding-inline-start: 40px which beats :where() specificity */
+.lexxy-prompt-menu {
+  padding: 2px var(--lexxy-prompt-padding);
+  min-inline-size: 300px;
+  scroll-padding: 6px 0 32px;
+  position: fixed;
+}
+
+.lexxy-prompt-menu::before {
+  content: "";
+  position: sticky;
+  top: -2px;
+  display: block;
+  height: 24px;
+  margin-bottom: -24px;
+  background: linear-gradient(to bottom, var(--lexxy-color-canvas, #fff), transparent);
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.lexxy-prompt-menu--fade-top::before {
+  opacity: 1;
 }
 
 :where(.lexxy-prompt-menu--visible) {
@@ -1047,7 +1068,17 @@
   }
 
   &[aria-selected] {
-    background-color: var(--lexxy-color-selected);
+    background-color: var(--lexxy-color-ink-lightest);
+  }
+
+  &[data-keyboard-focus] {
+    outline: 2px solid var(--lexxy-color-accent, #2563eb);
+    outline-offset: -2px;
+    background-color: var(--lexxy-color-ink-lightest);
+  }
+
+  .lexxy-prompt-menu--keyboard-active &:not([data-keyboard-focus]):hover {
+    background-color: transparent;
   }
 
   img {
@@ -1066,6 +1097,112 @@
 :where(.lexxy-prompt-menu__item--empty) {
   color: var(--lexxy-color-ink-medium);
   padding: var(--lexxy-prompt-padding);
+}
+
+/* Slash command items */
+
+:where(.lexxy-slash-command__icon) {
+  align-items: center;
+  color: var(--lexxy-color-ink-medium);
+  display: flex;
+  flex-shrink: 0;
+
+  svg {
+    block-size: 1.125em;
+    fill: currentColor;
+    inline-size: 1.125em;
+  }
+}
+
+:where(.lexxy-slash-command__label) {
+  white-space: nowrap;
+  flex: 1;
+}
+
+:where(.lexxy-slash-command__shortcut) {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: 12px;
+  font-family: var(--lexxy-font-mono, ui-monospace, monospace);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+:where(.lexxy-slash-command__color-swatch) {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Section headers in prompt menus */
+
+:where(.lexxy-prompt-menu__section-header) {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  padding: 8px var(--lexxy-prompt-padding) 2px;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  user-select: none;
+}
+
+:where(.lexxy-prompt-menu__section-header:first-child) {
+  padding-top: 2px;
+}
+
+/* Close menu footer */
+
+:where(.lexxy-prompt-menu__footer) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px var(--lexxy-prompt-padding);
+  margin-top: 6px;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: var(--lexxy-text-small);
+  border-top: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  margin-top: 4px;
+  cursor: pointer;
+  position: sticky;
+  bottom: -2px;
+  background: var(--lexxy-color-canvas, #fff);
+  z-index: 1;
+}
+
+.lexxy-prompt-menu__footer::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 34px;
+  background: linear-gradient(to top, var(--lexxy-color-canvas, #fff), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.lexxy-prompt-menu--fade-bottom .lexxy-prompt-menu__footer::before {
+  opacity: 1;
+}
+
+
+:where(.lexxy-prompt-menu__footer:hover) {
+  color: var(--lexxy-color-ink);
+}
+
+:where(.lexxy-prompt-menu__footer-key) {
+  background: var(--lexxy-color-ink-lightest, #e5e7eb);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
 }
 
 

@@ -83,5 +83,5 @@
   --lexxy-toolbar-button-size: 2lh;
   --lexxy-radius: 0.5ch;
   --lexxy-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --lexxy-z-popup: 1000;
+  --lexxy-z-popup: 19999;
 }

@@ -6,8 +6,12 @@ import { registerPlainText } from "@lexical/plain-text"
 import { HeadingNode, QuoteNode, registerRichText } from "@lexical/rich-text"
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html"
 import { CodeHighlightNode, CodeNode, registerCodeHighlighting } from "@lexical/code"
-import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
+import { TRANSFORMERS as LEXICAL_TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
+import { HORIZONTAL_RULE_TRANSFORMER, registerImmediateBlockShortcuts } from "../editor/markdown/horizontal_rule_transformer"
+import { QUOTE_DOUBLEQUOTE_TRANSFORMER, QUOTE_PIPE_TRANSFORMER } from "../editor/markdown/quote_alias_transformers"
+
+const TRANSFORMERS = [ ...LEXICAL_TRANSFORMERS, HORIZONTAL_RULE_TRANSFORMER, QUOTE_PIPE_TRANSFORMER, QUOTE_DOUBLEQUOTE_TRANSFORMER ]
 import { createEmptyHistoryState, registerHistory } from "@lexical/history"
 
 import theme from "../config/theme"
@@ -31,6 +35,7 @@ import { TrixContentExtension } from "../extensions/trix_content_extension"
 import { TablesExtension } from "../extensions/tables_extension"
 import { AttachmentsExtension } from "../extensions/attachments_extension.js"
 import { FormatEscapeExtension } from "../extensions/format_escape_extension.js"
+import { SlashCommandsExtension } from "../extensions/slash_commands_extension.js"
 
 
 export class LexicalEditorElement extends HTMLElement {
@@ -124,7 +129,8 @@ export class LexicalEditorElement extends HTMLElement {
       TrixContentExtension,
       TablesExtension,
       AttachmentsExtension,
-      FormatEscapeExtension
+      FormatEscapeExtension,
+      SlashCommandsExtension
     ]
   }
 
@@ -243,6 +249,7 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFocusEvents()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.extensions.initializeEditors()
     this.#loadInitialValue()
     this.#resetBeforeTurboCaches()
   }
@@ -380,6 +387,7 @@ export class LexicalEditorElement extends HTMLElement {
       this.#registerTableComponents()
       this.#registerCodeHiglightingComponents()
       if (this.supportsMarkdown) {
+        registerImmediateBlockShortcuts(this.editor)
         registerMarkdownShortcuts(this.editor, TRANSFORMERS)
         registerMarkdownLeadingTagHandler(this.editor, TRANSFORMERS)
       }
