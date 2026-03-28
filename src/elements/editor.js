@@ -34,6 +34,7 @@ import { TrixContentExtension } from "../extensions/trix_content_extension"
 import { TablesExtension } from "../extensions/tables_extension"
 import { AttachmentsExtension } from "../extensions/attachments_extension.js"
 import { FormatEscapeExtension } from "../extensions/format_escape_extension.js"
+import { BlockSelectionExtension } from "../extensions/block_selection_extension.js"
 
 
 export class LexicalEditorElement extends HTMLElement {
@@ -41,7 +42,7 @@ export class LexicalEditorElement extends HTMLElement {
   static debug = false
   static commands = [ "bold", "italic", "strikethrough" ]
 
-  static observedAttributes = [ "connected", "required" ]
+  static observedAttributes = [ "connected", "required", "block-handles" ]
 
   #initialValue = ""
   #validationTextArea = document.createElement("textarea")
@@ -99,6 +100,12 @@ export class LexicalEditorElement extends HTMLElement {
       this.#validationTextArea.required = this.hasAttribute("required")
       this.#setValidity()
     }
+
+    if (name === "block-handles" && this.isConnected) {
+      const show = newValue !== "false"
+      const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+      ext?.setShowHandles(show)
+    }
   }
 
   formResetCallback() {
@@ -124,6 +131,12 @@ export class LexicalEditorElement extends HTMLElement {
     return this.getAttribute("name")
   }
 
+  /** True when one or more blocks are selected via drag-handle click or Cmd+click. */
+  get hasBlockSelection() {
+    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+    return ext?.hasBlockSelection ?? false
+  }
+
   get toolbarElement() {
     if (!this.#hasToolbar) return null
 
@@ -138,7 +151,8 @@ export class LexicalEditorElement extends HTMLElement {
       TrixContentExtension,
       TablesExtension,
       AttachmentsExtension,
-      FormatEscapeExtension
+      FormatEscapeExtension,
+      BlockSelectionExtension
     ]
   }
 
@@ -283,6 +297,7 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFocusEvents()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.extensions.initializeEditors()
     this.#loadInitialValue()
     this.#resetBeforeTurboCaches()
   }

@@ -11,6 +11,7 @@ export { NativeAdapter } from "./editor/adapters/native_adapter"
 
 export const configure = Lexxy.configure
 export { default as Extension } from "./extensions/lexxy_extension"
+export { BlockSelectionExtension } from "./extensions/block_selection_extension"
 
 // legacy export for <=v0.7
 export { highlightCode as highlightAll } from "./helpers/code_highlighting_helper"
