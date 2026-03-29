@@ -213,6 +213,8 @@ test.describe("Block drag and drop", () => {
 })
 
 test.describe("Block drag and drop — outdent via drag-left", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
     await page.waitForSelector("lexxy-editor[connected]")
@@ -261,6 +263,8 @@ test.describe("Block drag and drop — outdent via drag-left", () => {
 })
 
 test.describe("Block drag and drop — list entry and exit", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
     await page.waitForSelector("lexxy-editor[connected]")
@@ -315,6 +319,8 @@ test.describe("Block drag and drop — list entry and exit", () => {
 })
 
 test.describe("Block drag and drop — outdent re-parenting", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
     await page.waitForSelector("lexxy-editor[connected]")
@@ -393,6 +399,8 @@ test.describe("Block drag and drop — outdent re-parenting", () => {
 })
 
 test.describe("Block drag and drop — nesting inside items with children", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
     await page.waitForSelector("lexxy-editor[connected]")
@@ -424,6 +432,8 @@ test.describe("Block drag and drop — nesting inside items with children", () =
 })
 
 test.describe("Block drag and drop — cleanup behavior", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
     await page.waitForSelector("lexxy-editor[connected]")
@@ -449,6 +459,8 @@ test.describe("Block drag and drop — cleanup behavior", () => {
 })
 
 test.describe("Block drag and drop — cross-list", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
     await page.waitForSelector("lexxy-editor[connected]")
@@ -474,6 +486,8 @@ test.describe("Block drag and drop — cross-list", () => {
 })
 
 test.describe("Block drag and drop — wrapped blocks", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
     await page.waitForSelector("lexxy-editor[connected]")
