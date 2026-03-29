@@ -3,8 +3,6 @@ import { test } from "../../test_helper.js"
 
 import { normalizeHtml } from "../../helpers/html.js"
 
-test.skip(({ browserName }) => browserName === "webkit", "WebKit pointer capture unreliable in sequential mode")
-
 function stripDynamicAttrs(html) {
   return html
     .replace(/\s*data-bullet-depth="[^"]*"/g, "")
@@ -32,7 +30,11 @@ async function dragBlock(page, sourceLocator, targetLocator, { position = "after
   await page.waitForTimeout(200)
 }
 
-test("drag child with grandchildren to after parent (outdent + re-parent)", async ({ editor, page }) => {
+test.describe("Drop freeze", () => {
+  test.skip(({ browserName }) => browserName === "webkit",
+    "WebKit pointer capture unreliable in Playwright sequential mode")
+
+  test("drag child with grandchildren to after parent (outdent + re-parent)", async ({ editor, page }) => {
   test.setTimeout(10000) // short timeout to catch hangs quickly
   await page.goto("/")
   await page.waitForSelector("lexxy-editor[connected]")
@@ -71,4 +73,5 @@ test("drag child with grandchildren to after parent (outdent + re-parent)", asyn
   expect(html).toContain("Child 2 of Section A")
   expect(html).toContain("Grandchild 1")
   expect(html).toContain("Section A")
+  })
 })
