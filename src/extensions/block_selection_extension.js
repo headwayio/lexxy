@@ -1424,8 +1424,14 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Can't break out upward if at document start.
       if (!isDown && !currentList.getPreviousSibling()) return
 
+      // Carry the node's children (structural wrapper) along when promoting
+      const ownWrapper = this.#getOwnStructuralWrapper(node)
+
       const newList = $createListNode(currentList.getListType())
       newList.append(node)
+      if (ownWrapper) {
+        newList.append(ownWrapper)
+      }
 
       if (isDown) {
         currentList.insertAfter(newList)
