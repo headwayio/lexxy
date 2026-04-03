@@ -30,6 +30,7 @@ import { TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
+import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS } from "../editor/block_helpers"
 
 export class BlockSelectionExtension extends LexxyExtension {
   #mode = "edit"
@@ -98,7 +99,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
 
     this.#mode = "block-select"
-    this.root?.classList.add("block-selection-active")
+    this.root?.classList.add(BLOCK_SELECTION_ACTIVE_CLASS)
 
     // Clear Lexical selection but keep the root element focusable
     this.editor.update(() => {
@@ -115,7 +116,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (this.#mode !== "block-select") return
 
     this.#mode = "edit"
-    this.root?.classList.remove("block-selection-active")
+    this.root?.classList.remove(BLOCK_SELECTION_ACTIVE_CLASS)
     this.#savedHighlightStyles.clear() // commit whatever colors are applied
     this.#clearAllSelections()
   }
@@ -162,7 +163,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   #collectChildKeys(listItemNode, keySet) {
     let next = listItemNode.getNextSibling()
     const childKeys = []
-    while (next && $isListItemNode(next) && this.#isStructuralWrapper(next)) {
+    while (next && $isListItemNode(next) && $isStructuralWrapper(next)) {
       for (const child of next.getChildren()) {
         if ($isListNode(child)) {
           this.#collectListItemKeys(child, childKeys)
@@ -208,7 +209,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!this.#selectedBlockKeys.has(key)) {
         const el = this.editor.getElementByKey(key)
         if (el) {
-          el.classList.remove("block--selected", "block--focused")
+          el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
         }
       }
     }
@@ -216,8 +217,8 @@ export class BlockSelectionExtension extends LexxyExtension {
     for (const key of this.#selectedBlockKeys) {
       const el = this.editor.getElementByKey(key)
       if (el) {
-        el.classList.add("block--selected")
-        el.classList.toggle("block--focused", key === this.#focusKey)
+        el.classList.add(BLOCK_SELECTED_CLASS)
+        el.classList.toggle(BLOCK_FOCUSED_CLASS, key === this.#focusKey)
       }
     }
 
@@ -225,7 +226,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     for (const key of this.#selectedBlockKeys) {
       if (key !== this.#focusKey) {
         const el = this.editor.getElementByKey(key)
-        if (el) el.classList.remove("block--focused")
+        if (el) el.classList.remove(BLOCK_FOCUSED_CLASS)
       }
     }
 
@@ -260,7 +261,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     for (const child of children) {
       if (!$isListItemNode(child)) continue
 
-      if (this.#isStructuralWrapper(child)) {
+      if ($isStructuralWrapper(child)) {
         // Skip structural wrappers — recurse into their nested lists directly
         for (const grandchild of child.getChildren()) {
           if ($isListNode(grandchild)) {
@@ -1115,7 +1116,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         let isChild = false
         let current = node.getParent()
         while (current) {
-          if ($isListItemNode(current) && this.#isStructuralWrapper(current)) {
+          if ($isListItemNode(current) && $isStructuralWrapper(current)) {
             // Found a structural wrapper — check if the item BEFORE it is selected
             const textItem = current.getPreviousSibling()
             if (textItem && keySet.has(textItem.getKey())) {
@@ -1230,7 +1231,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Find the adjacent sibling, skipping structural wrapper ListItemNodes
     let sibling = isDown ? node.getNextSibling() : node.getPreviousSibling()
-    while (sibling && $isListItemNode(sibling) && this.#isStructuralWrapper(sibling)) {
+    while (sibling && $isListItemNode(sibling) && $isStructuralWrapper(sibling)) {
       sibling = isDown ? sibling.getNextSibling() : sibling.getPreviousSibling()
     }
 
@@ -1250,18 +1251,11 @@ export class BlockSelectionExtension extends LexxyExtension {
   #countRealItems(listNode) {
     let count = 0
     for (const child of listNode.getChildren()) {
-      if ($isListItemNode(child) && !this.#isStructuralWrapper(child)) {
+      if ($isListItemNode(child) && !$isStructuralWrapper(child)) {
         count++
       }
     }
     return count
-  }
-
-  // A structural wrapper is a ListItemNode whose only children are ListNodes
-  // (no text content — it just holds nested lists)
-  #isStructuralWrapper(listItemNode) {
-    const children = listItemNode.getChildren()
-    return children.length > 0 && children.every(c => $isListNode(c))
   }
 
   // Nest a list item as a child of an adjacent sibling.
@@ -1269,7 +1263,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Moving DOWN → become the FIRST child of the next sibling's nested list.
   //
   // Lexical's list structure uses a SEPARATE structural wrapper ListItemNode
-  // (with class "lexxy-nested-listitem") to hold nested lists. The text
+  // (with class NESTED_LISTITEM_CLASS) to hold nested lists. The text
   // ListItemNode and the wrapper are siblings, NOT parent-child. Appending a
   // ListNode directly to a text ListItemNode corrupts its bullet marker
   // because EarlyEscapeListItemNode.#updateBulletDepth removes data-bullet-depth
@@ -1283,7 +1277,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     const wrapperCandidate = sibling.getNextSibling()
 
     if (wrapperCandidate && $isListItemNode(wrapperCandidate)
-        && this.#isStructuralWrapper(wrapperCandidate)
+        && $isStructuralWrapper(wrapperCandidate)
         && !wrapperCandidate.is(node)) {
       for (const child of wrapperCandidate.getChildren()) {
         if ($isListNode(child)) {
@@ -1306,7 +1300,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     let sourceWrapperKey = null
     if (sourceList && $isListNode(sourceList) && this.#countRealItems(sourceList) <= 1) {
       const sourceWrapper = sourceList.getParent()
-      if (sourceWrapper && $isListItemNode(sourceWrapper) && this.#isStructuralWrapper(sourceWrapper)) {
+      if (sourceWrapper && $isListItemNode(sourceWrapper) && $isStructuralWrapper(sourceWrapper)) {
         sourceWrapperKey = sourceWrapper.getKey()
       }
     }
@@ -1349,7 +1343,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // a list item, if any. Returns null if the node has no children.
   #getOwnStructuralWrapper(node) {
     const next = node.getNextSibling()
-    if (next && $isListItemNode(next) && this.#isStructuralWrapper(next)) {
+    if (next && $isListItemNode(next) && $isStructuralWrapper(next)) {
       return next
     }
     return null
@@ -1453,20 +1447,20 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (isDown) {
       // Look for the next real item after the wrapper at root level
       let candidate = wrapper.getNextSibling()
-      while (candidate && $isListItemNode(candidate) && this.#isStructuralWrapper(candidate)) {
+      while (candidate && $isListItemNode(candidate) && $isStructuralWrapper(candidate)) {
         candidate = candidate.getNextSibling()
       }
-      if (candidate && $isListItemNode(candidate) && !this.#isStructuralWrapper(candidate)) {
+      if (candidate && $isListItemNode(candidate) && !$isStructuralWrapper(candidate)) {
         targetSibling = candidate
       }
     } else {
       // Look for the prev real item before the owner at root level
-      if (ownerItem && $isListItemNode(ownerItem) && !this.#isStructuralWrapper(ownerItem)) {
+      if (ownerItem && $isListItemNode(ownerItem) && !$isStructuralWrapper(ownerItem)) {
         let candidate = ownerItem.getPreviousSibling()
-        while (candidate && $isListItemNode(candidate) && this.#isStructuralWrapper(candidate)) {
+        while (candidate && $isListItemNode(candidate) && $isStructuralWrapper(candidate)) {
           candidate = candidate.getPreviousSibling()
         }
-        if (candidate && $isListItemNode(candidate) && !this.#isStructuralWrapper(candidate)) {
+        if (candidate && $isListItemNode(candidate) && !$isStructuralWrapper(candidate)) {
           targetSibling = candidate
         }
       }
@@ -1678,7 +1672,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   #findFirstRealItem(listNode) {
     for (const child of listNode.getChildren()) {
-      if ($isListItemNode(child) && !this.#isStructuralWrapper(child)) {
+      if ($isListItemNode(child) && !$isStructuralWrapper(child)) {
         return child
       }
     }
@@ -1688,7 +1682,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   #findLastRealItem(listNode) {
     const children = listNode.getChildren()
     for (let i = children.length - 1; i >= 0; i--) {
-      if ($isListItemNode(children[i]) && !this.#isStructuralWrapper(children[i])) {
+      if ($isListItemNode(children[i]) && !$isStructuralWrapper(children[i])) {
         return children[i]
       }
     }
@@ -1832,7 +1826,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Do NOT remove regular items with empty text — those may be user-created
     // or the previous sibling bullet that happens to have no text.
     for (const child of [ ...listNode.getChildren() ]) {
-      if ($isListItemNode(child) && this.#isStructuralWrapper(child)
+      if ($isListItemNode(child) && $isStructuralWrapper(child)
           && child.getChildren().every(c => $isListNode(c) && c.getChildrenSize() === 0)) {
         child.remove()
       }
@@ -1852,7 +1846,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     // If the list is inside a structural wrapper, destroy the wrapper
     // (which takes the list with it). Otherwise just remove the list.
     const parent = listNode.getParent()
-    if ($isListItemNode(parent) && this.#isStructuralWrapper(parent)) {
+    if ($isListItemNode(parent) && $isStructuralWrapper(parent)) {
       this.#forceDestroyWrapper(parent.getKey())
     } else {
       listNode.remove()
@@ -1873,7 +1867,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       const current = children[i]
       const next = children[i + 1]
       if (!$isListItemNode(current) || !$isListItemNode(next)) continue
-      if (!this.#isStructuralWrapper(current) || !this.#isStructuralWrapper(next)) continue
+      if (!$isStructuralWrapper(current) || !$isStructuralWrapper(next)) continue
 
       const currentList = current.getChildren().find(c => $isListNode(c))
       const nextList = next.getChildren().find(c => $isListNode(c))
@@ -2281,7 +2275,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   #registerBulletMarkerColorSync() {
     this.#cleanupFns.push(
       this.editor.registerNodeTransform(ListItemNode, (node) => {
-        if (this.#isStructuralWrapper(node)) return
+        if ($isStructuralWrapper(node)) return
 
         const textNodes = []
         node.getChildren().forEach(c => {
@@ -2587,7 +2581,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Find the previous content sibling (skip structural wrappers)
     let prev = node.getPreviousSibling()
-    while (prev && $isListItemNode(prev) && this.#isStructuralWrapper(prev)) {
+    while (prev && $isListItemNode(prev) && $isStructuralWrapper(prev)) {
       prev = prev.getPreviousSibling()
     }
     // Capture the node's own children wrapper before moving
@@ -2613,7 +2607,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     let nestedList = null
     const wrapperCandidate = prev.getNextSibling()
     if (wrapperCandidate && $isListItemNode(wrapperCandidate)
-        && this.#isStructuralWrapper(wrapperCandidate)
+        && $isStructuralWrapper(wrapperCandidate)
         && !wrapperCandidate.is(node)) {
       nestedList = wrapperCandidate.getChildren().find(c => $isListNode(c))
     }
@@ -2646,7 +2640,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (!$isListNode(currentList)) return false
 
     const structuralWrapper = currentList.getParent()
-    if (!$isListItemNode(structuralWrapper) || !this.#isStructuralWrapper(structuralWrapper)) return false
+    if (!$isListItemNode(structuralWrapper) || !$isStructuralWrapper(structuralWrapper)) return false
 
     // Capture trailing siblings (items after the node in the nested list)
     const ownWrapper = carryChildren ? this.#getOwnStructuralWrapper(node) : null

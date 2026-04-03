@@ -7,6 +7,7 @@ import {
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { createElement } from "../helpers/html_helper"
+import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, NESTED_LISTITEM_CLASS } from "./block_helpers"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>
@@ -197,14 +198,14 @@ export class BlockDragAndDrop {
     blockElement.classList.add("lexxy-block-hovered")
 
     const editorRect = this.#editorElement.getBoundingClientRect()
-    const handleHeight = this.#handleElement.offsetHeight || 24
+    const handleHeight = this.#handleElement.offsetHeight || DEFAULT_HANDLE_HEIGHT
     const handleWidth = this.#handleElement.offsetWidth || 20
 
     const blockRect = blockElement.getBoundingClientRect()
     let top
 
     if (blockElement.tagName === "LI") {
-      const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || 24
+      const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || DEFAULT_HANDLE_HEIGHT
       // +1 aligns handles with the bullet character's visual center
       // (font ascent causes the character to sit slightly above lineHeight/2)
       const defaultBulletCenter = blockRect.top + (liLineHeight / 2) - 1
@@ -332,7 +333,7 @@ export class BlockDragAndDrop {
     if (!blockElement || blockElement.tagName !== "LI") return
 
     const blockRect = blockElement.getBoundingClientRect()
-    const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || 24
+    const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || DEFAULT_HANDLE_HEIGHT
     let handleCenter = blockRect.top + (liLineHeight / 2) - 1
 
     const innerHeading = blockElement.querySelector("h1, h2, h3, h4, h5, h6")
@@ -374,7 +375,7 @@ export class BlockDragAndDrop {
       return
     }
 
-    const bulletHeight = this.#handleElement?.offsetHeight || 24
+    const bulletHeight = this.#handleElement?.offsetHeight || DEFAULT_HANDLE_HEIGHT
     const bulletTop = handleCenter - blockRect.top - (bulletHeight / 2)
     if (Math.abs(bulletTop) > 1) {
       blockElement.style.setProperty("--bullet-offset-y", `${bulletTop}px`)
@@ -583,7 +584,7 @@ export class BlockDragAndDrop {
       // List items are individually selectable blocks — but skip structural
       // wrappers (lexxy-nested-listitem) which are just containers for nested lists
       if (current.tagName === "LI" && root.contains(current) &&
-          !current.classList.contains("lexxy-nested-listitem")) {
+          !current.classList.contains(NESTED_LISTITEM_CLASS)) {
         return current
       }
       // Top-level children of the root
@@ -608,7 +609,7 @@ export class BlockDragAndDrop {
 
     for (const child of listElement.querySelectorAll("li")) {
       // Skip structural wrappers (only contain nested lists, no text)
-      if (child.classList.contains("lexxy-nested-listitem")) continue
+      if (child.classList.contains(NESTED_LISTITEM_CLASS)) continue
 
       const rect = child.getBoundingClientRect()
       const center = rect.top + rect.height / 2
@@ -699,7 +700,7 @@ export class BlockDragAndDrop {
     const el = this.#editor.getElementByKey(nodeKey)
     el?.classList.add("lexxy-dragging")
     const nextSib = el?.nextElementSibling
-    if (nextSib && nextSib.classList.contains("lexxy-nested-listitem")) {
+    if (nextSib && nextSib.classList.contains(NESTED_LISTITEM_CLASS)) {
       nextSib.classList.add("lexxy-dragging")
     }
 
@@ -807,7 +808,7 @@ export class BlockDragAndDrop {
         const lastChild = children[children.length - 1]
         const firstRect = firstChild.getBoundingClientRect()
         const lastRect = lastChild.getBoundingClientRect()
-        const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || 28
+        const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || DEFAULT_ROOT_PADDING
         const contentLeft = rootRect.left + rootPadding
 
         if (event.clientY < firstRect.top) {
@@ -856,7 +857,7 @@ export class BlockDragAndDrop {
         if (dragRootEl.contains(resolvedBlock)) return null
         // Also check the structural wrapper (faded children sibling)
         const dragWrapper = dragRootEl.nextElementSibling
-        if (dragWrapper?.classList.contains("lexxy-nested-listitem") && dragWrapper.contains(resolvedBlock)) return null
+        if (dragWrapper?.classList.contains(NESTED_LISTITEM_CLASS) && dragWrapper.contains(resolvedBlock)) return null
       }
     }
 
@@ -869,7 +870,7 @@ export class BlockDragAndDrop {
       const dragRootEl = this.#editor.getElementByKey(this.#draggedNodeKey)
       if (dragRootEl) {
         const nextEl = resolvedBlock.nextElementSibling
-        if (nextEl && nextEl.classList.contains("lexxy-nested-listitem") && nextEl.contains(dragRootEl)) {
+        if (nextEl && nextEl.classList.contains(NESTED_LISTITEM_CLASS) && nextEl.contains(dragRootEl)) {
           return null
         }
       }
@@ -887,7 +888,7 @@ export class BlockDragAndDrop {
           if (prev) {
             if (prev.getKey() === this.#draggedNodeKey) {
               isDraggedPrevSibling = true
-            } else if (this.#isStructuralWrapper(prev)) {
+            } else if ($isStructuralWrapper(prev)) {
               // Structural wrapper — check if dragged is before it
               const beforeWrapper = prev.getPreviousSibling()
               if (beforeWrapper && beforeWrapper.getKey() === this.#draggedNodeKey) {
@@ -907,7 +908,7 @@ export class BlockDragAndDrop {
     const targetDepth = this.#getElementNestingDepth(resolvedBlock, root)
     const closestList = resolvedBlock.closest("ul, ol")
     const listPadding = closestList
-      ? parseFloat(getComputedStyle(closestList).paddingInlineStart) || 28
+      ? parseFloat(getComputedStyle(closestList).paddingInlineStart) || DEFAULT_ROOT_PADDING
       : 28
     const blockLeft = resolvedBlock.getBoundingClientRect().left
 
@@ -932,7 +933,7 @@ export class BlockDragAndDrop {
       // eslint-disable-next-line no-unused-vars
       const rootList = resolvedBlock.closest(`.${root.className.split(" ")[0]} > ul, .${root.className.split(" ")[0]} > ol`) || root.querySelector("ul, ol")
       const rootRect = root.getBoundingClientRect()
-      const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || 28
+      const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || DEFAULT_ROOT_PADDING
       const contentLeft = rootRect.left + rootPadding
       return { element: resolvedBlock, nodeKey, position, depth: 0, bulletLeft: contentLeft, contentLeft }
     }
@@ -943,7 +944,7 @@ export class BlockDragAndDrop {
       let isFirstInSublist = false
       if (resolvedBlock.tagName === "LI") {
         let prevSib = resolvedBlock.previousElementSibling
-        while (prevSib && prevSib.classList.contains("lexxy-nested-listitem")) {
+        while (prevSib && prevSib.classList.contains(NESTED_LISTITEM_CLASS)) {
           prevSib = prevSib.previousElementSibling
         }
         isFirstInSublist = !prevSib
@@ -982,7 +983,7 @@ export class BlockDragAndDrop {
       if (resolvedBlock.tagName === "LI") {
         let nextSib = resolvedBlock.nextElementSibling
         // Skip structural wrappers
-        while (nextSib && nextSib.classList.contains("lexxy-nested-listitem")) {
+        while (nextSib && nextSib.classList.contains(NESTED_LISTITEM_CLASS)) {
           nextSib = nextSib.nextElementSibling
         }
         isLastInSublist = !nextSib
@@ -1028,7 +1029,7 @@ export class BlockDragAndDrop {
     if (element.tagName === "LI") {
       // Check if this item has children (structural wrapper as next sibling)
       const next = element.nextElementSibling
-      const hasChildren = next && next.classList.contains("lexxy-nested-listitem")
+      const hasChildren = next && next.classList.contains(NESTED_LISTITEM_CLASS)
 
       if (hasChildren) {
         // Expanded inside zone: 20/60/20 — makes it easy to nest inside
@@ -1194,7 +1195,7 @@ export class BlockDragAndDrop {
     let ghostContent
     const nextSib = sourceElement.nextElementSibling
     const hasChildren = sourceElement.tagName === "LI" &&
-      nextSib && nextSib.classList.contains("lexxy-nested-listitem")
+      nextSib && nextSib.classList.contains(NESTED_LISTITEM_CLASS)
 
     if (hasChildren) {
       // Wrap in a mini list so the bullets render correctly
@@ -1218,9 +1219,9 @@ export class BlockDragAndDrop {
     // Strip selection classes from cloned elements — they carry box-shadows
     // (bullet extensions, gap bridges) that render as dark borders in the ghost.
     for (const el of ghostContent.querySelectorAll(".block--selected, .block--focused")) {
-      el.classList.remove("block--selected", "block--focused")
+      el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
     }
-    ghostContent.classList?.remove("block--selected", "block--focused")
+    ghostContent.classList?.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
 
     // Wrap in a container with Lexxy's CSS classes so content styles
     // (bullets, headings, code blocks, blockquotes, etc.) render correctly.
@@ -1295,7 +1296,7 @@ export class BlockDragAndDrop {
       let associatedWrapper = null
       if ($isListItemNode(draggedNode)) {
         const next = draggedNode.getNextSibling()
-        if (this.#isStructuralWrapper(next)) {
+        if ($isStructuralWrapper(next)) {
           associatedWrapper = next
           associatedWrapper.remove()
         }
@@ -1320,7 +1321,7 @@ export class BlockDragAndDrop {
         const parentList = draggedNode.getParent()
         if ($isListNode(parentList) && parentList.getChildrenSize() <= 1) {
           const parentWrapper = parentList.getParent()
-          if ($isListItemNode(parentWrapper) && this.#isStructuralWrapper(parentWrapper)) {
+          if ($isListItemNode(parentWrapper) && $isStructuralWrapper(parentWrapper)) {
             // Capture grandparent before removing
             const grandparentList = parentWrapper.getParent()
             draggedNode.remove()
@@ -1392,13 +1393,13 @@ export class BlockDragAndDrop {
           // the wrapper's children naturally become the inserted item's
           // children (standard outliner re-parenting behavior).
           const ancestor = this.#findInsertionAncestor(targetNode, target.depth)
-          const textItem = this.#isStructuralWrapper(ancestor)
+          const textItem = $isStructuralWrapper(ancestor)
             ? ancestor.getPreviousSibling() : ancestor
 
-          if (textItem && $isListItemNode(textItem) && !this.#isStructuralWrapper(textItem)) {
+          if (textItem && $isListItemNode(textItem) && !$isStructuralWrapper(textItem)) {
             // The structural wrapper after textItem will become nodeToInsert's children
             const existingWrapper = textItem.getNextSibling()
-            const reparenting = existingWrapper && this.#isStructuralWrapper(existingWrapper)
+            const reparenting = existingWrapper && $isStructuralWrapper(existingWrapper)
 
             textItem.insertAfter(nodeToInsert)
 
@@ -1435,7 +1436,7 @@ export class BlockDragAndDrop {
           // (structural wrapper), insert between the target and its wrapper
           // so the children transfer to the inserted item.
           const nextSib = targetNode.getNextSibling()
-          if (nextSib && this.#isStructuralWrapper(nextSib)) {
+          if (nextSib && $isStructuralWrapper(nextSib)) {
             targetNode.insertAfter(nodeToInsert)
             // existingWrapper stays in place → now after nodeToInsert → children transfer
             if (associatedWrapper) {
@@ -1563,17 +1564,17 @@ export class BlockDragAndDrop {
     const ancestor = this.#findInsertionAncestor(draggedNode, desiredDepth)
 
     // Save references before any mutations
-    const textItem = this.#isStructuralWrapper(ancestor)
+    const textItem = $isStructuralWrapper(ancestor)
       ? ancestor.getPreviousSibling() : ancestor
-    const structuralWrapper = this.#isStructuralWrapper(ancestor)
+    const structuralWrapper = $isStructuralWrapper(ancestor)
       ? ancestor
-      : (textItem?.getNextSibling() && this.#isStructuralWrapper(textItem.getNextSibling())
+      : (textItem?.getNextSibling() && $isStructuralWrapper(textItem.getNextSibling())
         ? textItem.getNextSibling() : null)
 
     // Detach the dragged node's own children (structural wrapper after it)
     let associatedWrapper = null
     const next = draggedNode.getNextSibling()
-    if (next && this.#isStructuralWrapper(next)) {
+    if (next && $isStructuralWrapper(next)) {
       associatedWrapper = next
       associatedWrapper.remove()
     }
@@ -1590,7 +1591,7 @@ export class BlockDragAndDrop {
       oldParentWrapper.getKey() === structuralWrapper.getKey()
     const oldWrapperKey = (!isInsertionTarget && oldParentWrapper &&
       $isListItemNode(oldParentWrapper) &&
-      this.#isStructuralWrapper(oldParentWrapper)) ? oldParentWrapper.getKey() : null
+      $isStructuralWrapper(oldParentWrapper)) ? oldParentWrapper.getKey() : null
 
     draggedNode.remove()
 
@@ -1600,7 +1601,7 @@ export class BlockDragAndDrop {
       const wrapper = $getNodeByKey(oldWrapperKey)
       if (wrapper && wrapper.getParent()) {
         const grandparentList = wrapper.getParent()
-        if (this.#isStructuralWrapper(wrapper)) {
+        if ($isStructuralWrapper(wrapper)) {
           const hasNonEmptyList = wrapper.getChildren().some(c =>
             $isListNode(c) && c.getChildrenSize() > 0)
           if (!hasNonEmptyList) {
@@ -1646,7 +1647,7 @@ export class BlockDragAndDrop {
   #insertAfterWithWrappers(target, nodeToInsert) {
     let afterTarget = target
     let next = afterTarget.getNextSibling()
-    while (this.#isStructuralWrapper(next)) {
+    while ($isStructuralWrapper(next)) {
       afterTarget = next
       next = afterTarget.getNextSibling()
     }
@@ -1660,7 +1661,7 @@ export class BlockDragAndDrop {
     if (!$isListNode(list)) return
     for (const child of [ ...list.getChildren() ]) {
       if (!$isListItemNode(child)) continue
-      if (this.#isStructuralWrapper(child)) {
+      if ($isStructuralWrapper(child)) {
         // Structural wrapper — remove if all inner lists are empty
         if (child.getChildren().every(inner => $isListNode(inner) && inner.getChildrenSize() === 0)) {
           child.remove()
@@ -1674,7 +1675,7 @@ export class BlockDragAndDrop {
           // Check the CSS class on the DOM element — if it still has
           // lexxy-nested-listitem, it was a structural wrapper.
           const el = this.#editor.getElementByKey(child.getKey())
-          if (el?.classList.contains("lexxy-nested-listitem")) {
+          if (el?.classList.contains(NESTED_LISTITEM_CLASS)) {
             child.remove()
           }
         }
@@ -1682,7 +1683,7 @@ export class BlockDragAndDrop {
     }
     if (list.getChildrenSize() === 0) {
       const parentWrapper = list.getParent()
-      if (this.#isStructuralWrapper(parentWrapper)) {
+      if ($isStructuralWrapper(parentWrapper)) {
         const grandparentList = parentWrapper.getParent()
         parentWrapper.remove()
         if ($isListNode(grandparentList)) this.#cleanupEmptyStructuralWrappers(grandparentList)
@@ -1762,7 +1763,7 @@ export class BlockDragAndDrop {
       // Find existing structural wrapper with nested list after the target
       let nestedList = null
       const nextSibling = targetNode.getNextSibling()
-      if (this.#isStructuralWrapper(nextSibling)) {
+      if ($isStructuralWrapper(nextSibling)) {
         nestedList = nextSibling.getChildren()[0]
       }
 
@@ -1778,7 +1779,7 @@ export class BlockDragAndDrop {
 
       // If nodeToInsert is a structural wrapper (only contains lists),
       // extract the items and insert them directly.
-      if (this.#isStructuralWrapper(nodeToInsert)) {
+      if ($isStructuralWrapper(nodeToInsert)) {
         const innerList = nodeToInsert.getChildren()[0]
         const firstChild = nestedList.getFirstChild()
         for (const child of [ ...innerList.getChildren() ]) {
@@ -1854,13 +1855,13 @@ export class BlockDragAndDrop {
     }
 
     if ($isListItemNode(draggedNode)) {
-      if (this.#isStructuralWrapper(draggedNode)) {
+      if ($isStructuralWrapper(draggedNode)) {
         // Dig into the structural wrapper to find the actual content
         const children = draggedNode.getChildren()
         const innerList = children[0]
         const innerItems = innerList.getChildren()
         const contentItem = innerItems.find(child =>
-          $isListItemNode(child) && !this.#isStructuralWrapper(child)
+          $isListItemNode(child) && !$isStructuralWrapper(child)
         )
 
         if (contentItem) {
@@ -2042,14 +2043,6 @@ export class BlockDragAndDrop {
       this.#scrollRafId = null
     }
     this.#scrollableContainers = null
-  }
-
-  // A structural wrapper is a ListItemNode whose only children are ListNodes
-  // (no text content — it holds nested lists for sibling items' children).
-  #isStructuralWrapper(node) {
-    if (!$isListItemNode(node)) return false
-    const kids = node.getChildren()
-    return kids.length > 0 && kids.every(c => $isListNode(c))
   }
 
   // -- Utilities --------------------------------------------------------------
