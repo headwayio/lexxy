@@ -26,7 +26,9 @@ export class ActionTextAttachmentNode extends DecoratorNode {
             node: new ActionTextAttachmentNode({
               sgid: attachment.getAttribute("sgid"),
               src: attachment.getAttribute("url"),
+              blobUrl: attachment.getAttribute("blob-url"),
               previewable: attachment.getAttribute("previewable"),
+              collapsed: attachment.getAttribute("collapsed"),
               altText: attachment.getAttribute("alt"),
               caption: attachment.getAttribute("caption"),
               contentType: attachment.getAttribute("content-type"),
@@ -79,13 +81,15 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return Lexxy.global.get("attachmentTagName")
   }
 
-  constructor({ tagName, sgid, src, previewable, altText, caption, contentType, fileName, fileSize, width, height }, key) {
+  constructor({ tagName, sgid, src, blobUrl, previewable, collapsed, altText, caption, contentType, fileName, fileSize, width, height }, key) {
     super(key)
 
     this.tagName = tagName || ActionTextAttachmentNode.TAG_NAME
     this.sgid = sgid
     this.src = src
+    this.blobUrl = blobUrl
     this.previewable = parseBoolean(previewable)
+    this.collapsed = collapsed != null ? parseBoolean(collapsed) : this.#defaultCollapsed(contentType)
     this.altText = altText || ""
     this.caption = caption || ""
     this.contentType = contentType || ""
@@ -97,12 +101,31 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     this.editor = $getEditor()
   }
 
+  get fileUrl() {
+    return this.blobUrl || this.src
+  }
+
+  #defaultCollapsed(contentType) {
+    return contentType === "application/pdf"
+  }
+
   createDOM() {
     const figure = this.createAttachmentFigure()
 
     if (this.isPreviewableAttachment) {
-      figure.appendChild(this.#createDOMForImage())
-      figure.appendChild(this.#createEditableCaption())
+      if (this.collapsed) {
+        figure.classList.add("attachment--collapsed")
+      }
+
+      const previewView = createElement("div", { className: "attachment__preview-view" })
+      previewView.appendChild(this.#createDOMForImage())
+      previewView.appendChild(this.#createEditableCaption())
+      figure.appendChild(previewView)
+
+      const cardView = createElement("div", { className: "attachment__card-view" })
+      cardView.appendChild(this.#createDOMForFile())
+      cardView.appendChild(this.#createDOMForNotImage())
+      figure.appendChild(cardView)
     } else {
       figure.appendChild(this.#createDOMForFile())
       figure.appendChild(this.#createDOMForNotImage())
@@ -115,6 +138,24 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const caption = dom.querySelector("figcaption textarea")
     if (caption && this.caption) {
       caption.value = this.caption
+    }
+
+    const cardView = dom.querySelector(".attachment__card-view")
+    if (cardView) {
+      const captionText = cardView.querySelector(".attachment__caption-text")
+      if (this.caption) {
+        if (captionText) {
+          captionText.textContent = this.caption
+        } else {
+          const meta = cardView.querySelector(".attachment__meta")
+          if (meta) {
+            const newCaption = createElement("span", { className: "attachment__caption-text", textContent: this.caption })
+            meta.prepend(newCaption)
+          }
+        }
+      } else if (captionText) {
+        captionText.remove()
+      }
     }
 
     return false
@@ -132,7 +173,9 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const attachment = createElement(this.tagName, {
       sgid: this.sgid,
       previewable: this.previewable || null,
+      collapsed: this.collapsed ? "true" : null,
       url: this.src,
+      "blob-url": this.blobUrl || null,
       alt: this.altText,
       caption: this.caption,
       "content-type": this.contentType,
@@ -153,7 +196,9 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       tagName: this.tagName,
       sgid: this.sgid,
       src: this.src,
+      blobUrl: this.blobUrl,
       previewable: this.previewable,
+      collapsed: this.collapsed,
       altText: this.altText,
       caption: this.caption,
       contentType: this.contentType,
@@ -173,8 +218,17 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     figure.draggable = true
     figure.dataset.lexicalNodeKey = this.__key
 
-    const deleteButton = createElement("lexxy-node-delete-button")
-    figure.appendChild(deleteButton)
+    const controls = createElement("lexxy-node-delete-button")
+    if (this.fileUrl) {
+      controls.dataset.fileUrl = this.fileUrl
+      controls.dataset.fileName = this.fileName || ""
+      controls.dataset.contentType = this.contentType || ""
+      controls.dataset.caption = this.caption || ""
+    }
+    if (this.isPreviewableAttachment) {
+      controls.dataset.previewable = "true"
+    }
+    figure.appendChild(controls)
 
     return figure
   }
@@ -223,22 +277,33 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     }
   }
 
+  static FILE_TYPE_LABELS = { md: "M↓", png: "IMG", jpg: "IMG", jpeg: "IMG", gif: "IMG", webp: "IMG", svg: "IMG", xls: "XLS", xlsx: "XLS" }
+
   #createDOMForFile() {
-    const extension = this.fileName ? this.fileName.split(".").pop().toLowerCase() : "unknown"
-    return createElement("span", { className: "attachment__icon", textContent: `${extension}` })
+    const extension = this.fileName ? this.fileName.split(".").pop().toLowerCase() : "?"
+    const label = ActionTextAttachmentNode.FILE_TYPE_LABELS[extension] || extension.toUpperCase()
+    return createElement("span", { className: "attachment__icon", textContent: label })
   }
 
   #createDOMForNotImage() {
     const figcaption = createElement("figcaption", { className: "attachment__caption" })
 
-    const nameTag = createElement("strong", { className: "attachment__name", textContent: this.caption || this.fileName })
-
+    const nameTag = createElement("strong", { className: "attachment__name", textContent: this.fileName })
     figcaption.appendChild(nameTag)
 
-    if (this.fileSize) {
-      const sizeSpan = createElement("span", { className: "attachment__size", textContent: bytesToHumanSize(this.fileSize) })
-      figcaption.appendChild(sizeSpan)
+    const metaRow = createElement("span", { className: "attachment__meta" })
+
+    if (this.caption) {
+      const captionTag = createElement("span", { className: "attachment__caption-text", textContent: this.caption })
+      metaRow.appendChild(captionTag)
     }
+
+    if (this.fileSize) {
+      const subtitle = createElement("span", { className: "attachment__subtitle", textContent: bytesToHumanSize(this.fileSize) })
+      metaRow.appendChild(subtitle)
+    }
+
+    figcaption.appendChild(metaRow)
 
     return figcaption
   }

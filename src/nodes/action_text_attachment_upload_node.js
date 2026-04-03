@@ -262,7 +262,8 @@ class AttachmentNodeConversion {
     return new ActionTextAttachmentNode({
       ...this.uploadNode,
       ...this.#propertiesFromBlob,
-      src: this.#src
+      src: this.#src,
+      blobUrl: this.#blobSrc
     })
   }
 
