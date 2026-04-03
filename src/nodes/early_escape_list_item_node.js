@@ -9,6 +9,42 @@ export class EarlyEscapeListItemNode extends ListItemNode {
     return this.config("early_escape_listitem", { extends: ListItemNode })
   }
 
+  createDOM(config) {
+    const element = super.createDOM(config)
+    this.#updateBulletDepth(element)
+    return element
+  }
+
+  updateDOM(prevNode, dom, config) {
+    const result = super.updateDOM(prevNode, dom, config)
+    this.#updateBulletDepth(dom)
+    return result
+  }
+
+  #updateBulletDepth(element) {
+    const parentList = this.getParent()
+    if ($isListNode(parentList) && parentList.getListType() === "bullet" && !this.getChildren().some(c => $isListNode(c))) {
+      const depth = ((this.#computeBulletDepth() - 1) % 3) + 1
+      element.dataset.bulletDepth = depth
+    } else {
+      delete element.dataset.bulletDepth
+    }
+  }
+
+  #computeBulletDepth() {
+    let depth = 1
+    let node = this.getParent()
+    while ($isListNode(node)) {
+      const wrapper = node.getParent()
+      if (!$isListItemNode(wrapper)) break
+      const outerList = wrapper.getParent()
+      if (!$isListNode(outerList)) break
+      depth++
+      node = outerList
+    }
+    return depth
+  }
+
   insertNewAfter(selection, restoreSelection) {
     if (this.#shouldEscape(selection)) {
       return this.#escapeFromList()
