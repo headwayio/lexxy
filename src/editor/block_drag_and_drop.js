@@ -6,6 +6,7 @@ import {
   $isParagraphNode
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
+import { createElement } from "../helpers/html_helper"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>
@@ -14,6 +15,11 @@ const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="current
   <circle cx="8" cy="7" r="1.5"/>
   <circle cx="2" cy="12" r="1.5"/>
   <circle cx="8" cy="12" r="1.5"/>
+</svg>`
+
+const ADD_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">
+  <line x1="7" y1="1" x2="7" y2="13"/>
+  <line x1="1" y1="7" x2="13" y2="7"/>
 </svg>`
 
 // Minimum pointer movement (px) before a handle pointerdown becomes a drag
@@ -119,10 +125,11 @@ export class BlockDragAndDrop {
   #createAddButton() {
     this.#editorElement.querySelector(".lexxy-block-add")?.remove()
 
-    const btn = document.createElement("div")
-    btn.className = "lexxy-block-add"
-    btn.setAttribute("aria-label", "Add block")
-    btn.innerHTML = "<svg width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" xmlns=\"http://www.w3.org/2000/svg\"><line x1=\"7\" y1=\"1\" x2=\"7\" y2=\"13\"/><line x1=\"1\" y1=\"7\" x2=\"13\" y2=\"7\"/></svg>"
+    const btn = createElement("div", {
+      className: "lexxy-block-add",
+      "aria-label": "Add block"
+    })
+    btn.innerHTML = ADD_ICON
 
     btn.addEventListener("click", this.#onAddButtonClick)
 
@@ -154,9 +161,10 @@ export class BlockDragAndDrop {
   #createHandleElement() {
     this.#editorElement.querySelector(".lexxy-block-handle")?.remove()
 
-    this.#handleElement = document.createElement("div")
-    this.#handleElement.className = "lexxy-block-handle"
-    this.#handleElement.setAttribute("aria-hidden", "true")
+    this.#handleElement = createElement("div", {
+      className: "lexxy-block-handle",
+      "aria-hidden": "true"
+    })
     this.#handleElement.innerHTML = GRIP_ICON
 
     this.#handleElement.addEventListener("pointerdown", this.#onHandlePointerDown)
@@ -167,17 +175,16 @@ export class BlockDragAndDrop {
   #createDropIndicator() {
     this.#editorElement.querySelector(".lexxy-drop-indicator")?.remove()
 
-    const indicator = document.createElement("div")
-    indicator.className = "lexxy-drop-indicator"
-    indicator.setAttribute("aria-hidden", "true")
+    const indicator = createElement("div", {
+      className: "lexxy-drop-indicator",
+      "aria-hidden": "true"
+    })
 
     // The indicator has a circle at the left end and a line extending right
-    const circle = document.createElement("div")
-    circle.className = "lexxy-drop-indicator__circle"
+    const circle = createElement("div", { className: "lexxy-drop-indicator__circle" })
     indicator.appendChild(circle)
 
-    const line = document.createElement("div")
-    line.className = "lexxy-drop-indicator__line"
+    const line = createElement("div", { className: "lexxy-drop-indicator__line" })
     indicator.appendChild(line)
 
     this.#dropIndicatorElement = indicator
@@ -1217,8 +1224,7 @@ export class BlockDragAndDrop {
 
     // Wrap in a container with Lexxy's CSS classes so content styles
     // (bullets, headings, code blocks, blockquotes, etc.) render correctly.
-    const styleWrapper = document.createElement("div")
-    styleWrapper.className = "lexxy-content lexxy-editor__content"
+    const styleWrapper = createElement("div", { className: "lexxy-content lexxy-editor__content" })
     styleWrapper.appendChild(ghostContent)
 
     // Copy CSS custom properties from the editor to the ghost so code blocks,
@@ -1234,22 +1240,9 @@ export class BlockDragAndDrop {
       if (val) styleWrapper.style.setProperty(v, val)
     }
 
-    const ghost = document.createElement("div")
-    ghost.className = "lexxy-drag-ghost"
+    const ghost = createElement("div", { className: "lexxy-drag-ghost" })
     ghost.appendChild(styleWrapper)
-    ghost.style.position = "fixed"
     ghost.style.width = `${rect.width + 24}px`
-    ghost.style.maxHeight = "280px"
-    ghost.style.pointerEvents = "none"
-    ghost.style.zIndex = "10000"
-    ghost.style.opacity = "1"
-    ghost.style.transform = "scale(0.95)"
-    ghost.style.transformOrigin = "top left"
-    ghost.style.borderRadius = "6px"
-    ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)"
-    ghost.style.background = "color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 5%, var(--lexxy-color-canvas, #fff))"
-    ghost.style.padding = "4px 8px 8px"
-    ghost.style.overflow = "hidden"
     ghost.style.left = `${event.clientX + 12}px`
     ghost.style.top = `${event.clientY - 12}px`
     ghost.style.transition = "opacity 100ms ease"
