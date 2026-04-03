@@ -25,3 +25,4 @@
 /docs/.jekyll-cache/
 /docs/.jekyll-metadata
 /docs/Gemfile.lock
+.yarn/install-state.gz
