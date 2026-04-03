@@ -2,7 +2,6 @@ import ToolbarIcons from "./toolbar_icons"
 
 const TURN_INTO_OPTIONS = [
   { command: "setFormatParagraph", label: "Text", icon: ToolbarIcons.paragraph },
-  { command: "setFormatHeadingXLarge", label: "Heading 1", icon: ToolbarIcons.h1 },
   { command: "setFormatHeadingLarge", label: "Heading 2", icon: ToolbarIcons.h2 },
   { command: "setFormatHeadingMedium", label: "Heading 3", icon: ToolbarIcons.h3 },
   { command: "setFormatHeadingSmall", label: "Heading 4", icon: ToolbarIcons.h4 },
