@@ -12,22 +12,10 @@ const REMOVE_HIGHLIGHT_SELECTOR = "[data-command='removeHighlight']"
 const NO_STYLE = Symbol("no_style")
 
 export class HighlightDropdown extends ToolbarDropdown {
-  connectedCallback() {
-    super.connectedCallback()
-    // Setup moved to initialize() — connectedCallback runs before the base
-    // class has resolved this.container (deferred via queueMicrotask).
-    // initialize() is called after the editor is connected and container is set.
-  }
-
   initialize() {
-    this.#registerToggleHandler()
+    this.container.addEventListener("toggle", this.#handleToggle)
     this.#setUpButtons()
     this.#registerButtonHandlers()
-  }
-
-  connectedCallback() {
-    super.connectedCallback()
-    this.container.addEventListener("toggle", this.#handleToggle)
   }
 
   disconnectedCallback() {
