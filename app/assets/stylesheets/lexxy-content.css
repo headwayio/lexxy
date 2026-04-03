@@ -101,7 +101,7 @@
 
   code, pre {
     background-color: var(--lexxy-color-ink-lightest);
-    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+    border-radius: var(--lexxy-radius);
     color: var(--lexxy-color-ink);
     font-family: var(--lexxy-font-mono);
     font-size: 0.9em;
@@ -109,7 +109,7 @@
 
     &:is(pre),
     &[data-language] {
-      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+      border-radius: var(--lexxy-radius);
       display: block;
       hyphens: none;
       margin-block: 0 var(--lexxy-content-margin);
@@ -357,7 +357,7 @@
 
     block-size: auto;
     box-sizing: border-box;
-    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+    border-radius: var(--lexxy-radius);
     display: block;
     inline-size: fit-content;
     margin-inline: auto;
@@ -380,7 +380,7 @@
     block-size: 2.5rem;
     inline-size: 2.5rem;
     border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
-    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+    border-radius: var(--lexxy-radius);
     box-sizing: border-box;
     color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
     display: grid;
@@ -396,7 +396,7 @@
 
   .attachment--preview {
     img, video {
-      border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+      border-radius: var(--lexxy-radius);
       block-size: auto;
       display: block;
       margin-inline: auto;
@@ -424,7 +424,7 @@
       .attachment__card-view {
         align-items: center;
         border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
-        border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+        border-radius: var(--lexxy-radius);
         display: flex;
         gap: 0.75rem;
         inline-size: 100%;
@@ -436,7 +436,7 @@
   .attachment--file {
     align-items: center;
     border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
-    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+    border-radius: var(--lexxy-radius);
     display: flex;
     gap: 0.75rem;
     inline-size: 100%;
@@ -567,7 +567,7 @@
 
     align-items: center;
     background: var(--lexxy-attachment-bg-color);
-    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap, 2px));
+    border-radius: var(--lexxy-radius);
     color: var(--lexxy-attachment-text-color);
     display: inline-flex;
     gap: 0.25ch;
