@@ -298,6 +298,9 @@ export class LexicalEditorElement extends HTMLElement {
     this.#attachDebugHooks()
     this.#attachToolbar()
     this.extensions.initializeEditors()
+    for (const ext of this.extensions.enabledExtensions) {
+      if (typeof ext.dispose === "function") this.#disposables.push(ext)
+    }
     this.#loadInitialValue()
     this.#resetBeforeTurboCaches()
   }

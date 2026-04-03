@@ -79,8 +79,14 @@ export class BlockSelectionExtension extends LexxyExtension {
   destroy() {
     this.#exitBlockSelectMode()
     this.#dragAndDrop?.destroy()
+    this.#blockActionsMenu?.remove()
     for (const fn of this.#cleanupFns) fn()
     this.#cleanupFns = []
+  }
+
+  // Called by the editor's #dispose lifecycle to clean up on disconnect.
+  dispose() {
+    this.destroy()
   }
 
   setShowHandles(show) {
@@ -1171,8 +1177,9 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#dragAndDrop?.syncBulletOffset(event.target)
       this.#dragAndDrop?.repositionHandle()
     }
-    this.root?.addEventListener("lexxy:sync-wrapped-block", handler)
-    this.#cleanupFns.push(() => this.root?.removeEventListener("lexxy:sync-wrapped-block", handler))
+    const rootElement = this.root
+    rootElement?.addEventListener("lexxy:sync-wrapped-block", handler)
+    this.#cleanupFns.push(() => rootElement?.removeEventListener("lexxy:sync-wrapped-block", handler))
   }
 
   #syncBulletOffsets() {
@@ -2718,13 +2725,14 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
-    this.root?.addEventListener("mousedown", onMouseDown, true)
-    this.root?.addEventListener("mouseup", suppressIfDecorator, true)
-    this.root?.addEventListener("click", suppressIfDecorator, true)
+    const decoratorRoot = this.root
+    decoratorRoot?.addEventListener("mousedown", onMouseDown, true)
+    decoratorRoot?.addEventListener("mouseup", suppressIfDecorator, true)
+    decoratorRoot?.addEventListener("click", suppressIfDecorator, true)
     this.#cleanupFns.push(() => {
-      this.root?.removeEventListener("mousedown", onMouseDown, true)
-      this.root?.removeEventListener("mouseup", suppressIfDecorator, true)
-      this.root?.removeEventListener("click", suppressIfDecorator, true)
+      decoratorRoot?.removeEventListener("mousedown", onMouseDown, true)
+      decoratorRoot?.removeEventListener("mouseup", suppressIfDecorator, true)
+      decoratorRoot?.removeEventListener("click", suppressIfDecorator, true)
     })
   }
 
