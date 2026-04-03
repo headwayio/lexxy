@@ -2,12 +2,22 @@ import { nextFrame } from "../helpers/timing_helpers"
 
 export class ToolbarDropdown extends HTMLElement {
   connectedCallback() {
-    this.container = this.closest("details")
+    // Defer to next microtask — when dynamically created editors build the
+    // toolbar via createElement + innerHTML (#createDefaultToolbar in editor.js),
+    // connectedCallback fires for child custom elements (LinkDropdown,
+    // HighlightDropdown) during innerHTML parsing, BEFORE the toolbar is
+    // prepended to the document. At that point this.closest("details") returns
+    // null because the element isn't connected yet. The microtask runs after
+    // the full tree is inserted into the DOM.
+    queueMicrotask(() => {
+      this.container = this.closest("details")
+      if (!this.container) return
 
-    this.container.addEventListener("toggle", this.#handleToggle)
-    this.container.addEventListener("keydown", this.#handleKeyDown)
+      this.container.addEventListener("toggle", this.#handleToggle.bind(this))
+      this.container.addEventListener("keydown", this.#handleKeyDown.bind(this))
 
-    this.#onToolbarEditor(this.initialize.bind(this))
+      this.#onToolbarEditor(this.initialize.bind(this))
+    })
   }
 
   disconnectedCallback() {
