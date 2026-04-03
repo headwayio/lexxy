@@ -8,6 +8,7 @@ import {
 import { $generateNodesFromDOM } from "@lexical/html"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
 import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
+import { $isListItemNode, $isListNode } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
 import { dispatch, parseHtml } from "../helpers/html_helper"
@@ -75,14 +76,115 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    const listItem = this.#findContainingListItem(selection)
+    if (listItem) {
+      this.unwrapListItemIfWrapped(listItem)
+    }
+
+    const savedStyles = this.#captureTextStyles(selection)
     $setBlocksType(selection, () => $createParagraphNode())
+    this.#restoreTextStyles(savedStyles)
   }
 
   applyHeadingFormat(tag) {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    const savedStyles = this.#captureTextStyles(selection)
     $setBlocksType(selection, () => $createHeadingNode(tag))
+    this.#restoreTextStyles(savedStyles)
+  }
+
+  // Save inline styles (keyed by text content + offset) from text nodes in
+  // the selected blocks so they can be restored after $setBlocksType, which
+  // can strip styles when converting list items to other block types.
+  #captureTextStyles(selection) {
+    const styles = new Map()
+    for (const node of selection.getNodes()) {
+      if ($isTextNode(node)) {
+        const style = node.getStyle()
+        if (style) styles.set(node.getKey(), style)
+      }
+    }
+    return styles
+  }
+
+  #restoreTextStyles(savedStyles) {
+    if (savedStyles.size === 0) return
+    for (const [ key, style ] of savedStyles) {
+      const node = $getNodeByKey(key)
+      if ($isTextNode(node) && !node.getStyle()) {
+        node.setStyle(style)
+      }
+    }
+  }
+
+  // Find the ListItemNode containing the selection anchor, if any.
+  #findContainingListItem(selection) {
+    let current = selection.anchor.getNode()
+    while (current) {
+      if ($isListItemNode(current)) return current
+      current = current.getParent()
+    }
+    return null
+  }
+
+  // Wrap a list item's inline content in a block element (heading, quote).
+  // If already wrapped, swap the wrapper type. Public for use by slash
+  // commands and block editing extensions.
+  wrapListItemContent(listItem, newBlock) {
+    const children = listItem.getChildren()
+
+    // Already wrapped in a non-paragraph block? Swap the wrapper.
+    const existingWrapped = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (existingWrapped) {
+      for (const child of [ ...existingWrapped.getChildren() ]) {
+        newBlock.append(child)
+      }
+      existingWrapped.replace(newBlock)
+      newBlock.selectEnd()
+      return
+    }
+
+    // Regular inline content → wrap in the new block
+    for (const child of [ ...children ]) {
+      if ($isListNode(child)) continue
+      newBlock.append(child)
+    }
+    const firstChild = listItem.getFirstChild()
+    if (firstChild) {
+      firstChild.insertBefore(newBlock)
+    } else {
+      listItem.append(newBlock)
+    }
+    newBlock.selectEnd()
+  }
+
+  // Unwrap a wrapped block inside a list item if one exists. No-op for
+  // regular (non-wrapped) list items. Public so command_dispatcher can call it.
+  unwrapListItemIfWrapped(listItem) {
+    const children = listItem.getChildren()
+    const wrappedChild = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (wrappedChild) this.#unwrapListItemContent(listItem)
+  }
+
+  // Unwrap a wrapped block back to regular inline list item content.
+  #unwrapListItemContent(listItem) {
+    const children = listItem.getChildren()
+    const wrappedChild = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (wrappedChild) {
+      for (const child of [ ...wrappedChild.getChildren() ]) {
+        listItem.append(child)
+      }
+      wrappedChild.remove()
+    }
+    listItem.selectEnd()
   }
 
   #applyCodeBlockFormat() {
