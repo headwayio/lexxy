@@ -748,6 +748,49 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     }
   }
 
+  /* Regular list items: replace native markers with positioned ::before
+     so we can nudge vertical alignment with drag handles */
+  li:not(.lexxy-nested-listitem):not(:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)) {
+    list-style-type: none;
+    position: relative;
+
+    &::marker {
+      content: none;
+    }
+  }
+
+  /* Unordered list bullets */
+  ul:not(.lexxy-prompt-menu) > li:not(.lexxy-nested-listitem):not(:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)) {
+    &::before {
+      content: "";
+      position: absolute;
+      right: calc(100% + 8.5px);
+      top: 0px;
+      width: 5px;
+      height: 1lh;
+      background: radial-gradient(circle, currentColor 2.5px, transparent 2.5px) center no-repeat;
+    }
+  }
+
+  /* Ordered list numbers */
+  ol {
+    counter-reset: lexxy-ol;
+  }
+
+  ol > li:not(.lexxy-nested-listitem):not(:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)) {
+    counter-increment: lexxy-ol;
+
+    &::before {
+      content: counter(lexxy-ol) ".";
+      position: absolute;
+      right: 100%;
+      top: 0px;
+      width: 2em;
+      display: inline-block;
+      text-align: center;
+    }
+  }
+
   /* Block editing: structural wrappers and wrapped blocks hide their markers */
   li.lexxy-nested-listitem {
     list-style-type: none;
@@ -789,6 +832,18 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     &.lexxy-block-hovered::before {
       opacity: 0.7;
     }
+
+    /* h4+ are body-text sized — bullet needs 1px less offset than larger headings */
+    &:has(> h4, > h5, > h6)::before {
+      top: calc(var(--bullet-offset-y, 0px) + 9.5px);
+    }
+  }
+}
+
+/* Show all wrapped block bullets during drag so the user can see hierarchy */
+:where(lexxy-editor).lexxy-block-dragging {
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)::before {
+    opacity: 0.4;
   }
 }
 
@@ -1851,12 +1906,12 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
   .lexxy-drop-indicator__circle {
     flex-shrink: 0;
-    inline-size: 6px;
-    block-size: 6px;
+    inline-size: 5px;
+    block-size: 5px;
     border-radius: 50%;
     border: 1.5px solid var(--lexxy-focus-ring-color);
     background: var(--lexxy-color-surface, #fff);
-    margin-inline-start: -3px;
+    margin-inline-start: -2.5px;
     margin-inline-end: var(--indicator-gap, 0px);
   }
 
@@ -1878,7 +1933,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   border-radius: var(--lexxy-radius, 0.5ch);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
   background: color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 5%, var(--lexxy-color-canvas, #fff));
-  padding: 6px 8px;
+  padding: 4px 8px 8px;
   overflow: hidden;
 }
 

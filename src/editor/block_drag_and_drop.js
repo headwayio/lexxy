@@ -206,8 +206,8 @@ export class BlockDragAndDrop {
 
     if (blockElement.tagName === "LI") {
       const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || DEFAULT_HANDLE_HEIGHT
-      // Align with the native bullet's visual center
-      const defaultBulletCenter = blockRect.top + (liLineHeight / 2)
+      // -1: font ascent places the bullet character slightly above lineHeight/2
+      const defaultBulletCenter = blockRect.top + (liLineHeight / 2) - 1
       let handleCenter = defaultBulletCenter
 
       const innerTable = blockElement.querySelector("table, .lexxy-content__table-wrapper")
@@ -277,7 +277,7 @@ export class BlockDragAndDrop {
       const firstRow = blockElement.querySelector("tr")
       if (firstRow) {
         const rowRect = firstRow.getBoundingClientRect()
-        const rowCenter = rowRect.top + (rowRect.height / 2)
+        const rowCenter = rowRect.top + (rowRect.height / 2) - 1
         top = rowCenter - editorRect.top - (handleHeight / 2)
       } else {
         top = blockRect.top - editorRect.top
@@ -292,9 +292,10 @@ export class BlockDragAndDrop {
       top = rowCenter - editorRect.top - (handleHeight / 2)
     } else {
       // Everything else: center on the first character of text
+      // -1: font ascent places the visual center slightly above charRect midpoint
       const firstCharRect = this.#getFirstCharRect(blockElement)
       if (firstCharRect && firstCharRect.height > 0) {
-        const lineCenter = firstCharRect.top + (firstCharRect.height / 2)
+        const lineCenter = firstCharRect.top + (firstCharRect.height / 2) - 1
         top = lineCenter - editorRect.top - (handleHeight / 2)
       } else {
         // No text (HR, empty blocks): center vertically on the block
@@ -580,7 +581,7 @@ export class BlockDragAndDrop {
       return
     }
 
-    const blockElement = this.#findNearestBlockElement(element, root)
+    const blockElement = this.#findNearestBlockElement(element, root, event.clientY)
     if (!blockElement || blockElement === this.#currentHoveredBlock) {
       if (!blockElement) this.#hideHandle()
       return
@@ -604,8 +605,8 @@ export class BlockDragAndDrop {
   }
 
   // Find the nearest selectable block element: list items, or top-level blocks.
-  // When clientY is provided (during drag), resolves list gaps to the nearest
-  // child <li> instead of returning the <ul> container.
+  // When clientY is provided, resolves list gaps to the nearest child <li>
+  // instead of returning the <ul> container.
   #findNearestBlockElement(element, root, clientY = null) {
     let current = element
     while (current && current !== root) {
@@ -617,8 +618,8 @@ export class BlockDragAndDrop {
       }
       // Top-level children of the root
       if (current.parentElement === root) {
-        // During drag: if the element is a list, resolve to the nearest <li>
-        // inside it to avoid jumping to root level when the mouse is in gaps.
+        // If the element is a list, resolve to the nearest <li> inside it
+        // to avoid jumping to root level when the mouse is in gaps.
         if (clientY !== null && (current.tagName === "UL" || current.tagName === "OL")) {
           const nearestLi = this.#findNearestListItem(current, clientY)
           if (nearestLi) return nearestLi
@@ -717,6 +718,7 @@ export class BlockDragAndDrop {
     // will clean up any empty structural wrappers left behind after removal.
     this.#isDragging = true
     this.#draggedNodeKey = nodeKey
+    this.#editorElement.classList.add("lexxy-block-dragging")
 
     // Release pointer capture from the handle — it was set during pointerdown
     // for the click-vs-drag threshold, but during drag we use document listeners.
@@ -790,15 +792,27 @@ export class BlockDragAndDrop {
     window.removeEventListener("mouseup", this.#onDragEnd, true)
     document.removeEventListener("keydown", this.#onDragKeydown)
 
+    let droppedNodeKey = null
     if (this.#dropTarget && this.#draggedNodeKey) {
       try {
+        droppedNodeKey = this.#draggedNodeKey
         this.#performDrop()
       } catch (e) {
         console.error("[BlockDragAndDrop] Drop failed:", e)
+        droppedNodeKey = null
       }
     }
 
     this.#cleanup()
+
+    // After a successful drop, select the moved block with its children
+    // so the user sees the full scope of what landed (especially after
+    // outdenting where the block may have adopted new children).
+    if (droppedNodeKey) {
+      requestAnimationFrame(() => {
+        this.#blockSelectionExtension.enterBlockSelectMode(droppedNodeKey)
+      })
+    }
   }
 
   // -- Drop target resolution with hierarchy levels ---------------------------
@@ -985,7 +999,7 @@ export class BlockDragAndDrop {
           const snap = this.#findNearestSnapPoint(validSnaps, event.clientX)
           if (snap.depth < targetDepth) {
             const snapContentLeft = snap.pixelLeft + listPadding
-            const snapBulletLeft = snapContentLeft - 11
+            const snapBulletLeft = snapContentLeft - 12
             return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft }
           }
         }
@@ -997,7 +1011,7 @@ export class BlockDragAndDrop {
       // the target itself is the depth gate (you need an item at each level).
       const insideDepth = targetDepth + 1
       const insideContentLeft = blockLeft + listPadding
-      const insideBulletLeft = insideContentLeft - 11
+      const insideBulletLeft = insideContentLeft - 12
       return { element: resolvedBlock, nodeKey, position, depth: insideDepth, bulletLeft: insideBulletLeft, contentLeft: insideContentLeft }
     }
 
@@ -1031,7 +1045,7 @@ export class BlockDragAndDrop {
           ? this.#findNearestSnapPoint(validSnaps, event.clientX)
           : validSnaps[0]
         const snapContentLeft = snap.pixelLeft + listPadding
-        const snapBulletLeft = snapContentLeft - 11
+        const snapBulletLeft = snapContentLeft - 12
         // Self-target is only valid when depth actually changes (outdent)
         if (isSelfTarget && snap.depth >= targetDepth) return null
         return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft }
@@ -1044,7 +1058,7 @@ export class BlockDragAndDrop {
     // Before/after: place at the target's depth as a sibling.
     // The native bullet center is ~10px left of the LI content edge.
     // Subtract the indicator circle radius (3px) so the circle center aligns.
-    const bulletLeft = blockLeft - 11
+    const bulletLeft = blockLeft - 12
     return { element: blockElement, nodeKey, position, depth: targetDepth, bulletLeft, contentLeft: blockLeft }
   }
 
@@ -1183,7 +1197,7 @@ export class BlockDragAndDrop {
     }
 
     const left = target.bulletLeft - editorRect.left
-    const gap = target.contentLeft - target.bulletLeft - 6
+    const gap = target.contentLeft - target.bulletLeft - 3
 
     // Skip if the indicator would barely move — prevents flicker between
     // adjacent "after A" / "before B" targets at the same depth
@@ -1233,14 +1247,14 @@ export class BlockDragAndDrop {
       list.appendChild(sourceElement.cloneNode(true))
       list.appendChild(nextSib.cloneNode(true))
       list.style.margin = "0"
-      list.style.paddingInlineStart = "2em"
+      list.style.paddingInlineStart = "1.5em"
       ghostContent = list
     } else if (sourceElement.tagName === "LI") {
       // Single list item — wrap in a list for proper bullet rendering
       const list = document.createElement(sourceElement.closest("ul, ol")?.tagName || "UL")
       list.appendChild(sourceElement.cloneNode(true))
       list.style.margin = "0"
-      list.style.paddingInlineStart = "2em"
+      list.style.paddingInlineStart = "1.5em"
       ghostContent = list
     } else {
       ghostContent = sourceElement.cloneNode(true)
@@ -2098,6 +2112,7 @@ export class BlockDragAndDrop {
     for (const el of this.#editorElement.querySelectorAll(".lexxy-dragging")) {
       el.classList.remove("lexxy-dragging")
     }
+    this.#editorElement.classList.remove("lexxy-block-dragging")
 
     // Hide the handle and clear hover state — after a drop the DOM has
     // changed so the handle position is stale.

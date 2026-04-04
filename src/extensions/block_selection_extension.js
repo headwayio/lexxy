@@ -21,7 +21,9 @@ import {
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
-  OUTDENT_CONTENT_COMMAND
+  OUTDENT_CONTENT_COMMAND,
+  UNDO_COMMAND,
+  REDO_COMMAND
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $isCodeNode } from "@lexical/code"
@@ -44,6 +46,8 @@ export class BlockSelectionExtension extends LexxyExtension {
   #wrappedBlockKeys = new Set() // ListItemNode keys created by block movement
   #blockActionsMenu = null
   #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
+  #selectionUndoStack = [] // parallel stack for block selection state
+  #selectionRedoStack = []
 
   get enabled() {
     return this.editorElement.supportsRichText
@@ -74,6 +78,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#registerBlockSelectFormatHandler()
     this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
     this.#registerBulletOffsetSyncListener()
+    this.#registerSelectionHistoryHandlers()
   }
 
   destroy() {
@@ -101,8 +106,10 @@ export class BlockSelectionExtension extends LexxyExtension {
   // -- Mode transitions -------------------------------------------------------
 
   enterBlockSelectMode(nodeKey, { keepHandles = false } = {}) {
-    if (this.#mode === "block-select" && this.#selectedBlockKeys.has(nodeKey)) return
-
+    // Only bail if the user clicked the same primary block (anchor) again.
+    // If the key is in the set as a child of the current anchor, allow
+    // re-selection so clicking a child's handle narrows to just that child.
+    if (this.#mode === "block-select" && this.#anchorKey === nodeKey) return
 
     this.#mode = "block-select"
     this.root?.classList.add(BLOCK_SELECTION_ACTIVE_CLASS)
@@ -185,6 +192,20 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
   }
 
+  // True when pressing arrow in `direction` moves the focus AWAY from the
+  // anchor (extending the selection), not back toward it (contracting).
+  #isExtendingAway(direction) {
+    if (!this.#anchorKey || !this.#focusKey) return true
+    const allBlocks = this.#getDocumentOrderBlockKeys()
+    const anchorIdx = allBlocks.indexOf(this.#anchorKey)
+    const focusIdx = allBlocks.indexOf(this.#focusKey)
+    if (anchorIdx === -1 || focusIdx === -1) return true
+    // Focus is at or below anchor → pressing down extends away
+    // Focus is at or above anchor → pressing up extends away
+    if (direction === "down") return focusIdx >= anchorIdx
+    return focusIdx <= anchorIdx
+  }
+
   #selectRange(fromKey, toKey) {
     const allBlocks = this.#getDocumentOrderBlockKeys()
     const fromIndex = allBlocks.indexOf(fromKey)
@@ -240,6 +261,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
 
     this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
+    this.#syncBulletOffsets()
   }
 
   // -- Block tree traversal ---------------------------------------------------
@@ -416,7 +438,17 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (key) this.#selectBlock(key)
           this.#deleteNeighbors = null
         } else {
-          const prevKey = this.#getPreviousBlockKey(this.#focusKey)
+          let prevKey = this.#getPreviousBlockKey(this.#focusKey)
+          // When extending selection AWAY from the anchor past a parent whose
+          // children are already selected, skip to the next unselected sibling.
+          // When contracting (moving back toward anchor), deselect one at a time.
+          if (prevKey && event.shiftKey && this.#isExtendingAway("up")) {
+            while (prevKey && this.#selectedBlockKeys.has(prevKey)) {
+              const before = this.#getPreviousBlockKey(prevKey)
+              if (!before) break
+              prevKey = before
+            }
+          }
           if (prevKey) {
             this.#selectBlock(prevKey, event.shiftKey)
             this.#scrollBlockIntoView(prevKey)
@@ -435,7 +467,17 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (key) this.#selectBlock(key)
           this.#deleteNeighbors = null
         } else {
-          const nextKey = this.#getNextBlockKey(this.#focusKey)
+          let nextKey = this.#getNextBlockKey(this.#focusKey)
+          // When extending selection AWAY from the anchor past a parent whose
+          // children are already selected, skip to the next unselected sibling.
+          // When contracting (moving back toward anchor), deselect one at a time.
+          if (nextKey && event.shiftKey && this.#isExtendingAway("down")) {
+            while (nextKey && this.#selectedBlockKeys.has(nextKey)) {
+              const after = this.#getNextBlockKey(nextKey)
+              if (!after) break
+              nextKey = after
+            }
+          }
           if (nextKey) {
             this.#selectBlock(nextKey, event.shiftKey)
             this.#scrollBlockIntoView(nextKey)
@@ -977,6 +1019,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #handleIndentOutdent(outdent) {
+    this.pushSelectionHistory()
     this.editor.update(() => {
       // Filter to root keys only (parents, not their auto-selected children)
       const rootKeys = this.#filterToRootKeys([ ...this.#selectedBlockKeys ])
@@ -1002,7 +1045,13 @@ export class BlockSelectionExtension extends LexxyExtension {
           // Wrapped blocks or items with children — use our indent/outdent
           // which carries the structural wrapper with the node
           if (outdent) {
-            this.#outdentWrappedBlock(node)
+            const didOutdent = this.#outdentWrappedBlock(node)
+            if (!didOutdent && isWrapped) {
+              // At root-level list — exit the list entirely, unwrapping the
+              // block back to its standalone form. Children maintain hierarchy
+              // and are placed below the unwrapped block, above the list.
+              this.#unwrapBlockFromList(node)
+            }
           } else {
             this.#indentWrappedBlock(node)
           }
@@ -1024,10 +1073,25 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
 
       $setSelection(null)
-    }, { tag: HISTORY_MERGE_TAG })
+    })
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        // After outdent, the block may have adopted new children (siblings that
+        // became nested under it). Re-collect children for all selected root keys
+        // so the selection includes the full subtree.
+        if (outdent) {
+          this.editor.getEditorState().read(() => {
+            const rootKeys = this.#filterToRootKeys([ ...this.#selectedBlockKeys ])
+            for (const key of rootKeys) {
+              const node = $getNodeByKey(key)
+              if (node && $isListItemNode(node)) {
+                this.#collectChildKeys(node, this.#selectedBlockKeys)
+              }
+            }
+          })
+        }
+
         this.#syncSelectionClasses()
         this.#dragAndDrop?.repositionHandle()
         this.#syncBulletOffsets()
@@ -1067,6 +1131,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     const allKeys = this.#getDocumentOrderBlockKeys()
     rootKeys.sort((a, b) => allKeys.indexOf(a) - allKeys.indexOf(b))
 
+    this.pushSelectionHistory()
     this.editor.update(() => {
       if (direction === "up") {
         for (const key of rootKeys) {
@@ -1191,6 +1256,63 @@ export class BlockSelectionExtension extends LexxyExtension {
       const el = this.editor.getElementByKey(key)
       if (el) this.#dragAndDrop.syncBulletOffset(el)
     }
+  }
+
+  // -- Block selection undo/redo history --------------------------------------
+
+  #snapshotSelectionState() {
+    return {
+      keys: new Set(this.#selectedBlockKeys),
+      anchor: this.#anchorKey,
+      focus: this.#focusKey,
+      mode: this.#mode
+    }
+  }
+
+  #restoreSelectionState(state) {
+    if (state.mode === "block-select") {
+      this.#mode = "block-select"
+      this.root?.classList.add(BLOCK_SELECTION_ACTIVE_CLASS)
+      this.#selectedBlockKeys = new Set(state.keys)
+      this.#anchorKey = state.anchor
+      this.#focusKey = state.focus
+      this.editor.update(() => { $setSelection(null) })
+      this.root?.focus({ preventScroll: true })
+      this.#syncSelectionClasses()
+    } else {
+      this.#exitBlockSelectMode()
+    }
+  }
+
+  // Save current block selection state before an undoable operation.
+  // Call this before editor.update() in indent/outdent and block moves.
+  pushSelectionHistory() {
+    this.#selectionUndoStack.push(this.#snapshotSelectionState())
+    this.#selectionRedoStack = []
+  }
+
+  #registerSelectionHistoryHandlers() {
+    // Run at LOW priority so Lexical's history plugin has already performed
+    // the undo/redo before we restore block selection.
+    this.#cleanupFns.push(
+      this.editor.registerCommand(UNDO_COMMAND, () => {
+        if (this.#selectionUndoStack.length > 0) {
+          this.#selectionRedoStack.push(this.#snapshotSelectionState())
+          const state = this.#selectionUndoStack.pop()
+          requestAnimationFrame(() => this.#restoreSelectionState(state))
+        }
+        return false // don't prevent Lexical's undo
+      }, COMMAND_PRIORITY_LOW),
+
+      this.editor.registerCommand(REDO_COMMAND, () => {
+        if (this.#selectionRedoStack.length > 0) {
+          this.#selectionUndoStack.push(this.#snapshotSelectionState())
+          const state = this.#selectionRedoStack.pop()
+          requestAnimationFrame(() => this.#restoreSelectionState(state))
+        }
+        return false // don't prevent Lexical's redo
+      }, COMMAND_PRIORITY_LOW)
+    )
   }
 
   #moveSingleBlock(nodeKey, direction) {
@@ -1407,8 +1529,21 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       // Wrapped blocks (paragraphs, headings that entered via block movement):
       // extract and place beside the list as standalone elements.
+      // Children (structural wrapper) maintain hierarchy and exit with the block.
       // They CAN exit even at document start.
       if (this.#isWrappedBlock(node)) {
+        // Carry children out with the block
+        const ownWrapper = this.#getOwnStructuralWrapper(node)
+        let childrenList = null
+        if (ownWrapper) {
+          const innerList = ownWrapper.getChildren().find(c => $isListNode(c))
+          if (innerList) {
+            innerList.remove()
+            childrenList = innerList
+          }
+          ownWrapper.remove()
+        }
+
         const extracted = this.#extractWrappedContent(node)
         if (extracted) {
           const nodeKey = node.getKey()
@@ -1416,8 +1551,10 @@ export class BlockSelectionExtension extends LexxyExtension {
           this.#cleanupEmptyList(currentList)
           if (isDown) {
             currentList.insertAfter(extracted)
+            if (childrenList) extracted.insertAfter(childrenList)
           } else {
             currentList.insertBefore(extracted)
+            if (childrenList) extracted.insertAfter(childrenList)
           }
           this.#updateKeyAfterUnwrap(nodeKey, extracted.getKey())
           return
@@ -1485,7 +1622,18 @@ export class BlockSelectionExtension extends LexxyExtension {
       // #nestListItemUnderSibling handles atomic move and cleanup.
       this.#nestListItemUnderSibling(node, targetSibling, rootList, isDown)
     } else {
-      // No more siblings: extract and exit the list
+      // No more siblings: extract and exit the list, carrying children
+      const ownWrapper = this.#getOwnStructuralWrapper(node)
+      let childrenList = null
+      if (ownWrapper) {
+        const innerList = ownWrapper.getChildren().find(c => $isListNode(c))
+        if (innerList) {
+          innerList.remove()
+          childrenList = innerList
+        }
+        ownWrapper.remove()
+      }
+
       const extracted = this.#extractWrappedContent(node)
       if (extracted) {
         const nodeKey = node.getKey()
@@ -1495,6 +1643,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         } else {
           rootList.insertBefore(extracted)
         }
+        if (childrenList) extracted.insertAfter(childrenList)
         this.#updateKeyAfterUnwrap(nodeKey, extracted.getKey())
       } else {
         // Fallback: place at root level if extraction fails
@@ -2684,6 +2833,51 @@ export class BlockSelectionExtension extends LexxyExtension {
     if ($isListNode(parentList)) this.#mergeAdjacentWrappers(parentList)
     return true
   }
+
+  // Unwrap a wrapped block from its list item and place it at root level.
+  // Children (structural wrapper) become a standalone list below the block,
+  // above the remaining list items.
+  #unwrapBlockFromList(node) {
+    const currentList = node.getParent()
+    if (!$isListNode(currentList)) return
+
+    // Get the node's own structural wrapper (children) before extraction
+    const ownWrapper = this.#getOwnStructuralWrapper(node)
+
+    // If there are children, extract the inner list from the structural wrapper
+    let childrenList = null
+    if (ownWrapper) {
+      const innerList = ownWrapper.getChildren().find(c => $isListNode(c))
+      if (innerList) {
+        innerList.remove()
+        childrenList = innerList
+      }
+      ownWrapper.remove()
+    }
+
+    // Reuse existing extraction logic for the block content
+    const nodeKey = node.getKey()
+    const extracted = this.#extractWrappedContent(node)
+    if (!extracted) return
+
+    node.remove()
+    this.#cleanupEmptyList(currentList)
+
+    // Place the block before the remaining list at root level
+    currentList.insertBefore(extracted)
+
+    // Place children list after the block
+    if (childrenList) {
+      extracted.insertAfter(childrenList)
+    }
+
+    // Update selection keys to track the new block node
+    this.#selectedBlockKeys.delete(nodeKey)
+    this.#selectedBlockKeys.add(extracted.getKey())
+    this.#anchorKey = extracted.getKey()
+    this.#focusKey = extracted.getKey()
+  }
+
 
   // -- Click handling ---------------------------------------------------------
 
