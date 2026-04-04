@@ -1732,11 +1732,29 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
 :where(.lexxy-editor__content) {
   /* Notion-style uniform block highlight — opaque color (mixed with canvas)
-     prevents visual stacking when nested elements overlap. */
+     prevents visual stacking when nested elements overlap.
+     Border-radius: only round the top of the first and bottom of the last
+     in a contiguous group so adjacent selections form a unified band. */
   .block--selected,
   .block--selected.block--focused {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     background-color: var(--block-select-bg);
+    border-radius: var(--lexxy-radius);
+  }
+
+  /* Contiguous selection groups (list items only — root blocks always have
+     margins so they keep full radius). JS marks adjacent selected LIs with
+     block--select-mid, and first/last at group boundaries. */
+  .block--select-mid:not(.block--select-first):not(.block--select-last) {
+    border-radius: 0;
+  }
+  .block--select-mid.block--select-first:not(.block--select-last) {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .block--select-mid.block--select-last:not(.block--select-first) {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
   }
 
   /* Structural wrappers get highlighted only when their preceding sibling
@@ -1746,8 +1764,26 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   .block--selected + li.lexxy-nested-listitem:has(.block--selected) {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     background-color: var(--block-select-bg);
+    border-radius: var(--lexxy-radius);
     margin-top: 0;
     box-shadow: -2em 0 0 0 var(--block-select-bg);
+  }
+
+  /* Wrapper mid-group: flatten touching edges */
+  .block--selected + li.lexxy-nested-listitem.block--select-mid:not(.block--select-first):not(.block--select-last) {
+    border-radius: 0;
+  }
+  .block--selected + li.lexxy-nested-listitem.block--select-mid:not(.block--select-last) {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .block--selected + li.lexxy-nested-listitem.block--select-mid {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  .block--selected + li.lexxy-nested-listitem.block--select-mid.block--select-last {
+    border-bottom-left-radius: var(--lexxy-radius);
+    border-bottom-right-radius: var(--lexxy-radius);
   }
 
   /* The parent item extends its highlight DOWNWARD to cover the collapsed

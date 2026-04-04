@@ -9,6 +9,7 @@ import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html"
 import { CodeHighlightNode, CodeNode, registerCodeHighlighting } from "@lexical/code"
 import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
+import { registerListBlockShortcuts } from "../editor/markdown/list_heading_shortcut"
 import { createEmptyHistoryState, registerHistory } from "@lexical/history"
 
 import theme from "../config/theme"
@@ -446,7 +447,8 @@ export class LexicalEditorElement extends HTMLElement {
       if (this.supportsMarkdown) {
           registered.push(
             registerMarkdownShortcuts(this.editor, TRANSFORMERS),
-            registerMarkdownLeadingTagHandler(this.editor, TRANSFORMERS)
+            registerMarkdownLeadingTagHandler(this.editor, TRANSFORMERS),
+            registerListBlockShortcuts(this.editor)
         )
       }
     } else {

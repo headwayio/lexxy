@@ -239,7 +239,8 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!this.#selectedBlockKeys.has(key)) {
         const el = this.editor.getElementByKey(key)
         if (el) {
-          el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
+          el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS,
+            "block--select-first", "block--select-last")
         }
       }
     }
@@ -260,8 +261,108 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
+    // Mark first/last in each contiguous group for border-radius styling.
+    // Walk all selected elements in document order, detect group boundaries.
+    this.#syncSelectionGroupClasses()
+
     this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
     this.#syncBulletOffsets()
+  }
+
+  #syncSelectionGroupClasses() {
+    // Clear previous group classes from blocks AND structural wrappers
+    for (const el of this.root?.querySelectorAll(".block--select-first, .block--select-last, .block--select-mid") || []) {
+      el.classList.remove("block--select-first", "block--select-last", "block--select-mid")
+    }
+
+    if (this.#selectedBlockKeys.size === 0) return
+
+    // Only flatten radius between adjacent selected list items that are
+    // visually touching (no margin gap). Wrapped blocks (LIs containing
+    // headings, code blocks, etc.) have margin from their inner elements
+    // so they always keep full radius, like root-level blocks.
+    const isWrappedLI = (el) => el.tagName === "LI" && el.querySelector(
+      ":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, " +
+      ":scope > pre, :scope > code[data-language], :scope > table, :scope > blockquote, " +
+      ":scope > figure, :scope > .lexxy-content__table-wrapper, :scope > .horizontal-divider"
+    )
+
+    for (const key of this.#selectedBlockKeys) {
+      const el = this.editor.getElementByKey(key)
+      if (!el || el.tagName !== "LI" || isWrappedLI(el)) continue
+
+      // Check if the visually next sibling LI (skipping structural wrappers)
+      // is also selected and not a wrapped block
+      let nextVisual = el.nextElementSibling
+      if (nextVisual?.classList.contains("lexxy-nested-listitem")) {
+        const hasSelectedChild = nextVisual.querySelector(`.${BLOCK_SELECTED_CLASS}`)
+        if (hasSelectedChild) {
+          el.classList.add("block--select-mid")
+          nextVisual.classList.add("block--select-mid")
+          nextVisual = nextVisual.nextElementSibling
+        } else {
+          nextVisual = nextVisual.nextElementSibling
+        }
+      }
+      if (nextVisual?.classList.contains(BLOCK_SELECTED_CLASS) && nextVisual.tagName === "LI" && !isWrappedLI(nextVisual)) {
+        el.classList.add("block--select-mid")
+        nextVisual.classList.add("block--select-mid")
+      }
+
+      // Check if the visually previous sibling LI is also selected
+      let prevVisual = el.previousElementSibling
+      if (prevVisual?.classList.contains("lexxy-nested-listitem")) {
+        const prevParent = prevVisual.previousElementSibling
+        if (prevParent?.classList.contains(BLOCK_SELECTED_CLASS) && !isWrappedLI(prevParent)) {
+          el.classList.add("block--select-mid")
+          prevVisual.classList.add("block--select-mid")
+        }
+      }
+      if (prevVisual?.classList.contains(BLOCK_SELECTED_CLASS) && prevVisual.tagName === "LI" && !isWrappedLI(prevVisual)) {
+        el.classList.add("block--select-mid")
+      }
+    }
+
+    // Now assign first/last: selected LIs with block--select-mid flatten
+    // their touching edges. Items WITHOUT block--select-mid keep full radius.
+    // Items with block--select-mid but no selected neighbor above = first,
+    // items with block--select-mid but no selected neighbor below = last.
+    for (const key of this.#selectedBlockKeys) {
+      const el = this.editor.getElementByKey(key)
+      if (!el || !el.classList.contains("block--select-mid")) continue
+
+      const hasMidAbove = this.#hasSelectedNeighborAbove(el)
+      const hasMidBelow = this.#hasSelectedNeighborBelow(el)
+
+      if (!hasMidAbove) el.classList.add("block--select-first")
+      if (!hasMidBelow) el.classList.add("block--select-last")
+    }
+
+    // Also mark structural wrappers at group boundaries
+    for (const wrapper of this.root?.querySelectorAll("li.lexxy-nested-listitem.block--select-mid") || []) {
+      if (!this.#hasSelectedNeighborBelow(wrapper)) {
+        wrapper.classList.add("block--select-last")
+      }
+    }
+  }
+
+  #hasSelectedNeighborAbove(el) {
+    let prev = el.previousElementSibling
+    if (prev?.classList.contains("lexxy-nested-listitem")) {
+      prev = prev.previousElementSibling
+    }
+    return prev?.classList.contains(BLOCK_SELECTED_CLASS) && prev.classList.contains("block--select-mid")
+  }
+
+  #hasSelectedNeighborBelow(el) {
+    let next = el.nextElementSibling
+    if (next?.classList.contains("lexxy-nested-listitem") && next.classList.contains("block--select-mid")) {
+      return true
+    }
+    if (next?.classList.contains("lexxy-nested-listitem")) {
+      next = next.nextElementSibling
+    }
+    return next?.classList.contains(BLOCK_SELECTED_CLASS) && next.classList.contains("block--select-mid")
   }
 
   // -- Block tree traversal ---------------------------------------------------
