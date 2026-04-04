@@ -985,7 +985,7 @@ export class BlockDragAndDrop {
           const snap = this.#findNearestSnapPoint(validSnaps, event.clientX)
           if (snap.depth < targetDepth) {
             const snapContentLeft = snap.pixelLeft + listPadding
-            const snapBulletLeft = snapContentLeft - (listPadding / 2) - 1
+            const snapBulletLeft = snapContentLeft - 11
             return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft }
           }
         }
@@ -997,7 +997,7 @@ export class BlockDragAndDrop {
       // the target itself is the depth gate (you need an item at each level).
       const insideDepth = targetDepth + 1
       const insideContentLeft = blockLeft + listPadding
-      const insideBulletLeft = insideContentLeft - (listPadding / 2) - 1
+      const insideBulletLeft = insideContentLeft - 11
       return { element: resolvedBlock, nodeKey, position, depth: insideDepth, bulletLeft: insideBulletLeft, contentLeft: insideContentLeft }
     }
 
@@ -1031,7 +1031,7 @@ export class BlockDragAndDrop {
           ? this.#findNearestSnapPoint(validSnaps, event.clientX)
           : validSnaps[0]
         const snapContentLeft = snap.pixelLeft + listPadding
-        const snapBulletLeft = snapContentLeft - (listPadding / 2) - 1
+        const snapBulletLeft = snapContentLeft - 11
         // Self-target is only valid when depth actually changes (outdent)
         if (isSelfTarget && snap.depth >= targetDepth) return null
         return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft }
@@ -1041,8 +1041,10 @@ export class BlockDragAndDrop {
     // Self-target at same depth is a no-op
     if (isSelfTarget) return null
 
-    // Before/after: place at the target's depth as a sibling
-    const bulletLeft = blockLeft - (listPadding / 2) - 1
+    // Before/after: place at the target's depth as a sibling.
+    // The native bullet center is ~10px left of the LI content edge.
+    // Subtract the indicator circle radius (3px) so the circle center aligns.
+    const bulletLeft = blockLeft - 11
     return { element: blockElement, nodeKey, position, depth: targetDepth, bulletLeft, contentLeft: blockLeft }
   }
 
@@ -1231,14 +1233,14 @@ export class BlockDragAndDrop {
       list.appendChild(sourceElement.cloneNode(true))
       list.appendChild(nextSib.cloneNode(true))
       list.style.margin = "0"
-      list.style.paddingInlineStart = "1.5em"
+      list.style.paddingInlineStart = "2em"
       ghostContent = list
     } else if (sourceElement.tagName === "LI") {
       // Single list item — wrap in a list for proper bullet rendering
       const list = document.createElement(sourceElement.closest("ul, ol")?.tagName || "UL")
       list.appendChild(sourceElement.cloneNode(true))
       list.style.margin = "0"
-      list.style.paddingInlineStart = "1.5em"
+      list.style.paddingInlineStart = "2em"
       ghostContent = list
     } else {
       ghostContent = sourceElement.cloneNode(true)

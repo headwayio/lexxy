@@ -1875,16 +1875,18 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   z-index: 10000;
   transform: scale(0.95);
   transform-origin: top left;
-  border-radius: 6px;
+  border-radius: var(--lexxy-radius, 0.5ch);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
   background: color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 5%, var(--lexxy-color-canvas, #fff));
-  padding: 4px 8px 8px;
+  padding: 6px 8px;
   overflow: hidden;
 }
 
 /* Drag ghost: match text dimness, background, and code treatment to originals */
 .lexxy-drag-ghost .lexxy-editor__content {
   color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
+  padding: 0;
+  min-block-size: 0;
 }
 .lexxy-drag-ghost .lexxy-editor__content blockquote,
 .lexxy-drag-ghost .lexxy-editor__content a {
