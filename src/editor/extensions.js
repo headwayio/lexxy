@@ -12,6 +12,10 @@ export default class Extensions {
     return this.enabledExtensions.map(ext => ext.lexicalExtension).filter(Boolean)
   }
 
+  initializeEditors() {
+    this.enabledExtensions.forEach(ext => ext.initializeEditor?.())
+  }
+
   initializeToolbars() {
     if (this.#lexxyToolbar) {
       this.enabledExtensions.forEach(ext => ext.initializeToolbar(this.#lexxyToolbar))

@@ -1,6 +1,7 @@
 import Toolbar from "./toolbar"
 
 import Editor from "./editor"
+import BlockActionsMenu from "./block_actions_menu"
 import DropdownLink from "./dropdown/link"
 import DropdownHighlight from "./dropdown/highlight"
 import Prompt from "./prompt"
@@ -12,6 +13,7 @@ export function defineElements() {
   const elements = {
     "lexxy-toolbar": Toolbar,
     "lexxy-editor": Editor,
+    "lexxy-block-actions": BlockActionsMenu,
     "lexxy-link-dropdown": DropdownLink,
     "lexxy-highlight-dropdown": DropdownHighlight,
     "lexxy-prompt": Prompt,
