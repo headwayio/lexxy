@@ -310,7 +310,7 @@ export class BlockDragAndDrop {
     const contentLeft = this.#getBlockVisualLeft(blockElement)
     const addWidth = this.#addButtonElement?.offsetWidth || 20
     const gap = 1 // gap between + and ⠿
-    const left = contentLeft - editorRect.left - handleWidth - 1
+    const left = contentLeft - editorRect.left - handleWidth - 19
 
     this.#handleElement.style.top = `${top}px`
     this.#handleElement.style.left = `${left}px`
