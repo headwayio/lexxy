@@ -748,6 +748,48 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     }
   }
 
+  /* Block editing: structural wrappers and wrapped blocks hide their markers */
+  li.lexxy-nested-listitem {
+    list-style-type: none;
+
+    &::marker {
+      content: none;
+    }
+  }
+
+  /* Wrapped blocks (headings, code blocks etc. dragged into lists) hide markers
+     but show a subtle bullet on hover matching the drag handle color */
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider) {
+    list-style-type: none;
+    position: relative;
+
+    &::marker {
+      content: none;
+    }
+
+    &::before {
+      content: "";
+      display: block;
+      position: absolute;
+      /* X: ~11px from the first glyph, matching native bullet offset */
+      right: calc(100% + 8.5px);
+      /* Y: --bullet-offset-y positions so offset + 12 = first-line center.
+         Add 11.5 to center the 5px dot (12 - 2.5 + 2 nudge down). */
+      top: calc(var(--bullet-offset-y, 0px) + 10.5px);
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--lexxy-color-ink-lighter);
+      font-size: 0;
+      line-height: 0;
+      opacity: 0;
+      transition: opacity 100ms ease;
+    }
+
+    &.lexxy-block-hovered::before {
+      opacity: 0.7;
+    }
+  }
 }
 
 :where(.lexxy-editor--drag-over) {
@@ -1730,23 +1772,11 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     box-shadow: none;
   }
 
-  /* Wrapped non-text blocks (headings, tables, code blocks, etc.) inside lists.
-     The bullet marker is hidden by default but shown on hover so users can see
-     where the wrapped content sits in the hierarchy. Wrapped blocks sit at their
-     natural structural depth (li → block) — no margin offset needed. */
-  /* Hide bullet on all wrapped items. Show on hover for non-text blocks. */
-  li[data-list-item-type]:has(> h1, > h2, > h3, > h4, > h5, > h6, > table, > figure, > pre, > code[data-language], > blockquote, > hr, > .lexxy-content__table-wrapper, > .attachment-gallery, > .horizontal-divider),
-  li[data-block-movement-wrapped] {
-    &::before {
-      opacity: 0;
-      top: var(--bullet-offset-y, 0px);
-      block-size: 24px;
-      line-height: 24px;
-    }
-
-    &.lexxy-block-hovered::before,
-    &.block--selected::before {
-      opacity: 0.4;
+  /* Show wrapped block bullet during block selection and hover */
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider) {
+    &.block--selected::before,
+    &.block--focused::before {
+      opacity: 1;
     }
   }
 
@@ -1990,9 +2020,28 @@ lexxy-block-actions[hidden] {
   white-space: nowrap;
 }
 
-.lexxy-block-actions__item:hover,
-.lexxy-block-actions__item--focused,
-.lexxy-block-actions__item--active {
+/* Block actions menu: pointer cursor on all items */
+lexxy-block-actions:not([hidden]),
+lexxy-block-actions:not([hidden]) * {
+  cursor: pointer;
+}
+
+/* Keyboard mode: hide cursor and disable pointer events on menu items.
+   Programmatic .click() from Enter key still works. */
+lexxy-block-actions:not(.lexxy-block-actions--mouse-active),
+lexxy-block-actions:not(.lexxy-block-actions--mouse-active) * {
+  cursor: none !important;
+  pointer-events: none !important;
+}
+
+/* Keyboard mode: hide cursor on the editor too (bleeds through
+   pointer-events: none on the menu). Toggled by JS via class. */
+lexxy-editor.lexxy-editor--keyboard-menu,
+lexxy-editor.lexxy-editor--keyboard-menu * {
+  cursor: none !important;
+}
+
+.lexxy-block-actions__item--focused {
   background: var(--lexxy-color-ink-lightest, #f3f4f6);
 }
 

@@ -25,6 +25,10 @@ export class BlockActionsMenu extends HTMLElement {
   #focusedIndex = -1
   #openSubmenuName = null
   #clickOutsideHandler = null
+  #mouseActivated = false
+  #editorElement = null
+  #lastMouseX = -1
+  #lastMouseY = -1
   #anchorElement = null
   #scrollHandler = null
   #resizeHandler = null
@@ -42,6 +46,7 @@ export class BlockActionsMenu extends HTMLElement {
     this.removeEventListener("keydown", this.#handleKeydown)
     this.removeEventListener("mouseenter", this.#handleMouseenter, true)
     this.removeEventListener("mouseleave", this.#handleMouseleave, true)
+    document.removeEventListener("mousemove", this.#handleMousemove)
     this.#removeClickOutsideListener()
     this.#removeScrollResizeListeners()
   }
@@ -50,6 +55,7 @@ export class BlockActionsMenu extends HTMLElement {
     this.#onAction = onAction
     this.#onClose = onClose
     this.#anchorElement = anchorElement || null
+    this.#editorElement = editorElement
     this.#closeAllSubmenus()
 
     // Build color options from editor config
@@ -61,8 +67,10 @@ export class BlockActionsMenu extends HTMLElement {
     const rect = anchorElement ? anchorElement.getBoundingClientRect() : anchorRect
     this.#position(rect)
     this.hidden = false
+    this.#deactivateMouse()
     this.#focusItem(0)
     this.#addClickOutsideListener()
+    document.addEventListener("mousemove", this.#handleMousemove)
     this.#addScrollResizeListeners()
   }
 
@@ -72,6 +80,9 @@ export class BlockActionsMenu extends HTMLElement {
     this.#closeAllSubmenus()
     this.#removeClickOutsideListener()
     this.#removeScrollResizeListeners()
+    document.removeEventListener("mousemove", this.#handleMousemove)
+    this.#editorElement?.classList.remove("lexxy-editor--keyboard-menu")
+    this.#editorElement = null
     this.#onClose?.()
   }
 
@@ -393,18 +404,61 @@ export class BlockActionsMenu extends HTMLElement {
 
   // -- Mouse hover for submenus -----------------------------------------------
 
+  // Ignore mouse events until the user actually moves inside the menu.
+  // When the menu opens via Cmd+/, the cursor may already be over an item,
+  // firing mouseenter immediately and stealing focus from the keyboard.
+  #handleMousemove = (event) => {
+    if (this.#mouseActivated) return
+
+    // Only activate once the cursor has actually moved AND is over the menu.
+    if (this.#lastMouseX === -1) {
+      this.#lastMouseX = event.clientX
+      this.#lastMouseY = event.clientY
+      return
+    }
+
+    if (event.clientX !== this.#lastMouseX || event.clientY !== this.#lastMouseY) {
+      // Mouse actually moved — restore cursor everywhere
+      this.#editorElement?.classList.remove("lexxy-editor--keyboard-menu")
+
+      // Only activate menu mouse mode if cursor is within menu bounds
+      const rect = this.getBoundingClientRect()
+      if (event.clientX >= rect.left && event.clientX <= rect.right &&
+          event.clientY >= rect.top && event.clientY <= rect.bottom) {
+        this.#mouseActivated = true
+        this.classList.add("lexxy-block-actions--mouse-active")
+      }
+      this.#lastMouseX = event.clientX
+      this.#lastMouseY = event.clientY
+    }
+  }
+
   #handleMouseenter = (event) => {
+    if (!this.#mouseActivated) return
+
     const button = event.target.closest("button[role='menuitem']")
     if (!button) return
+
+    // Clear ALL focused states first, then highlight only the hovered item.
+    // This ensures only one item across all panels is highlighted at a time.
+    for (const item of this.querySelectorAll(".lexxy-block-actions__item--focused")) {
+      item.classList.remove("lexxy-block-actions__item--focused")
+    }
+    button.classList.add("lexxy-block-actions__item--focused")
+
+    // Keep the submenu trigger visually active (different from focused)
+    // when hovering inside its submenu — handled by --active class
 
     const mainPanel = this.querySelector("[data-panel=\"main\"]")
     if (!mainPanel?.contains(button)) return
 
     if (button.dataset.submenu) {
-      // Hovering over a submenu trigger — reveal it
+      // Hovering over a submenu trigger — reveal the flyout but keep
+      // keyboard focus on the trigger. Mouse enter on submenu items
+      // will update the highlight as the user moves into the flyout.
       const submenuName = button.dataset.submenu
       if (this.#openSubmenuName !== submenuName) {
-        this.#openSubmenu(submenuName)
+        this.#openSubmenu(submenuName, { focusSubmenu: false })
       }
     } else {
       // Hovering over a non-submenu item — close any open submenu
@@ -455,29 +509,39 @@ export class BlockActionsMenu extends HTMLElement {
     }
   }
 
+  #deactivateMouse() {
+    this.#mouseActivated = false
+    this.#lastMouseX = -1
+    this.#lastMouseY = -1
+    this.classList.remove("lexxy-block-actions--mouse-active")
+    this.#editorElement?.classList.add("lexxy-editor--keyboard-menu")
+
+    // Force browser to clear :hover state by triggering a reflow.
+    // Changing pointer-events alone doesn't make the browser re-evaluate
+    // :hover on elements the cursor is already over.
+    this.style.display = "none"
+    this.offsetHeight // force reflow
+    this.style.display = ""
+  }
+
   #handleKeydown = (event) => {
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault()
         event.stopPropagation()
-        if (!this.#openSubmenuName) {
-          this.#focusItem(this.#focusedIndex + 1)
-        } else {
-          this.#focusItem(this.#focusedIndex + 1)
-        }
+        this.#deactivateMouse()
+        this.#focusItem(this.#focusedIndex + 1)
         break
       case "ArrowUp":
         event.preventDefault()
         event.stopPropagation()
-        if (!this.#openSubmenuName) {
-          this.#focusItem(this.#focusedIndex - 1)
-        } else {
-          this.#focusItem(this.#focusedIndex - 1)
-        }
+        this.#deactivateMouse()
+        this.#focusItem(this.#focusedIndex - 1)
         break
       case "ArrowRight": {
         event.preventDefault()
         event.stopPropagation()
+        this.#deactivateMouse()
         if (!this.#openSubmenuName) {
           const items = this.#menuItems
           const focused = items[this.#focusedIndex]
@@ -490,6 +554,7 @@ export class BlockActionsMenu extends HTMLElement {
       case "ArrowLeft":
         event.preventDefault()
         event.stopPropagation()
+        this.#deactivateMouse()
         if (this.#openSubmenuName) {
           const submenuName = this.#openSubmenuName
           this.#closeAllSubmenus()

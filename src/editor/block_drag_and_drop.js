@@ -206,9 +206,8 @@ export class BlockDragAndDrop {
 
     if (blockElement.tagName === "LI") {
       const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || DEFAULT_HANDLE_HEIGHT
-      // +1 aligns handles with the bullet character's visual center
-      // (font ascent causes the character to sit slightly above lineHeight/2)
-      const defaultBulletCenter = blockRect.top + (liLineHeight / 2) - 1
+      // Align with the native bullet's visual center
+      const defaultBulletCenter = blockRect.top + (liLineHeight / 2)
       let handleCenter = defaultBulletCenter
 
       const innerTable = blockElement.querySelector("table, .lexxy-content__table-wrapper")
@@ -231,9 +230,10 @@ export class BlockDragAndDrop {
         handleCenter = innerAttachment.getBoundingClientRect().top + (handleHeight / 2)
       } else if (innerHeading) {
         // Headings have larger font/line-height — use their first char center
+        // +1px nudge: charRect center lands slightly above visual center
         const charRect = this.#getFirstCharRect(innerHeading)
         if (charRect && charRect.height > 0) {
-          handleCenter = charRect.top + (charRect.height / 2)
+          handleCenter = charRect.top + (charRect.height / 2) - 1
         }
       } else {
         // Blockquotes, code blocks, and other wrapped content with internal
@@ -264,12 +264,9 @@ export class BlockDragAndDrop {
 
       top = handleCenter - editorRect.top - (handleHeight / 2)
 
-      // Sync the bullet ::before so its center aligns with the handle center.
-      // The bullet ::before has block-size matching the handle height (24px by
-      // default). Compute bulletTop so that bulletTop + halfBullet = handleCenter
-      // relative to the <li>.
-      const halfBullet = handleHeight / 2
-      const bulletTop = handleCenter - blockRect.top - halfBullet
+      // --bullet-offset-y positions a 24px-tall ::before box so its center
+      // aligns with handleCenter. The radial-gradient dot is centered in the box.
+      const bulletTop = handleCenter - blockRect.top - 12
       if (Math.abs(bulletTop) > 1) {
         blockElement.style.setProperty("--bullet-offset-y", `${bulletTop}px`)
       } else {
@@ -358,7 +355,7 @@ export class BlockDragAndDrop {
     } else if (innerHeading) {
       const charRect = this.#getFirstCharRect(innerHeading)
       if (charRect && charRect.height > 0) {
-        handleCenter = charRect.top + (charRect.height / 2)
+        handleCenter = charRect.top + (charRect.height / 2) - 1
       }
     } else if (innerCode) {
       const codeRect = innerCode.getBoundingClientRect()
@@ -375,8 +372,9 @@ export class BlockDragAndDrop {
       return
     }
 
-    const bulletHeight = this.#handleElement?.offsetHeight || DEFAULT_HANDLE_HEIGHT
-    const bulletTop = handleCenter - blockRect.top - (bulletHeight / 2)
+    // --bullet-offset-y positions a 24px-tall ::before box so its center
+    // aligns with handleCenter. The radial-gradient dot is centered in the box.
+    const bulletTop = handleCenter - blockRect.top - 12
     if (Math.abs(bulletTop) > 1) {
       blockElement.style.setProperty("--bullet-offset-y", `${bulletTop}px`)
     } else {
@@ -408,8 +406,10 @@ export class BlockDragAndDrop {
   // sit to the left of the bullet marker.
   #getBlockVisualLeft(blockElement) {
     if (blockElement.tagName === "LI") {
-      const beforeLeft = parseFloat(getComputedStyle(blockElement, "::before").left) || 0
-      return blockElement.getBoundingClientRect().left + beforeLeft
+      // Use the parent UL/OL's left edge — same as a paragraph at the
+      // same nesting level. The bullet sits between handle and text.
+      const parentList = blockElement.closest("ul, ol")
+      if (parentList) return parentList.getBoundingClientRect().left
     }
     return blockElement.getBoundingClientRect().left
   }
@@ -492,6 +492,33 @@ export class BlockDragAndDrop {
     this.#cleanupFns.push(() => {
       this.#editorElement.removeEventListener("mouseleave", this.#onEditorElementLeave)
     })
+
+    // Hide handles during keyboard input (typing, Enter, Backspace).
+    // They reappear on the next mouse move, like Notion.
+    this.#editorElement.addEventListener("keydown", this.#onKeydownHideHandle)
+    this.#cleanupFns.push(() => {
+      this.#editorElement.removeEventListener("keydown", this.#onKeydownHideHandle)
+    })
+  }
+
+  /** Immediately hide handles (no delay). Used when keyboard takes over. */
+  hideHandles() {
+    this.#cancelHideTimer()
+    if (this.#handleElement) {
+      this.#handleElement.classList.remove("lexxy-block-handle--visible")
+    }
+    if (this.#addButtonElement) {
+      this.#addButtonElement.classList.remove("lexxy-block-add--visible")
+    }
+    this.#currentHoveredBlock?.classList.remove("lexxy-block-hovered")
+    this.#currentHoveredBlock = null
+  }
+
+  #onKeydownHideHandle = (event) => {
+    if (this.#isDragging || this.#isPendingDrag) return
+    // Don't hide on modifier-only keypresses (Cmd, Alt, Ctrl, Shift)
+    if (event.key === "Meta" || event.key === "Alt" || event.key === "Control" || event.key === "Shift") return
+    this.hideHandles()
   }
 
   #onMouseMove = (event) => {
@@ -572,6 +599,7 @@ export class BlockDragAndDrop {
       this.#currentHoveredBlock.classList.remove("lexxy-block-hovered")
     }
     this.#currentHoveredBlock = blockElement
+    this.syncBulletOffset(blockElement)
     this.#positionHandle(blockElement)
   }
 
@@ -645,7 +673,7 @@ export class BlockDragAndDrop {
     // Select the block with children on next frame. Doing it synchronously
     // during pointerdown can trigger DOM mutations that disrupt pointer capture.
     requestAnimationFrame(() => {
-      this.#blockSelectionExtension.enterBlockSelectMode(nodeKey)
+      this.#blockSelectionExtension.enterBlockSelectMode(nodeKey, { keepHandles: true })
     })
 
     document.addEventListener("pointermove", this.#onPendingDragMove)

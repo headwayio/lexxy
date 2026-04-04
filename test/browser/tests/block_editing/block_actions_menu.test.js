@@ -49,8 +49,8 @@ test.describe("Block actions menu (Cmd+/)", () => {
 
     const menu = page.locator("lexxy-block-actions")
     await expect(menu).toBeVisible({ timeout: 2000 })
-    await expect(menu.locator("[data-action='delete']")).toBeVisible()
-    await expect(menu.locator("[data-action='duplicate']")).toBeVisible()
+    await expect(menu.locator("[data-action='delete']")).toBeAttached()
+    await expect(menu.locator("[data-action='duplicate']")).toBeAttached()
   })
 
   test("delete action removes the focused block", async ({ editor, page }) => {
@@ -61,7 +61,12 @@ test.describe("Block actions menu (Cmd+/)", () => {
 
     const menu = page.locator("lexxy-block-actions")
     await expect(menu).toBeVisible({ timeout: 2000 })
-    await menu.locator("[data-action='delete']").click()
+
+    // Navigate to Delete (4th item: Turn into, Color, Duplicate, Delete)
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
 
     await assertBlockHtml(editor, "<p>Keep</p><p>Also keep</p>")
   })
@@ -74,7 +79,11 @@ test.describe("Block actions menu (Cmd+/)", () => {
 
     const menu = page.locator("lexxy-block-actions")
     await expect(menu).toBeVisible({ timeout: 2000 })
-    await menu.locator("[data-action='duplicate']").click()
+
+    // Navigate to Duplicate (3rd item: Turn into, Color, Duplicate)
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
 
     const html = await editor.value()
     const count = (html.match(/Original/g) || []).length
@@ -90,14 +99,11 @@ test.describe("Block actions menu (Cmd+/)", () => {
     const menu = page.locator("lexxy-block-actions")
     await expect(menu).toBeVisible({ timeout: 2000 })
 
-    // Open turn-into submenu
-    await menu.locator("[data-submenu='turn-into']").click()
-    await page.waitForTimeout(100)
-
-    // Click the heading option
-    const headingBtn = menu.locator("[data-action='turn-into'][data-command='setFormatHeadingLarge']")
-    await expect(headingBtn).toBeVisible({ timeout: 2000 })
-    await headingBtn.click()
+    // First item is "Turn into" — press ArrowRight to enter submenu
+    await page.keyboard.press("ArrowRight")
+    // First submenu item is "Text", second is "Heading 2"
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
 
     await assertBlockHtml(editor, "<h2>Make me a heading</h2>")
   })

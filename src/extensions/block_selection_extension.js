@@ -100,12 +100,15 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   // -- Mode transitions -------------------------------------------------------
 
-  enterBlockSelectMode(nodeKey) {
+  enterBlockSelectMode(nodeKey, { keepHandles = false } = {}) {
     if (this.#mode === "block-select" && this.#selectedBlockKeys.has(nodeKey)) return
 
 
     this.#mode = "block-select"
     this.root?.classList.add(BLOCK_SELECTION_ACTIVE_CLASS)
+    if (!keepHandles) {
+      this.#dragAndDrop?.hideHandles()
+    }
 
     // Clear Lexical selection but keep the root element focusable
     this.editor.update(() => {
