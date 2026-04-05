@@ -1674,21 +1674,8 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
 
     if (!target) {
-      // At boundary: use single-item logic for the first/last item,
-      // then reposition the rest to follow
-      this.#moveSingleBlock(rootKeys[isUp ? 0 : rootKeys.length - 1], direction)
-      const leaderKey = rootKeys[isUp ? 0 : rootKeys.length - 1]
-      if (isUp) {
-        for (let i = 1; i < rootKeys.length; i++) {
-          this.#repositionAfterPrevious(rootKeys[i], rootKeys[i - 1])
-        }
-      } else {
-        for (let i = rootKeys.length - 2; i >= 0; i--) {
-          this.#repositionBeforeNext(rootKeys[i], rootKeys[i + 1])
-        }
-      }
-      // Flatten children after boundary crossing
-      this.#flattenSelectedChildren([ ...this.#selectedBlockKeys ], rootKeys)
+      // At list boundary — promote the group out atomically.
+      this.#promoteGroupAtBoundary(group, direction)
       return
     }
 
@@ -1707,10 +1694,10 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Insert the group before/after the target
     if (isUp) {
-      // Moving up: insert group BEFORE the target (and its wrapper if any)
-      const targetWrapper = target.getNextSibling()
-      // Insert in reverse so they end up in the right order
-      for (let i = group.length - 1; i >= 0; i--) {
+      // Moving up: insert group BEFORE the target in forward order.
+      // Each insertBefore(target) puts the item right before target,
+      // so forward order gives: bul, head, quote, target.
+      for (let i = 0; i < group.length; i++) {
         target.insertBefore(group[i].node)
         if (group[i].wrapper) group[i].node.insertAfter(group[i].wrapper)
       }
@@ -1734,6 +1721,109 @@ export class BlockSelectionExtension extends LexxyExtension {
       const sw = sourceList.getParent()
       if (sw && $isListItemNode(sw) && $isStructuralWrapper(sw)) {
         sw.remove()
+      }
+    }
+  }
+
+  // Promote a group out of its list at the boundary. Detaches all items,
+  // determines the exit point, unwraps wrapped blocks, and inserts them
+  // outside the list in their original order.
+  #promoteGroupAtBoundary(group, direction) {
+    const isUp = direction === "up"
+    const currentList = group[0].node.getParent()
+    if (!$isListNode(currentList)) return
+
+    const listParent = currentList.getParent()
+
+    // Check if exiting to root level (outside any list)
+    const exitingList = !$isListItemNode(listParent) ||
+      ($isStructuralWrapper(listParent) && !$isListItemNode(listParent.getParent()?.getParent()))
+
+    // Determine where to insert
+    let insertAnchor
+    if (exitingList) {
+      // Exiting: find the outermost list to insert before/after it
+      let outerList = currentList
+      let p = currentList.getParent()
+      while (p && ($isListItemNode(p) || $isListNode(p))) {
+        if ($isListNode(p)) outerList = p
+        p = p.getParent()
+      }
+      insertAnchor = outerList
+    } else if ($isListItemNode(listParent) && $isStructuralWrapper(listParent)) {
+      // Nested promotion: insert before/after the text item or wrapper
+      const textSibling = listParent.getPreviousSibling()
+      insertAnchor = (isUp && textSibling && $isListItemNode(textSibling))
+        ? textSibling : listParent
+    } else {
+      insertAnchor = currentList
+    }
+
+    // Detach all nodes from the source list
+    for (let i = group.length - 1; i >= 0; i--) {
+      if (group[i].wrapper) group[i].wrapper.remove()
+      group[i].node.remove()
+    }
+
+    // Clean up empty source
+    if (this.#countRealItems(currentList) === 0) {
+      if ($isListItemNode(listParent) && $isStructuralWrapper(listParent)) {
+        listParent.remove()
+      }
+    }
+
+    if (exitingList) {
+      // Exiting to root level: unwrap wrapped blocks, wrap regular items
+      // in a standalone list. Insert each as a standalone element.
+      const insertBefore = isUp
+      let lastInserted = insertAnchor
+
+      for (let i = 0; i < group.length; i++) {
+        const { node, wrapper } = group[i]
+        let inserted = null
+
+        if (this.#isWrappedBlock(node)) {
+          // Extract the wrapped content (heading, blockquote, etc.)
+          // Node is already detached, so just extract the inner content.
+          const extracted = this.#extractWrappedContent(node)
+          if (extracted) {
+            this.#updateKeyAfterUnwrap(node.getKey(), extracted.getKey())
+            inserted = extracted
+          }
+        }
+
+        if (!inserted) {
+          // Regular list item: wrap in a standalone list
+          const newList = $createListNode(currentList.getListType())
+          newList.append(node)
+          if (wrapper) newList.append(wrapper)
+          inserted = newList
+        }
+
+        if (insertBefore && i === 0) {
+          insertAnchor.insertBefore(inserted)
+        } else if (insertBefore) {
+          lastInserted.insertAfter(inserted)
+        } else {
+          lastInserted.insertAfter(inserted)
+        }
+        lastInserted = inserted
+      }
+    } else {
+      // Promoting within list: insert at the parent level (one level up)
+      if (isUp) {
+        // Forward order: each insertBefore(anchor) stacks correctly
+        for (let i = 0; i < group.length; i++) {
+          insertAnchor.insertBefore(group[i].node)
+          if (group[i].wrapper) group[i].node.insertAfter(group[i].wrapper)
+        }
+      } else {
+        let insertAfter = insertAnchor
+        for (let i = 0; i < group.length; i++) {
+          insertAfter.insertAfter(group[i].node)
+          if (group[i].wrapper) group[i].node.insertAfter(group[i].wrapper)
+          insertAfter = group[i].wrapper || group[i].node
+        }
       }
     }
   }
