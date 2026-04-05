@@ -32,7 +32,7 @@ import { TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
-import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS } from "../editor/block_helpers"
+import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS } from "../editor/block_helpers"
 
 export class BlockSelectionExtension extends LexxyExtension {
   #mode = "edit"
@@ -168,6 +168,15 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     if (extend && this.#anchorKey) {
       this.#selectRange(this.#anchorKey, nodeKey)
+      // Ensure anchor's children stay selected when extending in either
+      // direction. selectRange only covers anchor→focus, but children
+      // below the anchor would be excluded when extending upward.
+      this.editor.getEditorState().read(() => {
+        const anchorNode = $getNodeByKey(this.#anchorKey)
+        if ($isListItemNode(anchorNode)) {
+          this.#collectChildKeys(anchorNode, this.#selectedBlockKeys)
+        }
+      })
     }
 
     this.#syncSelectionClasses()
@@ -177,8 +186,10 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Walks ALL consecutive structural wrappers after the node — handles cases
   // where multiple wrappers exist (e.g., from list splitting or deep nesting).
   #collectChildKeys(listItemNode, keySet) {
-    let next = listItemNode.getNextSibling()
     const childKeys = []
+
+    // Block model: children live in a structural wrapper (next sibling LI)
+    let next = listItemNode.getNextSibling()
     while (next && $isListItemNode(next) && $isStructuralWrapper(next)) {
       for (const child of next.getChildren()) {
         if ($isListNode(child)) {
@@ -187,6 +198,14 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
       next = next.getNextSibling()
     }
+
+    // Standard Lexical model: nested ListNode as a direct child of the LI
+    for (const child of listItemNode.getChildren()) {
+      if ($isListNode(child)) {
+        this.#collectListItemKeys(child, childKeys)
+      }
+    }
+
     for (const key of childKeys) {
       keySet.add(key)
     }
@@ -267,6 +286,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
     this.#syncBulletOffsets()
+    this.#syncParentSelectionHeight()
   }
 
   #syncSelectionGroupClasses() {
@@ -287,41 +307,9 @@ export class BlockSelectionExtension extends LexxyExtension {
       ":scope > figure, :scope > .lexxy-content__table-wrapper, :scope > .horizontal-divider"
     )
 
-    for (const key of this.#selectedBlockKeys) {
-      const el = this.editor.getElementByKey(key)
-      if (!el || el.tagName !== "LI" || isWrappedLI(el)) continue
-
-      // Check if the visually next sibling LI (skipping structural wrappers)
-      // is also selected and not a wrapped block
-      let nextVisual = el.nextElementSibling
-      if (nextVisual?.classList.contains("lexxy-nested-listitem")) {
-        const hasSelectedChild = nextVisual.querySelector(`.${BLOCK_SELECTED_CLASS}`)
-        if (hasSelectedChild) {
-          el.classList.add("block--select-mid")
-          nextVisual.classList.add("block--select-mid")
-          nextVisual = nextVisual.nextElementSibling
-        } else {
-          nextVisual = nextVisual.nextElementSibling
-        }
-      }
-      if (nextVisual?.classList.contains(BLOCK_SELECTED_CLASS) && nextVisual.tagName === "LI" && !isWrappedLI(nextVisual)) {
-        el.classList.add("block--select-mid")
-        nextVisual.classList.add("block--select-mid")
-      }
-
-      // Check if the visually previous sibling LI is also selected
-      let prevVisual = el.previousElementSibling
-      if (prevVisual?.classList.contains("lexxy-nested-listitem")) {
-        const prevParent = prevVisual.previousElementSibling
-        if (prevParent?.classList.contains(BLOCK_SELECTED_CLASS) && !isWrappedLI(prevParent)) {
-          el.classList.add("block--select-mid")
-          prevVisual.classList.add("block--select-mid")
-        }
-      }
-      if (prevVisual?.classList.contains(BLOCK_SELECTED_CLASS) && prevVisual.tagName === "LI" && !isWrappedLI(prevVisual)) {
-        el.classList.add("block--select-mid")
-      }
-    }
+    // No group merging needed — each item and parent+child rectangle is
+    // independently rendered. The parent's ::after covers its children via
+    // --parent-selection-height. All items keep full border-radius.
 
     // Now assign first/last: selected LIs with block--select-mid flatten
     // their touching edges. Items WITHOUT block--select-mid keep full radius.
@@ -402,6 +390,9 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       } else {
         // Content item — add its key and recurse into any nested lists
+        // (standard Lexical model where children are inside the item).
+        // Block-model structural wrappers are handled by the loop when
+        // they're reached as the next child — no next-sibling check needed.
         keys.push(child.getKey())
         for (const grandchild of child.getChildren()) {
           if ($isListNode(grandchild)) {
@@ -438,6 +429,25 @@ export class BlockSelectionExtension extends LexxyExtension {
       })
       return isNavigable
     })
+  }
+
+  // Returns the last descendant key of a parent list item, or null if the
+  // item has no children. Used by shift+arrow to jump past an entire subtree.
+  #getLastDescendantKey(nodeKey) {
+    const childKeys = new Set()
+    this.editor.getEditorState().read(() => {
+      const node = $getNodeByKey(nodeKey)
+      if ($isListItemNode(node)) {
+        this.#collectChildKeys(node, childKeys)
+      }
+    })
+    if (childKeys.size === 0) return null
+    // Find the last child in document order
+    const navKeys = this.#getNavigableBlockKeys()
+    for (let i = navKeys.length - 1; i >= 0; i--) {
+      if (childKeys.has(navKeys[i])) return navKeys[i]
+    }
+    return null
   }
 
   #getBlockKeyContainingCursor() {
@@ -540,16 +550,8 @@ export class BlockSelectionExtension extends LexxyExtension {
           this.#deleteNeighbors = null
         } else {
           let prevKey = this.#getPreviousBlockKey(this.#focusKey)
-          // When extending selection AWAY from the anchor past a parent whose
-          // children are already selected, skip to the next unselected sibling.
-          // When contracting (moving back toward anchor), deselect one at a time.
-          if (prevKey && event.shiftKey && this.#isExtendingAway("up")) {
-            while (prevKey && this.#selectedBlockKeys.has(prevKey)) {
-              const before = this.#getPreviousBlockKey(prevKey)
-              if (!before) break
-              prevKey = before
-            }
-          }
+          // Shift+Up always moves one item at a time — both when extending
+          // upward and when contracting (deselecting) downward toward anchor.
           if (prevKey) {
             this.#selectBlock(prevKey, event.shiftKey)
             this.#scrollBlockIntoView(prevKey)
@@ -569,8 +571,11 @@ export class BlockSelectionExtension extends LexxyExtension {
           this.#deleteNeighbors = null
         } else {
           let nextKey = this.#getNextBlockKey(this.#focusKey)
-          // When extending selection AWAY from the anchor past a parent whose
-          // children are already selected, skip to the next unselected sibling.
+          // When extending selection downward (Shift+Arrow):
+          // 1. Skip past already-selected items (e.g., children of a parent
+          //    that was selected non-shift).
+          // 2. If landing on a parent, jump focus to its last descendant so
+          //    the entire subtree is included in the range selection.
           // When contracting (moving back toward anchor), deselect one at a time.
           if (nextKey && event.shiftKey && this.#isExtendingAway("down")) {
             while (nextKey && this.#selectedBlockKeys.has(nextKey)) {
@@ -578,6 +583,8 @@ export class BlockSelectionExtension extends LexxyExtension {
               if (!after) break
               nextKey = after
             }
+            const lastDesc = this.#getLastDescendantKey(nextKey)
+            if (lastDesc) nextKey = lastDesc
           }
           if (nextKey) {
             this.#selectBlock(nextKey, event.shiftKey)
@@ -1357,6 +1364,71 @@ export class BlockSelectionExtension extends LexxyExtension {
       const el = this.editor.getElementByKey(key)
       if (el) this.#dragAndDrop.syncBulletOffset(el)
     }
+  }
+
+  // When a parent item has selected children, set a CSS variable on the parent
+  // so its ::after covers the entire parent+children area as one rectangle.
+  // Measures actual DOM positions so it works regardless of margins/padding.
+  //
+  // Context-aware height: flat-level parents use larger extensions (matching
+  // flat-list 32px edge items), deeply nested parents use 30px uniform pitch.
+  #syncParentSelectionHeight() {
+    // Clear previous parent height variables and flush-top class
+    for (const el of this.root?.querySelectorAll("[style*='--parent-selection-height']") || []) {
+      el.style.removeProperty("--parent-selection-height")
+    }
+    for (const el of this.root?.querySelectorAll(".block--flush-top") || []) {
+      el.classList.remove("block--flush-top")
+    }
+
+    for (const key of this.#selectedBlockKeys) {
+      const el = this.editor.getElementByKey(key)
+      if (!el || el.tagName !== "LI") continue
+
+      const wrapper = el.nextElementSibling
+      if (!wrapper?.classList.contains(NESTED_LISTITEM_CLASS)) continue
+      if (!wrapper.querySelector(`.${BLOCK_SELECTED_CLASS}`)) continue
+
+      // Deeply nested = inside a structural wrapper (not a root-level item).
+      const isDeeplyNested = !!el.closest(`li.${NESTED_LISTITEM_CLASS}`)
+
+      // The ::after top is positioned by CSS (first-child: -6px, middle: -2px).
+      // Only root-level first-children get the 6px extension — nested
+      // first-children use regular 2px (each nesting level has its own
+      // first-child and we don't want compounding extensions).
+      const isFirst = el === el.parentElement.firstElementChild && !isDeeplyNested
+      let topExt = isFirst ? 6 : 2
+
+      // If the previous sibling is a wrapper with a selected child whose
+      // parent is NOT selected, reduce topExt to 0 to leave a 2px gap
+      // (child extends 4px below + 0 top + 6px margin = 2px visual gap).
+      const prevSib = el.previousElementSibling
+      if (prevSib?.classList.contains(NESTED_LISTITEM_CLASS)) {
+        const prevParent = prevSib.previousElementSibling
+        if (!prevParent?.classList.contains(BLOCK_SELECTED_CLASS) &&
+            prevSib.querySelector(`.${BLOCK_SELECTED_CLASS}`)) {
+          topExt = 0
+          el.classList.add("block--flush-top")
+        }
+      }
+
+      // Deeply nested parents use 30px uniform pitch (bottomExt=4).
+      // Flat-level parents depend on position: last group in the list
+      // gets 6 (62px, matching flat last-child), middle groups get 2
+      // (58px) so there's a 2px gap between adjacent groups.
+      let bottomExt = 4
+      if (!isDeeplyNested) {
+        const isLastInList = !wrapper.nextElementSibling ||
+          wrapper === wrapper.parentElement.lastElementChild
+        bottomExt = isLastInList ? 6 : 2
+      }
+
+      const parentRect = el.getBoundingClientRect()
+      const wrapperRect = wrapper.getBoundingClientRect()
+      const height = (wrapperRect.bottom - parentRect.top) + topExt + bottomExt
+      el.style.setProperty("--parent-selection-height", `${height}px`)
+    }
+
   }
 
   // -- Block selection undo/redo history --------------------------------------

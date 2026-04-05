@@ -127,6 +127,17 @@
     padding-inline-start: 2em;
     counter-reset: mixed-list;
     list-style-type: none;
+
+    /* Flat lists: 6px margin produces 2px visible gap between block highlights
+       (each highlight extends 2px beyond the item box on each side). */
+    > li:not(:first-child):not(.lexxy-nested-listitem) {
+      margin-top: 6px;
+    }
+
+    /* Items after a structural wrapper: same 6px margin as other items. */
+    > li.lexxy-nested-listitem + li:not(.lexxy-nested-listitem) {
+      margin-top: 6px;
+    }
   }
 
   li[data-list-item-type="number"],
@@ -189,6 +200,13 @@
   .lexxy-nested-listitem ol,
   .lexxy-nested-listitem ul:not(.lexxy-prompt-menu) {
     padding-inline-start: 2em;
+  }
+
+  /* Nested first-children keep their margin so indenting doesn't
+     shift vertical position. Root-level first items stay flush. */
+  .lexxy-nested-listitem > ul > li:first-child:not(.lexxy-nested-listitem),
+  .lexxy-nested-listitem > ol > li:first-child:not(.lexxy-nested-listitem) {
+    margin-top: 6px;
   }
 
   li.lexxy-nested-listitem {

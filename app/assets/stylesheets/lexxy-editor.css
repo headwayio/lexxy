@@ -1760,17 +1760,55 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     content: "";
     position: absolute;
     inset: -6px -6px -6px -7px;
+    min-height: 36px;
     background: var(--block-select-bg);
     border-radius: var(--block-select-radius);
     z-index: -1;
     pointer-events: none;
   }
 
-  /* LI highlights align with paragraph highlights: extend left to the same
-     edge as non-list blocks (-7px from content root). The UL's padding-inline-start
-     offsets the LI rightward, so we compensate with calc. */
+  /* List item highlights: extend 2px on each side for the base (28px on 24px items).
+     First/last extend 6px outward for rounded corners (32px). Standalone = 36px.
+     Flat-list margin of 6px produces 2px visible gaps between highlights. */
   li.block--selected::after {
+    min-height: auto;
+    top: -2px;
+    bottom: -2px;
     left: calc(-2em - 7px);
+  }
+
+  li:first-child.block--selected::after {
+    top: -6px;
+  }
+
+  /* Last item in a flat list: 32px (top=-2 + 24 + bottom=6) */
+  li:last-child:not(.lexxy-nested-listitem).block--selected::after,
+  li.block--selected:has(+ li.lexxy-nested-listitem:last-child)::after {
+    bottom: -6px;
+  }
+
+  /* Parent group following an unparented selected child: flush top
+     so there's a 2px gap (child extends 4px + 0px top + 6px margin = 2px gap). */
+  li.block--flush-top.block--selected::after {
+    top: 0px;
+  }
+
+  /* Nested last item (inside a structural wrapper): 30px */
+  li.lexxy-nested-listitem li:last-child:not(.lexxy-nested-listitem).block--selected::after {
+    bottom: -4px;
+  }
+
+
+  li:only-child.block--selected::after {
+    top: -6px;
+    bottom: -6px;
+  }
+
+  /* Nested only-child: regular sizing, not standalone. A single item
+     inside a structural wrapper is a child, not a standalone bullet. */
+  li.lexxy-nested-listitem li:only-child.block--selected::after {
+    top: -2px;
+    bottom: -2px;
   }
 
   /* Contiguous selection groups (list items only — root blocks always have
@@ -1796,27 +1834,15 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   .block--selected + li.lexxy-nested-listitem:has(.block--selected) {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     position: relative;
+    z-index: 0; /* stacking context so ::after z-index: -1 stays visible */
     margin-top: 0;
   }
 
-  /* Structural wrapper highlight via ::after — aligns with parent's highlight edge */
+  /* Structural wrapper ::after is suppressed — the parent's ::after covers
+     the entire parent+children area via the --parent-selection-height variable.
+     Keeping the rule for wrappers whose parent isn't selected (edge cases). */
   .block--selected + li.lexxy-nested-listitem:has(.block--selected)::after {
-    content: "";
-    position: absolute;
-    inset: 0 -6px -6px calc(-2em - 7px);
-    background: var(--block-select-bg);
-    border-radius: 0 0 var(--block-select-radius) var(--block-select-radius);
-    z-index: -1;
-    pointer-events: none;
-  }
-
-  /* Wrapper mid-group: flatten touching edges on the ::after */
-  .block--selected + li.lexxy-nested-listitem.block--select-mid::after {
-    border-radius: 0;
-  }
-  .block--selected + li.lexxy-nested-listitem.block--select-last::after {
-    border-bottom-left-radius: var(--block-select-radius);
-    border-bottom-right-radius: var(--block-select-radius);
+    display: none;
   }
 
   /* The parent item's ::after pseudo extends downward to cover the gap
@@ -1832,11 +1858,21 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     display: none;
   }
 
-  /* Parent with selected children: extend ::after bottom to bridge the gap */
+  /* Inner structural wrappers: suppress their ::after when already inside
+     a highlighted outer wrapper. Without this, each nesting level draws its
+     own rectangle at a stepped x-position instead of one solid rectangle. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) li.lexxy-nested-listitem::after {
+    display: none;
+  }
+
+  /* Parent with selected children: size ::after to cover the entire
+     parent+children area using a JS-set CSS variable. The parent's
+     ::after alone provides the highlight — no wrapper stitching needed. */
   li.block--selected:has(+ li.lexxy-nested-listitem .block--selected)::after {
-    bottom: -12px;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
+    height: var(--parent-selection-height, auto);
+    bottom: auto;
+    border-bottom-left-radius: var(--block-select-radius);
+    border-bottom-right-radius: var(--block-select-radius);
   }
 
   /* The parent item above the wrapper should also use the uniform shade
