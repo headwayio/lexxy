@@ -1240,25 +1240,13 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     this.pushSelectionHistory()
     this.editor.update(() => {
-      // When the group is at a list boundary, insert a separator paragraph
-      // so each item can cross individually with proper unwrapping.
-      const separator = this.#insertBoundarySeparator(rootKeys, direction)
-
-      if (direction === "up") {
-        for (const key of rootKeys) {
-          this.#moveSingleBlock(key, "up")
-        }
+      if (rootKeys.length === 1) {
+        // Single root key: use existing single-item logic
+        this.#moveSingleBlock(rootKeys[0], direction)
       } else {
-        for (let i = rootKeys.length - 1; i >= 0; i--) {
-          this.#moveSingleBlock(rootKeys[i], "down")
-        }
+        // Multiple items: move as an atomic group
+        this.#moveGroupAtomically(rootKeys, direction)
       }
-
-      // Remove the separator after all items have crossed
-      if (separator) separator.remove()
-
-      // Flatten selected children to be siblings of their root key.
-      this.#flattenSelectedChildren(selectedKeys, rootKeys)
 
       // Re-sync wrapped keys with current selection after all moves.
       // Lexical's copy-on-write may have changed keys during the update.
@@ -1657,6 +1645,98 @@ export class BlockSelectionExtension extends LexxyExtension {
     )
   }
 
+
+  // Move a group of items as a single atomic unit. Detaches all items,
+  // finds the target position, and re-inserts them together. This prevents
+  // reordering that happens when processing items individually.
+  #moveGroupAtomically(rootKeys, direction) {
+    const isUp = direction === "up"
+
+    // 1. Collect all nodes with their structural wrappers, in document order
+    const group = [] // [{ node, wrapper }]
+    for (const key of rootKeys) {
+      const node = $getNodeByKey(key)
+      if (!node) continue
+      const wrapper = this.#getOwnStructuralWrapper(node)
+      group.push({ node, wrapper })
+    }
+    if (group.length === 0) return
+
+    // 2. Find the target: the sibling above/below the group
+    const edgeNode = isUp ? group[0].node : group[group.length - 1].node
+    const edgeWrapper = isUp ? null : group[group.length - 1].wrapper
+    const edgeEnd = edgeWrapper || edgeNode
+
+    let target = isUp ? edgeNode.getPreviousSibling() : edgeEnd.getNextSibling()
+    // Skip structural wrappers that aren't part of the group
+    while (target && $isListItemNode(target) && $isStructuralWrapper(target)) {
+      target = isUp ? target.getPreviousSibling() : target.getNextSibling()
+    }
+
+    if (!target) {
+      // At boundary: use single-item logic for the first/last item,
+      // then reposition the rest to follow
+      this.#moveSingleBlock(rootKeys[isUp ? 0 : rootKeys.length - 1], direction)
+      const leaderKey = rootKeys[isUp ? 0 : rootKeys.length - 1]
+      if (isUp) {
+        for (let i = 1; i < rootKeys.length; i++) {
+          this.#repositionAfterPrevious(rootKeys[i], rootKeys[i - 1])
+        }
+      } else {
+        for (let i = rootKeys.length - 2; i >= 0; i--) {
+          this.#repositionBeforeNext(rootKeys[i], rootKeys[i + 1])
+        }
+      }
+      // Flatten children after boundary crossing
+      this.#flattenSelectedChildren([ ...this.#selectedBlockKeys ], rootKeys)
+      return
+    }
+
+    // 3. Has a target sibling: swap positions by detaching group, then
+    //    inserting before/after the target. Target stays in place.
+    if (!$isListItemNode(target)) return // target isn't a list item, bail
+
+    // Save the source list for cleanup
+    const sourceList = group[0].node.getParent()
+
+    // Detach all group nodes (in reverse to preserve sibling references)
+    for (let i = group.length - 1; i >= 0; i--) {
+      if (group[i].wrapper) group[i].wrapper.remove()
+      group[i].node.remove()
+    }
+
+    // Insert the group before/after the target
+    if (isUp) {
+      // Moving up: insert group BEFORE the target (and its wrapper if any)
+      const targetWrapper = target.getNextSibling()
+      // Insert in reverse so they end up in the right order
+      for (let i = group.length - 1; i >= 0; i--) {
+        target.insertBefore(group[i].node)
+        if (group[i].wrapper) group[i].node.insertAfter(group[i].wrapper)
+      }
+    } else {
+      // Moving down: insert group AFTER the target (and its wrapper)
+      let insertAfter = target
+      const targetWrapper = target.getNextSibling()
+      if (targetWrapper && $isListItemNode(targetWrapper) && $isStructuralWrapper(targetWrapper)) {
+        insertAfter = targetWrapper
+      }
+      // Insert in order
+      for (let i = 0; i < group.length; i++) {
+        insertAfter.insertAfter(group[i].node)
+        if (group[i].wrapper) group[i].node.insertAfter(group[i].wrapper)
+        insertAfter = group[i].wrapper || group[i].node
+      }
+    }
+
+    // Cleanup empty source list/wrapper if needed
+    if (sourceList && $isListNode(sourceList) && this.#countRealItems(sourceList) === 0) {
+      const sw = sourceList.getParent()
+      if (sw && $isListItemNode(sw) && $isStructuralWrapper(sw)) {
+        sw.remove()
+      }
+    }
+  }
 
   #moveSingleBlock(nodeKey, direction) {
     const node = $getNodeByKey(nodeKey)
