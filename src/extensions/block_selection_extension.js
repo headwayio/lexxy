@@ -1231,11 +1231,10 @@ export class BlockSelectionExtension extends LexxyExtension {
     // stale layout measurements from racing with our double-rAF sync.
     this.#dragAndDrop?.suppressHover()
 
-    // Filter to only "root" keys — parents whose children are also selected.
-    // When a parent is selected with its children, only move the parent;
-    // the children travel with it via the structural wrapper.
+    // Use filterToRootKeys so the group moves as a unit (children travel
+    // with their root via structural wrappers). After the move, flatten
+    // selected children to be siblings of their root key.
     const rootKeys = this.#filterToRootKeys(selectedKeys)
-
     const allKeys = this.#getDocumentOrderBlockKeys()
     rootKeys.sort((a, b) => allKeys.indexOf(a) - allKeys.indexOf(b))
 
@@ -1250,6 +1249,13 @@ export class BlockSelectionExtension extends LexxyExtension {
           this.#moveSingleBlock(rootKeys[i], "down")
         }
       }
+
+      // After the move, flatten selected children to be siblings of their
+      // root key. When a root key nests under a sibling, its children
+      // (in the structural wrapper) travel at a deeper level. This promotes
+      // them to be adjacent siblings at the root key's level.
+      this.#flattenSelectedChildren(selectedKeys, rootKeys)
+
       // Re-sync wrapped keys with current selection after all moves.
       // Lexical's copy-on-write may have changed keys during the update.
       this.#resyncWrappedKeys()
@@ -1285,6 +1291,44 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Given a set of selected keys, return only the "root" keys — items that
   // are not children of another selected item. This prevents moving children
   // individually when the parent already moves them via its structural wrapper.
+  // After a group move, promote selected children out of their root key's
+  // structural wrapper so they become siblings at the same level.
+  #flattenSelectedChildren(selectedKeys, rootKeys) {
+    const rootKeySet = new Set(rootKeys)
+    const selectedSet = new Set(selectedKeys)
+
+    for (const key of selectedKeys) {
+      if (rootKeySet.has(key)) continue // skip root keys themselves
+
+      const node = $getNodeByKey(key)
+      if (!node || !$isListItemNode(node)) continue
+
+      // Check if this node is nested under a root key
+      const parentList = node.getParent()
+      if (!$isListNode(parentList)) continue
+
+      const wrapper = parentList.getParent()
+      if (!wrapper || !$isListItemNode(wrapper) || !$isStructuralWrapper(wrapper)) continue
+
+      const rootItem = wrapper.getPreviousSibling()
+      if (!rootItem || !rootKeySet.has(rootItem.getKey())) continue
+
+      // This node is a child of a root key — promote to be a sibling
+      const ownWrapper = this.#getOwnStructuralWrapper(node)
+      node.remove()
+      wrapper.insertAfter(node)
+      if (ownWrapper) {
+        ownWrapper.remove()
+        node.insertAfter(ownWrapper)
+      }
+
+      // Clean up empty nested list
+      if (parentList.getChildrenSize() === 0) {
+        wrapper.remove()
+      }
+    }
+  }
+
   #filterToRootKeys(selectedKeys) {
     const keySet = new Set(selectedKeys)
     const rootKeys = []
@@ -1319,7 +1363,6 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   // Re-apply data-block-movement-wrapped DOM attribute after moves.
-  // Also re-sync the key set since Lexical's copy-on-write may reassign keys.
   #syncWrappedBlockAttributes() {
     const root = this.editor.getRootElement()
     if (!root) return
@@ -1487,6 +1530,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       }, COMMAND_PRIORITY_LOW)
     )
   }
+
 
   #moveSingleBlock(nodeKey, direction) {
     const node = $getNodeByKey(nodeKey)
@@ -1675,26 +1719,36 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
 
       // Standard promotion: move to parent list level.
-      // The listParent is the structural wrapper ListItemNode. When moving
-      // UP, we want to go before the TEXT ListItemNode that precedes the
-      // wrapper (the item the user sees as the "parent"). When moving DOWN,
-      // inserting after the wrapper is correct.
       // Capture the node's children wrapper BEFORE moving.
       const ownWrapper = this.#getOwnStructuralWrapper(node)
 
-      if (isDown) {
-        listParent.insertAfter(node)
-      } else {
-        const textSibling = listParent.getPreviousSibling()
-        if (textSibling && $isListItemNode(textSibling)) {
-          textSibling.insertBefore(node)
+      if (isTargetRootLevel) {
+        // Promoting to root list level: exit the list entirely by wrapping
+        // in a new standalone list. This ensures the item stays in order
+        // with any wrapped blocks (headings, blockquotes) that also exit.
+        const newList = $createListNode(parentList.getListType())
+        newList.append(node)
+        if (ownWrapper) newList.append(ownWrapper)
+        if (isDown) {
+          parentList.insertAfter(newList)
         } else {
-          listParent.insertBefore(node)
+          parentList.insertBefore(newList)
         }
-      }
-      // Move children wrapper right after the node in the new position
-      if (ownWrapper) {
-        node.insertAfter(ownWrapper)
+      } else {
+        // Promoting within nested lists: insert at the parent list level.
+        // The listParent is the structural wrapper ListItemNode. When moving
+        // UP, go before the TEXT ListItemNode that precedes the wrapper.
+        if (isDown) {
+          listParent.insertAfter(node)
+        } else {
+          const textSibling = listParent.getPreviousSibling()
+          if (textSibling && $isListItemNode(textSibling)) {
+            textSibling.insertBefore(node)
+          } else {
+            listParent.insertBefore(node)
+          }
+        }
+        if (ownWrapper) node.insertAfter(ownWrapper)
       }
       this.#cleanupEmptyList(currentList)
     } else {
@@ -1789,6 +1843,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Will the source wrapper be empty after the node moves out?
     const shouldDestroyWrapper = this.#countRealItems(currentList) <= 1
     const wrapperKey = shouldDestroyWrapper ? wrapper.getKey() : null
+
+    // Don't nest under a sibling that's also being moved as part of the
+    // same selection group — they should stay at the same level.
+    if (targetSibling && this.#selectedBlockKeys.has(targetSibling.getKey())) {
+      targetSibling = null
+    }
 
     if (targetSibling) {
       // Nest under the adjacent root-level sibling (skip root level).
