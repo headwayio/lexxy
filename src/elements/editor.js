@@ -298,6 +298,7 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFocusEvents()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.#applyCodeSettings()
     this.extensions.initializeEditors()
     for (const ext of this.extensions.enabledExtensions) {
       if (typeof ext.dispose === "function") this.#disposables.push(ext)
@@ -551,6 +552,13 @@ export class LexicalEditorElement extends HTMLElement {
         console.debug("empty", this.isEmpty, "blank", this.isBlank)
       })
     }))
+  }
+
+  #applyCodeSettings() {
+    const tabSize = this.config.get("code.tabSize")
+    if (tabSize) {
+      this.style.setProperty("--lexxy-code-tab-size", tabSize)
+    }
   }
 
   #attachToolbar() {

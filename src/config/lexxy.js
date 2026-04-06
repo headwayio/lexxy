@@ -11,6 +11,9 @@ const global = new Configuration({
 const presets = new Configuration({
   default: {
     attachments: true,
+    code: {
+      tabSize: 2
+    },
     markdown: true,
     multiLine: true,
     richText: true,
