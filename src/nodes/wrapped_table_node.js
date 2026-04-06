@@ -1,6 +1,11 @@
 import { TableNode } from "@lexical/table"
 import { $createListItemNode, $isListItemNode } from "@lexical/list"
+import { $getNodeByKey } from "lexical"
 import { createElement } from "../helpers/html_helper"
+
+// Tracks provisional list items created when arrowing out of a table in a list.
+// These are auto-removed when the user navigates away without typing.
+export const $provisionalTableEscapeKeys = new Set()
 
 export class WrappedTableNode extends TableNode {
   $config() {
@@ -49,4 +54,21 @@ export class WrappedTableNode extends TableNode {
       }
     }
   }
+}
+
+export function $cleanupProvisionalEscapeItems() {
+  for (const key of [ ...$provisionalTableEscapeKeys ]) {
+    const node = $getNodeByKey(key)
+    if (!node || node.getTextContentSize() > 0) {
+      $provisionalTableEscapeKeys.delete(key)
+      continue
+    }
+    node.remove()
+    $provisionalTableEscapeKeys.delete(key)
+  }
+}
+
+export function $getWrappedTableChild(listItem) {
+  if (!$isListItemNode(listItem)) return null
+  return listItem.getChildren().find(c => c instanceof WrappedTableNode) || null
 }
