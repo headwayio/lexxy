@@ -719,7 +719,7 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
       overflow-x: auto;
       padding: 1ch;
       padding-block-start: 2.5em;
-      tab-size: 2;
+      tab-size: var(--lexxy-code-tab-size, 2);
       text-wrap: nowrap;
       white-space: pre;
       word-break: break-word;
@@ -1896,20 +1896,45 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   code[data-language].block--selected.block--focused {
     z-index: auto;
     box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 7%, transparent);
-    outline: 7px solid var(--block-select-bg);
+    outline: 6px solid var(--block-select-bg);
+    overflow: hidden;
   }
 
-  /* All wrapped blocks in list items: fixed selection inset regardless of
-     position (:first-child, :last-child, :only-child). Regular bullets use
-     position-sensitive sizing for contiguous group visuals, but wrapped blocks
-     (headings, blockquotes, figures, etc.) should have uniform padding.
-     The nested variant bumps specificity to (0,4,3) to beat the highest
-     position-sensitive li rules. Tables and code blocks override below. */
-  li.block--selected:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after,
-  li.block--focused:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after {
-    inset: -6px -6px -6px -39px;
+  /* Wrapped block selector used across multiple rules below. */
+
+  /* Zero inner element margins to prevent collapse-through on all wrapped
+     block lis. The li's own margin handles spacing. */
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider, > pre, > code[data-language]) {
+    > h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > pre, > code[data-language] {
+      margin-block: 0;
+    }
+  }
+
+  /* Mixed lists: any ul/ol containing at least one wrapped block.
+     ALL items (wrapped and regular) get 12px margin and -4px insets
+     so every pair produces: 12 - 4 - 4 = 4px gap.
+     Pure regular-only lists keep their existing 6px/2px Notion-style sizing. */
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) {
+    > li:not(.lexxy-nested-listitem) {
+      margin-block: 12px !important;
+    }
+  }
+
+  /* All items in mixed lists: fixed -4px selection inset.
+     The nested variant bumps specificity to beat position-sensitive li rules. */
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--selected::after,
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--focused::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--selected::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--focused::after {
+    inset: -4px -4px -4px -39px;
+  }
+
+  /* Last child in nested mixed lists: -6px bottom bridges the 12px gap
+     at nesting boundaries (12 - 6 - 2 = 4px visual gap). Must beat the
+     mixed-list inset rule above, so uses the same context selector. */
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.block--selected, .block--focused)::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.block--selected, .block--focused)::after {
+    bottom: -6px;
   }
 
   /* Wrapped code blocks inside list items: the li's ::after provides
@@ -1927,7 +1952,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> code[data-language])::after,
   :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> pre)::after {
     border-radius: 10px;
-    inset: -6px -6px -6px -39px;
+    inset: -4px -4px -4px -39px;
   }
 
   /* Wrapped code blocks: apply the same tint as top-level */
@@ -1970,10 +1995,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* Wrapped tables inside list items: expand the li's ::after on
      top/right/bottom to match the top-level table spacing. Left
      side keeps the standard bullet-aligned inset. */
-  li:has(> .lexxy-content__table-wrapper) {
-    margin-block-start: 17px !important;
-    margin-block-end: 17px !important;
-  }
+  /* Table margin handled by the mixed-list rule above (12px). */
 
   /* Reset the top-level table padding/margin for wrapped tables —
      the li's ::after handles the selection fill instead. */
@@ -1990,7 +2012,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> .lexxy-content__table-wrapper)::after,
   :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> .lexxy-content__table-wrapper)::after {
     border-radius: var(--block-select-radius);
-    inset: -7px -6px -7px -39px;
+    inset: -4px -4px -4px -39px;
   }
 
   li.block--selected:has(> .lexxy-content__table-wrapper) td,

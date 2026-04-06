@@ -22,8 +22,8 @@ import {
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
   OUTDENT_CONTENT_COMMAND,
-  UNDO_COMMAND,
-  REDO_COMMAND
+  REDO_COMMAND,
+  UNDO_COMMAND
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $isCodeNode } from "@lexical/code"
@@ -221,7 +221,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #selectRange(fromKey, toKey) {
-    const allBlocks = this.#getDocumentOrderBlockKeys()
+    const allBlocks = this.#getNavigableBlockKeys()
     const fromIndex = allBlocks.indexOf(fromKey)
     const toIndex = allBlocks.indexOf(toKey)
 
@@ -292,19 +292,44 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     if (this.#selectedBlockKeys.size === 0) return
 
-    // Only flatten radius between adjacent selected list items that are
-    // visually touching (no margin gap). Wrapped blocks (LIs containing
-    // headings, code blocks, etc.) have margin from their inner elements
-    // so they always keep full radius, like root-level blocks.
-    const isWrappedLI = (el) => el.tagName === "LI" && el.querySelector(
-      ":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, " +
-      ":scope > pre, :scope > code[data-language], :scope > table, :scope > blockquote, " +
-      ":scope > figure, :scope > .lexxy-content__table-wrapper, :scope > .horizontal-divider"
-    )
+    // Mark selected LIs that are adjacent to other selected LIs as
+    // block--select-mid. This enables contiguous group styling (flattened
+    // edges between items with 2px gaps). Items in mixed lists (4px gaps)
+    // keep full radius since the wider gaps don't visually merge.
+    for (const key of this.#selectedBlockKeys) {
+      const el = this.editor.getElementByKey(key)
+      if (!el || el.tagName !== "LI") continue
+      // Skip structural wrappers — they're handled separately
+      if (el.classList.contains("lexxy-nested-listitem")) continue
+      // Skip items in mixed lists — 4px gaps are too wide for flat-edge merging
+      if (this.#isInMixedList(el)) continue
 
-    // No group merging needed — each item and parent+child rectangle is
-    // independently rendered. The parent's ::after covers its children via
-    // --parent-selection-height. All items keep full border-radius.
+      // Check if this LI has an adjacent selected sibling (either direction).
+      // Skip structural wrappers when looking for neighbors, and don't join
+      // a group with a parent that has an active parent fill (its children
+      // are selected inside a structural wrapper).
+      let prev = el.previousElementSibling
+      if (prev?.classList.contains("lexxy-nested-listitem")) {
+        const parentItem = prev.previousElementSibling
+        // If the parent has selected children in the wrapper, don't join
+        // its group — the parent fill provides its own visual boundary.
+        if (parentItem?.classList.contains(BLOCK_SELECTED_CLASS) &&
+            prev.querySelector(`.${BLOCK_SELECTED_CLASS}`)) {
+          prev = null
+        } else {
+          prev = parentItem
+        }
+      }
+      let next = el.nextElementSibling
+      if (next?.classList.contains("lexxy-nested-listitem")) next = next.nextElementSibling
+
+      const hasPrev = prev?.classList.contains(BLOCK_SELECTED_CLASS)
+      const hasNext = next?.classList.contains(BLOCK_SELECTED_CLASS)
+
+      if (hasPrev || hasNext) {
+        el.classList.add("block--select-mid")
+      }
+    }
 
     // Now assign first/last: selected LIs with block--select-mid flatten
     // their touching edges. Items WITHOUT block--select-mid keep full radius.
@@ -346,6 +371,30 @@ export class BlockSelectionExtension extends LexxyExtension {
       next = next.nextElementSibling
     }
     return next?.classList.contains(BLOCK_SELECTED_CLASS) && next.classList.contains("block--select-mid")
+  }
+
+  // Check if a DOM LI element is inside a mixed list (one containing wrapped
+  // blocks like headings, code, tables). Also treats lists as mixed when they
+  // contain structural wrappers with mixed content (parent/child groups with
+  // wrapped blocks). Mixed lists use 4px gaps which are too wide for the
+  // flat-edge contiguous group look.
+  #isInMixedList(el) {
+    const list = el.parentElement
+    if (!list || (list.tagName !== "UL" && list.tagName !== "OL")) return false
+    // Direct wrapped block children
+    if (list.querySelector(
+      ":scope > li > h1, :scope > li > h2, :scope > li > h3, :scope > li > h4, :scope > li > h5, :scope > li > h6, " +
+      ":scope > li > blockquote, :scope > li > figure, :scope > li > .horizontal-divider, " +
+      ":scope > li > pre, :scope > li > code[data-language], :scope > li > .lexxy-content__table-wrapper"
+    )) return true
+    // Structural wrappers containing mixed content
+    return !!list.querySelector(
+      ":scope > li.lexxy-nested-listitem h1, :scope > li.lexxy-nested-listitem h2, " +
+      ":scope > li.lexxy-nested-listitem h3, :scope > li.lexxy-nested-listitem h4, " +
+      ":scope > li.lexxy-nested-listitem h5, :scope > li.lexxy-nested-listitem h6, " +
+      ":scope > li.lexxy-nested-listitem blockquote, :scope > li.lexxy-nested-listitem pre, " +
+      ":scope > li.lexxy-nested-listitem code[data-language], :scope > li.lexxy-nested-listitem .lexxy-content__table-wrapper"
+    )
   }
 
   // -- Block tree traversal ---------------------------------------------------
@@ -805,19 +854,16 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #handleSelectAll() {
-    const topLevelKeys = []
-    this.editor.getEditorState().read(() => {
-      const root = $getRoot()
-      for (const child of root.getChildren()) {
-        topLevelKeys.push(child.getKey())
-      }
-    })
+    // Select all visible blocks. For lists, select the individual LIs
+    // (not the invisible UL/OL container) so each item gets its own
+    // selection highlight.
+    const allKeys = this.#getNavigableBlockKeys()
 
-    if (topLevelKeys.length > 0) {
+    if (allKeys.length > 0) {
       this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
-      this.#selectedBlockKeys = new Set(topLevelKeys)
-      this.#anchorKey = topLevelKeys[0]
-      this.#focusKey = topLevelKeys[topLevelKeys.length - 1]
+      this.#selectedBlockKeys = new Set(allKeys)
+      this.#anchorKey = allKeys[0]
+      this.#focusKey = allKeys[allKeys.length - 1]
       this.#syncSelectionClasses()
     }
   }
@@ -1156,7 +1202,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         newKeys.push(clone.getKey())
         // Also collect cloned children keys for selection
         if (wrapperClone) {
-          const collectKeys = (n) => {
+          function collectKeys(n) {
             if ($isListItemNode(n) && !$isStructuralWrapper(n)) newKeys.push(n.getKey())
             if ($isElementNode(n)) n.getChildren().forEach(collectKeys)
           }
@@ -1212,6 +1258,10 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       // Process each item: use wrapped-block indent for non-text blocks,
       // Lexical's standard indent for regular list items.
+      // Wrapped items that can't outdent further are collected for group exit
+      // (same code path as Cmd+Shift+Up).
+      const exitGroup = []
+
       for (const key of listItemKeys) {
         const node = $getNodeByKey(key)
         if (!node) continue
@@ -1228,10 +1278,9 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (outdent) {
             const didOutdent = this.#outdentWrappedBlock(node)
             if (!didOutdent && isWrapped) {
-              // At root-level list — exit the list entirely, unwrapping the
-              // block back to its standalone form. Children maintain hierarchy
-              // and are placed below the unwrapped block, above the list.
-              this.#unwrapBlockFromList(node)
+              // At root-level list — collect for group exit
+              const wrapper = this.#getOwnStructuralWrapper(node)
+              exitGroup.push({ node, wrapper })
             } else if (!didOutdent && hasChildren) {
               // Can't outdent further but has children — flatten one level.
               // Promotes all children from the structural wrapper to be
@@ -1255,6 +1304,16 @@ export class BlockSelectionExtension extends LexxyExtension {
               this.#inheritParentHighlight(movedNode)
             }
           }
+        }
+      }
+
+      // Exit collected wrapped items as a group — same path as Cmd+Shift+Up.
+      // This ensures Shift+Tab and Cmd+Shift+Up produce identical results
+      // when unwrapping a list.
+      if (exitGroup.length > 0) {
+        const sourceList = exitGroup[0].node.getParent()
+        if ($isListNode(sourceList)) {
+          this.#exitGroupFromList(exitGroup, sourceList, "up")
         }
       }
 
@@ -1358,44 +1417,6 @@ export class BlockSelectionExtension extends LexxyExtension {
         this.#dragAndDrop?.unsuppressHover()
       })
     })
-  }
-
-  // After a group move, promote selected children out of their root key's
-  // structural wrapper so they become siblings at the same level.
-  #flattenSelectedChildren(selectedKeys, rootKeys) {
-    const rootKeySet = new Set(rootKeys)
-    const selectedSet = new Set(selectedKeys)
-
-    for (const key of selectedKeys) {
-      if (rootKeySet.has(key)) continue // skip root keys themselves
-
-      const node = $getNodeByKey(key)
-      if (!node || !$isListItemNode(node)) continue
-
-      // Check if this node is nested under a root key
-      const parentList = node.getParent()
-      if (!$isListNode(parentList)) continue
-
-      const wrapper = parentList.getParent()
-      if (!wrapper || !$isListItemNode(wrapper) || !$isStructuralWrapper(wrapper)) continue
-
-      const rootItem = wrapper.getPreviousSibling()
-      if (!rootItem || !rootKeySet.has(rootItem.getKey())) continue
-
-      // This node is a child of a root key — promote to be a sibling
-      const ownWrapper = this.#getOwnStructuralWrapper(node)
-      node.remove()
-      wrapper.insertAfter(node)
-      if (ownWrapper) {
-        ownWrapper.remove()
-        node.insertAfter(ownWrapper)
-      }
-
-      // Clean up empty nested list
-      if (parentList.getChildrenSize() === 0) {
-        wrapper.remove()
-      }
-    }
   }
 
   #filterToRootKeys(selectedKeys) {
@@ -1504,12 +1525,12 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Deeply nested = inside a structural wrapper (not a root-level item).
       const isDeeplyNested = !!el.closest(`li.${NESTED_LISTITEM_CLASS}`)
 
-      // The ::after top is positioned by CSS (first-child: -6px, middle: -2px).
-      // Only root-level first-children get the 6px extension — nested
-      // first-children use regular 2px (each nesting level has its own
-      // first-child and we don't want compounding extensions).
+      // Read the parent's actual computed ::after top to determine topExt.
+      // CSS rules (position-sensitive, mixed-list) may set -2px, -4px, or -6px.
+      // Reading the computed value avoids mismatches between JS and CSS.
       const isFirst = el === el.parentElement.firstElementChild && !isDeeplyNested
-      let topExt = isFirst ? 6 : 2
+      const parentAfterTop = parseFloat(getComputedStyle(el, "::after").top)
+      let topExt = !isNaN(parentAfterTop) ? Math.abs(parentAfterTop) : (isFirst ? 6 : 2)
 
       // If the previous sibling is a wrapper with a selected child whose
       // parent is NOT selected, reduce topExt to 0 to leave a 2px gap
@@ -1552,14 +1573,6 @@ export class BlockSelectionExtension extends LexxyExtension {
         const afterBottom = parseFloat(afterStyle.bottom)
         if (!isNaN(afterBottom) && afterBottom < 0) {
           bottomExt = Math.max(bottomExt, Math.abs(afterBottom))
-        }
-        // Code blocks use border-radius: 10px on their ::after, which
-        // creates a visual outline larger than the parent's 3px radius.
-        // Add 4px to compensate for the radius difference when the code
-        // block's ::after is suppressed inside a parent selection.
-        const lastChildFirst = lastChild.children[0]
-        if (lastChildFirst?.tagName === "CODE" || lastChildFirst?.tagName === "PRE") {
-          bottomExt += 4
         }
         bottom = lastChild.getBoundingClientRect().bottom
       } else {
@@ -1885,12 +1898,21 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!node.getParent()) continue
 
       let extracted = null
+      let childrenList = null
 
       if (this.#isWrappedBlock(node)) {
+        // Extract children from wrapper before removing it
+        if (wrapper) {
+          const innerList = wrapper.getChildren().find(c => $isListNode(c))
+          if (innerList) {
+            innerList.remove()
+            childrenList = innerList
+          }
+          wrapper.remove()
+        }
         extracted = this.#extractWrappedContent(node)
         if (extracted) {
           this.#updateKeyAfterUnwrap(node.getKey(), extracted.getKey())
-          if (wrapper) wrapper.remove()
           node.remove()
         }
       }
@@ -1907,9 +1929,14 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       if (isUp) {
         cursor.insertBefore(extracted)
+        if (childrenList) cursor.insertBefore(childrenList)
       } else {
         insertRef.insertAfter(extracted)
         insertRef = extracted
+        if (childrenList) {
+          insertRef.insertAfter(childrenList)
+          insertRef = childrenList
+        }
       }
     }
 
@@ -3674,51 +3701,6 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Remove the now-empty structural wrapper
     ownWrapper.remove()
   }
-
-  // Unwrap a wrapped block from its list item and place it at root level.
-  // Children (structural wrapper) become a standalone list below the block,
-  // above the remaining list items.
-  #unwrapBlockFromList(node) {
-    const currentList = node.getParent()
-    if (!$isListNode(currentList)) return
-
-    // Get the node's own structural wrapper (children) before extraction
-    const ownWrapper = this.#getOwnStructuralWrapper(node)
-
-    // If there are children, extract the inner list from the structural wrapper
-    let childrenList = null
-    if (ownWrapper) {
-      const innerList = ownWrapper.getChildren().find(c => $isListNode(c))
-      if (innerList) {
-        innerList.remove()
-        childrenList = innerList
-      }
-      ownWrapper.remove()
-    }
-
-    // Reuse existing extraction logic for the block content
-    const nodeKey = node.getKey()
-    const extracted = this.#extractWrappedContent(node)
-    if (!extracted) return
-
-    node.remove()
-    this.#cleanupEmptyList(currentList)
-
-    // Place the block before the remaining list at root level
-    currentList.insertBefore(extracted)
-
-    // Place children list after the block
-    if (childrenList) {
-      extracted.insertAfter(childrenList)
-    }
-
-    // Update selection keys to track the new block node
-    this.#selectedBlockKeys.delete(nodeKey)
-    this.#selectedBlockKeys.add(extracted.getKey())
-    this.#anchorKey = extracted.getKey()
-    this.#focusKey = extracted.getKey()
-  }
-
 
   // -- Click handling ---------------------------------------------------------
 

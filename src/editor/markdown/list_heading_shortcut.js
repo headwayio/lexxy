@@ -1,4 +1,4 @@
-import { $getNodeByKey, $getSelection, $isElementNode, $isRangeSelection, $isParagraphNode, $isTextNode } from "lexical"
+import { $getNodeByKey, $getSelection, $isElementNode, $isParagraphNode, $isRangeSelection, $isTextNode } from "lexical"
 import { $isListItemNode, $isListNode } from "@lexical/list"
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
 
