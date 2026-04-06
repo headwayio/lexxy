@@ -1539,10 +1539,28 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       // Use the last SELECTED child's bottom, not the full wrapper bottom.
       // This shrinks the rectangle as children are deselected one at a time.
+      //
+      // To match what the child's own ::after would produce, read the child's
+      // computed ::after bottom inset. For opaque-background blocks (code,
+      // tables), also account for their outline/border-radius visual extent
+      // since their ::after is suppressed by the parent fill.
       const selectedChildren = wrapper.querySelectorAll(`.${BLOCK_SELECTED_CLASS}`)
       let bottom
       if (selectedChildren.length > 0) {
         const lastChild = selectedChildren[selectedChildren.length - 1]
+        const afterStyle = getComputedStyle(lastChild, "::after")
+        const afterBottom = parseFloat(afterStyle.bottom)
+        if (!isNaN(afterBottom) && afterBottom < 0) {
+          bottomExt = Math.max(bottomExt, Math.abs(afterBottom))
+        }
+        // Code blocks use border-radius: 10px on their ::after, which
+        // creates a visual outline larger than the parent's 3px radius.
+        // Add 4px to compensate for the radius difference when the code
+        // block's ::after is suppressed inside a parent selection.
+        const lastChildFirst = lastChild.children[0]
+        if (lastChildFirst?.tagName === "CODE" || lastChildFirst?.tagName === "PRE") {
+          bottomExt += 4
+        }
         bottom = lastChild.getBoundingClientRect().bottom
       } else {
         bottom = wrapper.getBoundingClientRect().bottom
@@ -1628,6 +1646,53 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
     if (group.length === 0) return
 
+    // 1b. Detect groups that span multiple parents.
+    // Two cases: (a) root-level mixed group after list exit (standalone lists +
+    // standalone blocks), or (b) items at different nesting depths within the
+    // same list hierarchy.
+    if (group.length > 1) {
+      const firstParent = group[0].node.getParent()
+      const multiParent = group.some(g => !g.node.getParent()?.is(firstParent))
+
+      if (multiParent) {
+        // Check if any item is NOT inside a list (root-level mixed group)
+        const anyOutsideList = group.some(g => !$isListNode(g.node.getParent()))
+        // Check if any item is in a root-level standalone list
+        const anyInRootList = group.some(g => {
+          const p = g.node.getParent()
+          return $isListNode(p) && !$isListItemNode(p.getParent())
+        })
+
+        if (anyOutsideList || anyInRootList) {
+          // Case (a): root-level mixed group — resolve to root-level elements
+          const resolved = []
+          const seen = new Set()
+          for (const { node } of group) {
+            let rootEl = node
+            if ($isListItemNode(node)) {
+              const parent = node.getParent()
+              if ($isListNode(parent) && !$isListItemNode(parent.getParent())) {
+                rootEl = parent
+              }
+            }
+            const key = rootEl.getKey()
+            if (!seen.has(key)) {
+              seen.add(key)
+              resolved.push({ node: rootEl, wrapper: null })
+            }
+          }
+          this.#moveRootLevelGroup(resolved, group, direction)
+          return
+        }
+
+        // Case (b): items at different depths within a list hierarchy.
+        // Promote the deeper items to the shallowest parent level so the
+        // group unifies before moving horizontally.
+        this.#normalizeGroupDepth(group, direction)
+        return
+      }
+    }
+
     // 2. Find the target: the sibling above/below the group
     const edgeNode = isUp ? group[0].node : group[group.length - 1].node
     const edgeWrapper = isUp ? null : group[group.length - 1].wrapper
@@ -1674,45 +1739,91 @@ export class BlockSelectionExtension extends LexxyExtension {
       return
     }
 
-    // Save the source list for cleanup
-    const sourceList = group[0].node.getParent()
+    // Within-list movement: nest the group under the target sibling,
+    // matching single-item depth-first traversal behavior.
+    // DOWN → become first children of target's nested list
+    // UP → become last children of target's nested list
+    this.#nestGroupUnderSibling(group, target, direction)
+  }
 
-    // Detach all group nodes (in reverse to preserve sibling references)
-    for (let i = group.length - 1; i >= 0; i--) {
-      if (group[i].wrapper) group[i].wrapper.remove()
-      group[i].node.remove()
+  // Move a group of root-level elements (resolved from a mixed-parent group).
+  // Handles standalone lists, standalone blocks, and entering adjacent lists.
+  // `resolved` has root-level elements, `originalGroup` has the raw selected nodes.
+  #moveRootLevelGroup(resolved, originalGroup, direction) {
+    const isUp = direction === "up"
+    const edgeNode = isUp ? resolved[0].node : resolved[resolved.length - 1].node
+    const target = isUp ? edgeNode.getPreviousSibling() : edgeNode.getNextSibling()
+
+    if (!target) return // at document boundary
+
+    // If target is a list, the group is entering a list
+    if ($isListNode(target)) {
+      this.#moveGroupIntoList(resolved, target, direction)
+      return
     }
 
-    // Insert the group before/after the target
+    // Moving UP past a cursor separator paragraph: the element above the
+    // separator may be a list. Enter it instead of swapping, which would
+    // cause Lexical to merge the standalone list with the original list.
+    if (isUp && $isParagraphNode(target) && target.getTextContentSize() === 0) {
+      const above = target.getPreviousSibling()
+      if (above && $isListNode(above)) {
+        target.remove()
+        this.#moveGroupIntoList(resolved, above, direction)
+        return
+      }
+    }
+
+    // Simple root-level swap: move all elements past the target
+    for (let i = resolved.length - 1; i >= 0; i--) {
+      resolved[i].node.remove()
+    }
     if (isUp) {
-      // Moving up: insert group BEFORE the target in forward order.
-      // Each insertBefore(target) puts the item right before target,
-      // so forward order gives: bul, head, quote, target.
-      for (let i = 0; i < group.length; i++) {
-        target.insertBefore(group[i].node)
-        if (group[i].wrapper) group[i].node.insertAfter(group[i].wrapper)
+      for (let i = 0; i < resolved.length; i++) {
+        target.insertBefore(resolved[i].node)
       }
     } else {
-      // Moving down: insert group AFTER the target (and its wrapper)
       let insertAfter = target
-      const targetWrapper = target.getNextSibling()
-      if (targetWrapper && $isListItemNode(targetWrapper) && $isStructuralWrapper(targetWrapper)) {
-        insertAfter = targetWrapper
-      }
-      // Insert in order
-      for (let i = 0; i < group.length; i++) {
-        insertAfter.insertAfter(group[i].node)
-        if (group[i].wrapper) group[i].node.insertAfter(group[i].wrapper)
-        insertAfter = group[i].wrapper || group[i].node
+      for (let i = 0; i < resolved.length; i++) {
+        insertAfter.insertAfter(resolved[i].node)
+        insertAfter = resolved[i].node
       }
     }
+  }
 
-    // Cleanup empty source list/wrapper if needed
-    if (sourceList && $isListNode(sourceList) && this.#countRealItems(sourceList) === 0) {
-      const sw = sourceList.getParent()
-      if (sw && $isListItemNode(sw) && $isStructuralWrapper(sw)) {
-        sw.remove()
+  // When a selected group spans multiple nesting depths within a list,
+  // promote the deeper items to the shallowest parent level. This unifies
+  // the group at one depth so the next keypress can move them together.
+  #normalizeGroupDepth(group, direction) {
+    // Find the shallowest (closest to root) parent list among all group items
+    let shallowest = null
+    let shallowestDepth = Infinity
+    for (const { node } of group) {
+      let depth = 0
+      let current = node.getParent()
+      while (current) {
+        if ($isListNode(current)) depth++
+        current = current.getParent()
       }
+      if (depth < shallowestDepth) {
+        shallowestDepth = depth
+        shallowest = node.getParent()
+      }
+    }
+    if (!shallowest) return
+
+    // Collect items that are deeper than the shallowest and promote them
+    const deeper = []
+    for (const entry of group) {
+      if (!entry.node.getParent()?.is(shallowest)) {
+        deeper.push(entry)
+      }
+    }
+    if (deeper.length === 0) return
+
+    const currentList = deeper[0].node.getParent()
+    if ($isListNode(currentList)) {
+      this.#promoteGroupOneLevel(deeper, currentList, direction)
     }
   }
 
@@ -1738,17 +1849,8 @@ export class BlockSelectionExtension extends LexxyExtension {
       return
     }
 
-    // Nested list inside a structural wrapper at the root level:
-    // items should exit the list entirely (wrapped blocks skip root level)
-    if ($isStructuralWrapper(listParent)) {
-      const parentList = listParent.getParent()
-      if (parentList && $isListNode(parentList) && !$isListItemNode(parentList.getParent())) {
-        this.#exitGroupFromList(group, currentList, direction)
-        return
-      }
-    }
-
-    // Nested list deeper than one level: promote to parent list level
+    // Nested list: promote to parent list level (one level per move,
+    // matching single-item depth-first traversal behavior)
     this.#promoteGroupOneLevel(group, currentList, direction)
   }
 
@@ -2037,6 +2139,79 @@ export class BlockSelectionExtension extends LexxyExtension {
   // ListNode directly to a text ListItemNode corrupts its bullet marker
   // because EarlyEscapeListItemNode.#updateBulletDepth removes data-bullet-depth
   // when the item has a ListNode child.
+  // Nest an entire group under a target sibling, following the same
+  // depth-first traversal pattern as single-item movement.
+  // DOWN → group becomes first children of target's nested list
+  // UP → group becomes last children of target's nested list
+  #nestGroupUnderSibling(group, target, direction) {
+    const isDown = direction === "down"
+    const currentList = group[0].node.getParent()
+
+    // Find or create the target's structural wrapper and nested list
+    let nestedList = null
+    const wrapperCandidate = target.getNextSibling()
+    if (wrapperCandidate && $isListItemNode(wrapperCandidate)
+        && $isStructuralWrapper(wrapperCandidate)) {
+      for (const child of wrapperCandidate.getChildren()) {
+        if ($isListNode(child)) {
+          nestedList = child
+          break
+        }
+      }
+    }
+
+    // Check if moving will empty the source list
+    const sourceList = group[0].node.getParent()
+    let sourceWrapperKey = null
+    if (sourceList && $isListNode(sourceList)
+        && this.#countRealItems(sourceList) <= group.length) {
+      const sourceWrapper = sourceList.getParent()
+      if (sourceWrapper && $isListItemNode(sourceWrapper)
+          && $isStructuralWrapper(sourceWrapper)) {
+        sourceWrapperKey = sourceWrapper.getKey()
+      }
+    }
+
+    if (!nestedList) {
+      nestedList = $createListNode(currentList.getListType())
+      const wrapper = $createListItemNode()
+      wrapper.append(nestedList)
+      target.insertAfter(wrapper)
+    }
+
+    // Move all group items into the nested list
+    if (isDown) {
+      // Insert as first children (before existing), maintaining order.
+      // firstChild is captured once — all items insertBefore it to keep order.
+      const firstChild = nestedList.getFirstChild()
+      for (let i = 0; i < group.length; i++) {
+        const { node, wrapper } = group[i]
+        if (wrapper) wrapper.remove()
+        node.remove()
+        if (firstChild) {
+          firstChild.insertBefore(node)
+        } else {
+          nestedList.append(node)
+        }
+        if (wrapper) node.insertAfter(wrapper)
+      }
+    } else {
+      // Insert as last children (after existing), maintaining order
+      for (let i = 0; i < group.length; i++) {
+        const { node, wrapper } = group[i]
+        if (wrapper) wrapper.remove()
+        node.remove()
+        nestedList.append(node)
+        if (wrapper) nestedList.append(wrapper)
+      }
+    }
+
+    // Cleanup empty source list/wrapper
+    if (sourceWrapperKey) {
+      this.#forceDestroyWrapper(sourceWrapperKey)
+    }
+  }
+
   #nestListItemUnderSibling(node, sibling, currentList, isDown) {
     // In Lexical's list model, a text ListItemNode's nested children live
     // in a structural wrapper ListItemNode that is the NEXT sibling of the
@@ -2319,9 +2494,10 @@ export class BlockSelectionExtension extends LexxyExtension {
     const children = listItemNode.getChildren()
     if (children.length === 0) return null
 
-    // Non-paragraph block child (heading, code, table, etc.) — always extract.
-    // Must be an ElementNode to distinguish from inline TextNodes.
-    if (children.length === 1 && $isElementNode(children[0])
+    // Non-paragraph block child (heading, code, table, HR, etc.) — always extract.
+    // Matches both ElementNodes (heading, code, table) and DecoratorNodes (HR, images).
+    if (children.length === 1
+        && ($isElementNode(children[0]) || $isDecoratorNode(children[0]))
         && !$isListNode(children[0]) && !$isParagraphNode(children[0])) {
       const child = children[0]
       child.remove()
@@ -2522,12 +2698,13 @@ export class BlockSelectionExtension extends LexxyExtension {
     const key = listItemNode.getKey()
     if (this.#wrappedBlockKeys.has(key)) return true
 
-    // Content heuristic: a single block-level element child (heading, code block,
-    // table, etc.) means this list item is wrapping a non-list block that entered
-    // via block movement. Excludes inline nodes (TextNode) which are native list
-    // item content, and excludes ParagraphNode/ListNode.
+    // Content heuristic: a single block-level child (heading, code block, table,
+    // HR, etc.) means this list item is wrapping a non-list block that entered
+    // via block movement. Matches ElementNodes (heading, code, table) and
+    // DecoratorNodes (HR, images). Excludes inline TextNodes, ParagraphNode, ListNode.
     const children = listItemNode.getChildren()
-    if (children.length === 1 && $isElementNode(children[0])
+    if (children.length === 1
+        && ($isElementNode(children[0]) || $isDecoratorNode(children[0]))
         && !$isListNode(children[0]) && !$isParagraphNode(children[0])) {
       return true
     }

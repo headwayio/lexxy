@@ -1899,13 +1899,33 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     outline: 7px solid var(--block-select-bg);
   }
 
+  /* All wrapped blocks in list items: fixed selection inset regardless of
+     position (:first-child, :last-child, :only-child). Regular bullets use
+     position-sensitive sizing for contiguous group visuals, but wrapped blocks
+     (headings, blockquotes, figures, etc.) should have uniform padding.
+     The nested variant bumps specificity to (0,4,3) to beat the highest
+     position-sensitive li rules. Tables and code blocks override below. */
+  li.block--selected:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after,
+  li.block--focused:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider)::after {
+    inset: -6px -6px -6px -39px;
+  }
+
   /* Wrapped code blocks inside list items: the li's ::after provides
      the selection. Override it to match the code block's 10px rounding
-     with 6px padding on top/right/bottom. Left side keeps bullet spacing. */
+     with 6px padding on top/right/bottom. Left side keeps bullet spacing.
+     Nested variant with :not(.lexxy-nested-listitem) bumps specificity to
+     (0,4,3), matching the highest position-sensitive li rules so the fixed
+     inset values win at any nesting depth. */
   li.block--selected:has(> code[data-language])::after,
   li.block--selected:has(> pre)::after,
   li.block--focused:has(> code[data-language])::after,
-  li.block--focused:has(> pre)::after {
+  li.block--focused:has(> pre)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> code[data-language])::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> pre)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> code[data-language])::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> pre)::after {
     border-radius: 10px;
     inset: -6px -6px -6px -39px;
   }
@@ -1962,8 +1982,13 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     margin: 0;
   }
 
+  /* Nested variant with :not(.lexxy-nested-listitem) bumps specificity to
+     (0,4,3), matching the highest position-sensitive li rules so the fixed
+     inset values win at any nesting depth. */
   li.block--selected:has(> .lexxy-content__table-wrapper)::after,
-  li.block--focused:has(> .lexxy-content__table-wrapper)::after {
+  li.block--focused:has(> .lexxy-content__table-wrapper)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> .lexxy-content__table-wrapper)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> .lexxy-content__table-wrapper)::after {
     border-radius: var(--block-select-radius);
     inset: -7px -6px -7px -39px;
   }
