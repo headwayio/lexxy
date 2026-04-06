@@ -53,6 +53,14 @@ const COMMANDS = [
   "redo"
 ]
 
+// Block format commands that replace DOM elements and trigger Lexical's
+// scrollIntoViewIfNeeded, causing page jumps. These get scroll preservation.
+const BLOCK_FORMAT_COMMANDS = new Set([
+  "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall",
+  "setFormatParagraph", "insertUnorderedList", "insertOrderedList",
+  "insertQuoteBlock", "insertCodeBlock"
+])
+
 export class CommandDispatcher {
   #selectionBeforeDrag = null
   #unregister = []
@@ -298,7 +306,13 @@ export class CommandDispatcher {
   #registerCommands() {
     for (const command of COMMANDS) {
       const methodName = `dispatch${capitalize(command)}`
-      this.#registerCommandHandler(command, 0, this[methodName].bind(this))
+      let handler = this[methodName].bind(this)
+
+      if (BLOCK_FORMAT_COMMANDS.has(command)) {
+        handler = withPreservedScroll(handler)
+      }
+
+      this.#registerCommandHandler(command, 0, handler)
     }
 
     this.#registerCommandHandler(PASTE_COMMAND, COMMAND_PRIORITY_LOW, this.dispatchPaste.bind(this))
@@ -404,10 +418,10 @@ export class CommandDispatcher {
   }
 
   #handleTabKey(event) {
-    if (this.selection.isInsideList) {
+    if (this.selection.isInsideCodeBlock) {
+      return this.#handleTabForCode(event)
+    } else if (this.selection.isInsideList) {
       return this.#handleTabForList(event)
-    } else if (this.selection.isInsideCodeBlock) {
-      return this.#handleTabForCode()
     }
     return false
   }
@@ -420,13 +434,56 @@ export class CommandDispatcher {
     return this.editor.dispatchCommand(command)
   }
 
-  #handleTabForCode() {
+  #handleTabForCode(event) {
     const selection = $getSelection()
-    return $isRangeSelection(selection) && selection.isCollapsed()
+    if (!$isRangeSelection(selection)) return false
+
+    event.preventDefault()
+
+    if (event.shiftKey) {
+      this.#outdentCodeLine(selection)
+    } else {
+      this.editor.update(() => {
+        selection.insertText("\t")
+      })
+    }
+
+    return true
+  }
+
+  #outdentCodeLine(selection) {
+    this.editor.update(() => {
+      const anchor = selection.anchor
+      const node = anchor.getNode()
+      if (!$isTextNode(node)) return
+
+      const text = node.getTextContent()
+      if (text.startsWith("\t")) {
+        // Remove leading tab
+        const updated = node.getWritable()
+        updated.setTextContent(text.slice(1))
+        // Adjust cursor position
+        const newOffset = Math.max(0, anchor.offset - 1)
+        selection.anchor.set(node.getKey(), newOffset, "text")
+        selection.focus.set(node.getKey(), newOffset, "text")
+      }
+    })
   }
 
 }
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+// Wraps a handler so the page scroll position is saved before and restored
+// after Lexical's DOM reconciliation (which calls scrollIntoViewIfNeeded).
+// The microtask fires after reconciliation but before the browser repaints.
+function withPreservedScroll(handler) {
+  return (...args) => {
+    const y = window.scrollY
+    const result = handler(...args)
+    queueMicrotask(() => window.scrollTo(window.scrollX, y))
+    return result
+  }
 }

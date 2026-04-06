@@ -1013,6 +1013,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // and inserts the new block type at that position. For list-to-list
   // conversions, it just changes the list item type.
   #convertBlockType(command) {
+    const scrollY = window.scrollY
     const isListCommand = command === "insertUnorderedList" || command === "insertOrderedList"
     const listType = command === "insertUnorderedList" ? "bullet" : "number"
 
@@ -1104,6 +1105,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     }, { tag: HISTORY_MERGE_TAG })
 
     this.#syncAndRefocus()
+    queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
   }
 
   // Convert a list item's inline content into a wrapped block element
