@@ -2,31 +2,41 @@ import { appendFile, readFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 
+// Bootstrap scenarios use "min" because every iteration measures the same
+// cold-start work — there's no warm-up curve. The minimum reflects the true
+// cost with the least CI noise (GC pauses, CPU throttling, noisy neighbors).
+// Load scenarios keep "median" since content parsing has more natural variance.
 const DEFAULT_THRESHOLD = {
-  absoluteMedianRegressionMs: 20,
-  relativeMedianRegression: 0.2,
+  absoluteRegressionMs: 20,
+  relativeRegression: 0.2,
+  metric: "median",
 }
 
 const SCENARIO_THRESHOLDS = {
   "bootstrap-empty-editor": {
-    absoluteMedianRegressionMs: 10,
-    relativeMedianRegression: 0.25,
+    absoluteRegressionMs: 10,
+    relativeRegression: 0.25,
+    metric: "min",
   },
   "bootstrap-many-editors": {
-    absoluteMedianRegressionMs: 20,
-    relativeMedianRegression: 0.2,
+    absoluteRegressionMs: 20,
+    relativeRegression: 0.2,
+    metric: "min",
   },
   "load-large-content": {
-    absoluteMedianRegressionMs: 25,
-    relativeMedianRegression: 0.2,
+    absoluteRegressionMs: 25,
+    relativeRegression: 0.2,
+    metric: "median",
   },
   "load-many-attachments": {
-    absoluteMedianRegressionMs: 25,
-    relativeMedianRegression: 0.2,
+    absoluteRegressionMs: 25,
+    relativeRegression: 0.2,
+    metric: "median",
   },
   "load-very-large-table": {
-    absoluteMedianRegressionMs: 30,
-    relativeMedianRegression: 0.2,
+    absoluteRegressionMs: 30,
+    relativeRegression: 0.2,
+    metric: "median",
   },
 }
 
@@ -88,7 +98,7 @@ function compareResults({ baselineResults, currentResults }) {
 
     if (!baselineScenario) {
       entries.push({
-        currentMedian: currentScenario.stats.median,
+        currentValue: currentScenario.stats.median,
         name,
         status: "new",
       })
@@ -108,19 +118,23 @@ function compareResults({ baselineResults, currentResults }) {
     }
 
     const threshold = SCENARIO_THRESHOLDS[name] || DEFAULT_THRESHOLD
-    const deltaMs = roundNumber(currentScenario.stats.median - baselineScenario.stats.median)
-    const deltaRatio = baselineScenario.stats.median === 0
+    const metric = threshold.metric || "median"
+    const baselineValue = baselineScenario.stats[metric]
+    const currentValue = currentScenario.stats[metric]
+    const deltaMs = roundNumber(currentValue - baselineValue)
+    const deltaRatio = baselineValue === 0
       ? null
-      : roundNumber(deltaMs / baselineScenario.stats.median)
-    const isRegression = deltaMs > threshold.absoluteMedianRegressionMs &&
+      : roundNumber(deltaMs / baselineValue)
+    const isRegression = deltaMs > threshold.absoluteRegressionMs &&
       deltaRatio !== null &&
-      deltaRatio > threshold.relativeMedianRegression
+      deltaRatio > threshold.relativeRegression
 
     const entry = {
-      baselineMedian: baselineScenario.stats.median,
-      currentMedian: currentScenario.stats.median,
+      baselineValue,
+      currentValue,
       deltaMs,
       deltaRatio,
+      metric,
       name,
       status: statusForDelta(deltaMs, isRegression),
       threshold,
@@ -150,15 +164,16 @@ function buildSummary(comparison, { baselinePath, currentPath }) {
     `Baseline: \`${baselinePath}\`  `,
     `Current: \`${currentPath}\``,
     "",
-    "| Scenario | Baseline median | Current median | Delta | Threshold | Status |",
-    "| --- | ---: | ---: | ---: | --- | --- |",
+    "| Scenario | Metric | Baseline | Current | Delta | Threshold | Status |",
+    "| --- | --- | ---: | ---: | ---: | --- | --- |",
   ]
 
   for (const entry of comparison.entries) {
+    const metricLabel = entry.metric || "median"
     const thresholdLabel = formatThreshold(entry.threshold)
     const deltaLabel = formatDelta(entry)
-    const baselineLabel = formatMedian(entry.baselineMedian)
-    const currentLabel = formatMedian(entry.currentMedian)
+    const baselineLabel = formatValue(entry.baselineValue)
+    const currentLabel = formatValue(entry.currentValue)
 
     consoleLines.push([
       `- ${entry.name}`,
@@ -169,7 +184,7 @@ function buildSummary(comparison, { baselinePath, currentPath }) {
       `status=${entry.status}`,
     ].join(" "))
 
-    markdownLines.push(`| ${entry.name} | ${baselineLabel} | ${currentLabel} | ${deltaLabel} | ${thresholdLabel} | ${entry.status} |`)
+    markdownLines.push(`| ${entry.name} | ${metricLabel} | ${baselineLabel} | ${currentLabel} | ${deltaLabel} | ${thresholdLabel} | ${entry.status} |`)
   }
 
   markdownLines.push("")
@@ -197,7 +212,7 @@ function statusForDelta(deltaMs, isRegression) {
   return "unchanged"
 }
 
-function formatMedian(value) {
+function formatValue(value) {
   if (typeof value !== "number") return "n/a"
   return `${value.toFixed(3)} ms`
 }
@@ -216,7 +231,7 @@ function formatDelta(entry) {
 function formatThreshold(threshold) {
   if (!threshold) return "n/a"
 
-  return `>${threshold.absoluteMedianRegressionMs} ms and >${(threshold.relativeMedianRegression * 100).toFixed(0)}%`
+  return `>${threshold.absoluteRegressionMs} ms and >${(threshold.relativeRegression * 100).toFixed(0)}%`
 }
 
 function roundNumber(value) {
