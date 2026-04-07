@@ -48,6 +48,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
   #selectionUndoStack = [] // parallel stack for block selection state
   #selectionRedoStack = []
+  #interactionHandlersRegistered = false
 
   get enabled() {
     return this.editorElement.supportsRichText
@@ -66,19 +67,14 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   initializeEditor() {
-    this.#registerEscapeHandler()
-    this.#registerClickHandler()
-    this.#registerDecoratorClickInterceptor()
-    this.#registerDirectKeydownHandler()
-    this.#registerWrappedBlockIndentHandler()
-    this.#registerEnterOnWrappedBlock()
-    this.#registerHighlightClearOnEnter()
-    this.#registerHighlightPropagation()
+    // Node transforms must be active before initial content load so that
+    // bullet marker colors sync when HTML with highlighted list items is set.
     this.#registerBulletMarkerColorSync()
-    this.#registerBlockSelectFormatHandler()
-    this.#deferDragAndDrop()
-    this.#registerBulletOffsetSyncListener()
-    this.#registerSelectionHistoryHandlers()
+
+    // All other handlers respond to user-dispatched commands (key presses,
+    // clicks, toolbar actions). Deferring them to first interaction keeps
+    // editor bootstrap fast — especially when many editors load at once.
+    this.#deferInteractionHandlers()
   }
 
   destroy() {
@@ -94,19 +90,42 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.destroy()
   }
 
-  // BlockDragAndDrop handles mouse hover (drag handle, add button) and
-  // drag-and-drop — none of which is needed until the mouse enters the editor.
-  // Deferring creation keeps editor bootstrap fast.
-  #deferDragAndDrop() {
-    const createIfNeeded = () => {
-      if (this.#dragAndDrop) return
-      this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
+  #deferInteractionHandlers() {
+    const activate = () => this.#registerInteractionHandlers()
+
+    const activateWithDragAndDrop = () => {
+      activate()
+      if (!this.#dragAndDrop) {
+        this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
+      }
     }
 
-    this.editorElement.addEventListener("mouseenter", createIfNeeded, { once: true })
+    // mouseenter fires before any mousedown/click, so handlers are ready
+    // for the first click. focusin catches keyboard-first users (Tab to focus).
+    const root = this.root
+    root?.addEventListener("focusin", activate, { once: true })
+    this.editorElement.addEventListener("mouseenter", activateWithDragAndDrop, { once: true })
     this.#cleanupFns.push(() => {
-      this.editorElement.removeEventListener("mouseenter", createIfNeeded)
+      root?.removeEventListener("focusin", activate)
+      this.editorElement.removeEventListener("mouseenter", activateWithDragAndDrop)
     })
+  }
+
+  #registerInteractionHandlers() {
+    if (this.#interactionHandlersRegistered) return
+    this.#interactionHandlersRegistered = true
+
+    this.#registerEscapeHandler()
+    this.#registerClickHandler()
+    this.#registerDecoratorClickInterceptor()
+    this.#registerDirectKeydownHandler()
+    this.#registerWrappedBlockIndentHandler()
+    this.#registerEnterOnWrappedBlock()
+    this.#registerHighlightClearOnEnter()
+    this.#registerHighlightPropagation()
+    this.#registerBlockSelectFormatHandler()
+    this.#registerBulletOffsetSyncListener()
+    this.#registerSelectionHistoryHandlers()
   }
 
   setShowHandles(show) {
