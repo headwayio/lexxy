@@ -1,5 +1,6 @@
 import {
   $createTextNode,
+  $getRoot,
   $getSelection,
   $isRangeSelection,
   $isTextNode,
@@ -13,6 +14,7 @@ import {
   OUTDENT_CONTENT_COMMAND,
   PASTE_COMMAND,
   REDO_COMMAND,
+  SELECT_ALL_COMMAND,
   UNDO_COMMAND
 } from "lexical"
 import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
@@ -316,6 +318,7 @@ export class CommandDispatcher {
     }
 
     this.#registerCommandHandler(PASTE_COMMAND, COMMAND_PRIORITY_LOW, this.dispatchPaste.bind(this))
+    this.#registerCommandHandler(SELECT_ALL_COMMAND, COMMAND_PRIORITY_NORMAL, this.#handleSelectAll.bind(this))
   }
 
   #registerCommandHandler(command, priority, handler) {
@@ -449,6 +452,55 @@ export class CommandDispatcher {
     }
 
     return true
+  }
+
+  #handleSelectAll(event) {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return false
+
+    // If the entire document is already selected, escalate to block select mode.
+    // Check if selection spans from the root's first to last position.
+    if (!selection.isCollapsed()) {
+      const root = $getRoot()
+      const { anchor, focus } = selection
+      const first = root.getFirstDescendant()
+      const last = root.getLastDescendant()
+      const isAtStart = first && (anchor.key === first.getKey() && anchor.offset === 0
+        || anchor.key === root.getKey() && anchor.offset === 0)
+      const lastSize = last?.getTextContentSize?.() ?? root.getChildrenSize()
+      const isAtEnd = last && (focus.key === last.getKey() && focus.offset === lastSize
+        || focus.key === root.getKey() && focus.offset === root.getChildrenSize())
+      if (isAtStart && isAtEnd) {
+        event.preventDefault()
+        this.editorElement.selectAllBlocks?.()
+        return true
+      }
+    }
+
+    // Inside a code block: first Cmd+A selects code content,
+    // second escalates to block select
+    if (this.selection.isInsideCodeBlock) {
+      const anchorNode = selection.anchor.getNode()
+      let codeNode = anchorNode
+      while (codeNode && !(codeNode instanceof CodeNode)) {
+        codeNode = codeNode.getParent()
+      }
+      if (codeNode) {
+        const codeText = codeNode.getTextContent()
+        const selectedText = selection.getTextContent()
+        if (selectedText === codeText && !selection.isCollapsed()) {
+          event.preventDefault()
+          this.editorElement.selectAllBlocks?.()
+          return true
+        }
+
+        event.preventDefault()
+        codeNode.select(0, codeNode.getChildrenSize())
+        return true
+      }
+    }
+
+    return false
   }
 
   #outdentCodeLine(selection) {

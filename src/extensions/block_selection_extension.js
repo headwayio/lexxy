@@ -105,6 +105,18 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   // -- Mode transitions -------------------------------------------------------
 
+  selectAll() {
+    const allKeys = this.#getNavigableBlockKeys()
+    if (allKeys.length === 0) return
+
+    this.#mode = "block-select"
+    this.root?.classList.add(BLOCK_SELECTION_ACTIVE_CLASS)
+    this.#dragAndDrop?.hideHandles()
+    this.editor.update(() => { $setSelection(null) })
+    this.root?.focus({ preventScroll: true })
+    this.#handleSelectAll()
+  }
+
   enterBlockSelectMode(nodeKey, { keepHandles = false } = {}) {
     // Only bail if the user clicked the same primary block (anchor) again.
     // If the key is in the set as a child of the current anchor, allow
@@ -1723,6 +1735,27 @@ export class BlockSelectionExtension extends LexxyExtension {
       // At list boundary — promote the group out.
       const firstParent = group[0].node.getParent()
       if ($isListNode(firstParent)) {
+        // When the group IS the entire list (all items are selected) and
+        // the list is at root level, move the list itself as a unit rather
+        // than exiting — exit would re-wrap items in a new standalone list,
+        // causing an infinite exit loop via Lexical's adjacent-list merge.
+        const listParent = firstParent.getParent()
+        if (!$isListItemNode(listParent) && this.#groupSpansEntireList(group, firstParent)) {
+          const neighbor = isUp ? firstParent.getPreviousSibling() : firstParent.getNextSibling()
+          if (neighbor) {
+            if ($isListNode(neighbor) && neighbor.getListType() === firstParent.getListType()) {
+              // Adjacent same-type list: enter it instead of swapping
+              this.#moveGroupIntoList(group, neighbor, direction)
+            } else {
+              // Swap list with the adjacent root-level element
+              firstParent.remove()
+              if (isUp) neighbor.insertBefore(firstParent)
+              else neighbor.insertAfter(firstParent)
+            }
+          }
+          // else: at document boundary — nothing to do
+          return
+        }
         this.#moveGroupAtBoundary(group, direction)
       }
       // At document boundary (root level, no sibling) — nothing to do
@@ -1883,7 +1916,6 @@ export class BlockSelectionExtension extends LexxyExtension {
       if ($isListNode(p)) outerList = p
       p = p.getParent()
     }
-
     const listType = sourceList.getListType()
 
     // Phase 1: Create cursor at landing zone
@@ -1896,13 +1928,29 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Moving DOWN: insert after cursor/prev → items stack below the list.
     let insertRef = cursor
 
+    // Batch consecutive regular list items into a single standalone list
+    // to prevent Lexical's adjacent-list merge from re-combining them.
+    let regularBatch = null
+
+    function flushBatch() {
+      if (!regularBatch) return
+      if (isUp) {
+        cursor.insertBefore(regularBatch)
+      } else {
+        insertRef.insertAfter(regularBatch)
+        insertRef = regularBatch
+      }
+      regularBatch = null
+    }
+
     for (const { node, wrapper } of group) {
       if (!node.getParent()) continue
 
-      let extracted = null
-      let childrenList = null
-
       if (this.#isWrappedBlock(node)) {
+        // Flush any batched regular items before inserting a wrapped block
+        flushBatch()
+
+        let childrenList = null
         // Extract children from wrapper before removing it
         if (wrapper) {
           const innerList = wrapper.getChildren().find(c => $isListNode(c))
@@ -1912,50 +1960,48 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
           wrapper.remove()
         }
-        extracted = this.#extractWrappedContent(node)
+        const extracted = this.#extractWrappedContent(node)
         if (extracted) {
           this.#updateKeyAfterUnwrap(node.getKey(), extracted.getKey())
           node.remove()
-        }
-      }
 
-      if (!extracted) {
-        // Regular list item: wrap in a standalone list
+          if (isUp) {
+            cursor.insertBefore(extracted)
+            if (childrenList) cursor.insertBefore(childrenList)
+          } else {
+            insertRef.insertAfter(extracted)
+            insertRef = extracted
+            if (childrenList) {
+              insertRef.insertAfter(childrenList)
+              insertRef = childrenList
+            }
+          }
+        }
+      } else {
+        // Regular list item: collect into a batch
+        if (!regularBatch) regularBatch = $createListNode(listType)
         if (wrapper) wrapper.remove()
         node.remove()
-        const newList = $createListNode(listType)
-        newList.append(node)
-        if (wrapper) newList.append(wrapper)
-        extracted = newList
-      }
-
-      if (isUp) {
-        cursor.insertBefore(extracted)
-        if (childrenList) cursor.insertBefore(childrenList)
-      } else {
-        insertRef.insertAfter(extracted)
-        insertRef = extracted
-        if (childrenList) {
-          insertRef.insertAfter(childrenList)
-          insertRef = childrenList
-        }
+        regularBatch.append(node)
+        if (wrapper) regularBatch.append(wrapper)
       }
     }
+
+    // Flush any remaining regular items
+    flushBatch()
 
     // Phase 3: Clean up empty source list, then remove cursor.
     // Clean up BEFORE cursor removal so the source list is gone if empty,
     // preventing false adjacency detection.
     this.#cleanupEmptyList(sourceList)
 
-    // For DOWN direction, cursor removal can cause the source list and a
-    // standalone bullet list to become adjacent. Lexical merges adjacent
-    // lists of the same type during reconciliation, destroying the
-    // standalone list. Keep the cursor as a separator when needed.
+    // Cursor removal can cause adjacent same-type lists to merge during
+    // Lexical reconciliation. Keep the cursor as a separator when the
+    // prev and next siblings are both lists of the same type.
     if (cursor.getParent()) {
       const prev = cursor.getPreviousSibling()
       const next = cursor.getNextSibling()
-      const wouldMerge = !isUp
-        && prev && $isListNode(prev)
+      const wouldMerge = prev && $isListNode(prev)
         && next && $isListNode(next)
         && prev.getListType() === next.getListType()
 
@@ -2320,6 +2366,20 @@ export class BlockSelectionExtension extends LexxyExtension {
       return next
     }
     return null
+  }
+
+  // Check if the group's nodes (and their wrappers) account for every
+  // child of the given list — i.e., the group IS the entire list content.
+  #groupSpansEntireList(group, list) {
+    const memberKeys = new Set()
+    for (const { node, wrapper } of group) {
+      memberKeys.add(node.getKey())
+      if (wrapper) memberKeys.add(wrapper.getKey())
+    }
+    for (const child of list.getChildren()) {
+      if (!memberKeys.has(child.getKey())) return false
+    }
+    return true
   }
 
   // Promote a list item out of its current list to the parent level.

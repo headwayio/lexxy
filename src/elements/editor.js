@@ -138,6 +138,12 @@ export class LexicalEditorElement extends HTMLElement {
     return ext?.hasBlockSelection ?? false
   }
 
+  /** Enter block select mode with all blocks selected. */
+  selectAllBlocks() {
+    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+    ext?.selectAll()
+  }
+
   get toolbarElement() {
     if (!this.#hasToolbar) return null
 
