@@ -47,6 +47,8 @@ export class BlockDragAndDrop {
   #pointerStartY = 0
   #pendingNodeKey = null
   #draggedNodeKey = null
+  #pendingExistingLIKeys = new Set()
+  #pendingSourceListKey = null
   #rafId = null
   #dropTarget = null
   #hideTimer = null
@@ -1391,6 +1393,20 @@ export class BlockDragAndDrop {
 
       // May be null if the node was already removed during proactive cleanup
       const oldParentList = draggedNode.getParent()
+      // Capture the root-level source list key and its existing LI keys NOW,
+      // before unwrap/cleanup operations may detach intermediate nodes.
+      // The snapshot lets the post-transform cleanup distinguish normalization
+      // artifacts from user-created empty list items.
+      const rootSourceList = this.#findRootList(oldParentList)
+      this.#pendingSourceListKey = rootSourceList?.getKey() ?? null
+      // Snapshot content LI keys (exclude structural wrappers — those may
+      // get transformed into empty LIs by normalization and need cleanup).
+      const existingLIKeys = rootSourceList
+        ? new Set(rootSourceList.getChildren()
+          .filter(c => $isListItemNode(c) && !$isStructuralWrapper(c))
+          .map(c => c.getKey()))
+        : new Set()
+      this.#pendingExistingLIKeys = existingLIKeys
 
       // 2. Prepare the node for its destination context
       let nodeToInsert
@@ -1418,7 +1434,16 @@ export class BlockDragAndDrop {
       //    are lists) when those inner lists are empty, plus orphaned
       //    wrappers with zero children. Does NOT touch empty content list
       //    items that have paragraph children — those may be intentional.
+      //    Capture the outermost source list key BEFORE cleanup (cleanup
+      //    may remove intermediate nodes, breaking the parent chain).
       this.#cleanupEmptyStructuralWrappers(oldParentList)
+      if (oldParentList) {
+        const outerWrapper = oldParentList.getParent()
+        if ($isListItemNode(outerWrapper)) {
+          const outerList = outerWrapper.getParent()
+          if ($isListNode(outerList)) this.#cleanupEmptyStructuralWrappers(outerList)
+        }
+      }
 
       // 4. Insert at the correct position and depth
       if (target.position === "inside") {
@@ -1609,6 +1634,36 @@ export class BlockDragAndDrop {
         console.error("[BlockDragAndDrop] Drop update error:", e)
       }
     }, { tag: "history-push" })
+
+    // After Lexical's transforms run, clean up any empty LIs that
+    // normalization may have inserted (e.g., replacing a removed
+    // structural wrapper with an empty paragraph LI). Use setTimeout
+    // to ensure transforms from the drop update have fully committed.
+    if (this.#pendingSourceListKey) {
+      const sourceKey = this.#pendingSourceListKey
+      const priorKeys = this.#pendingExistingLIKeys
+      setTimeout(() => {
+        this.#editor.update(() => {
+          const list = $getNodeByKey(sourceKey)
+          if ($isListNode(list)) {
+            for (const child of [ ...list.getChildren() ]) {
+              if (!$isListItemNode(child)) continue
+              // Only remove empty LIs that are NEW (not in the pre-drop snapshot).
+              // This preserves user-created empty list items.
+              if (priorKeys.has(child.getKey())) continue
+              if (child.getTextContentSize() === 0 && child.getChildrenSize() <= 1) {
+                const kids = child.getChildren()
+                if (kids.every(k => $isParagraphNode(k))) {
+                  child.remove()
+                }
+              }
+            }
+          }
+        })
+        this.#pendingSourceListKey = null
+        this.#pendingExistingLIKeys = new Set()
+      }, 0)
+    }
   }
 
   // Outdent-in-place: promote the dragged node to a shallower depth
@@ -1721,16 +1776,17 @@ export class BlockDragAndDrop {
         if (child.getChildren().every(inner => $isListNode(inner) && inner.getChildrenSize() === 0)) {
           child.remove()
         }
-      } else if (child.getTextContentSize() === 0) {
+      } else if (child.getTextContentSize() === 0 && child.getChildrenSize() <= 1) {
         // Lexical may normalize an emptied structural wrapper into a
         // regular list item with an empty paragraph. Detect these by
-        // checking for zero text content + only paragraph children.
+        // checking for zero text content + at most one (empty) paragraph.
         const kids = child.getChildren()
-        if (kids.length <= 1 && kids.every(k => $isParagraphNode(k))) {
-          // Check the CSS class on the DOM element — if it still has
-          // lexxy-nested-listitem, it was a structural wrapper.
+        if (kids.every(k => $isParagraphNode(k))) {
           const el = this.#editor.getElementByKey(child.getKey())
-          if (el?.classList.contains(NESTED_LISTITEM_CLASS)) {
+          // Remove if it has the structural wrapper CSS class (pre-reconciliation)
+          // OR if the node has no previous sibling and was likely just inserted
+          // by normalization at the position of a removed wrapper.
+          if (el?.classList.contains(NESTED_LISTITEM_CLASS) || !el) {
             child.remove()
           }
         }
