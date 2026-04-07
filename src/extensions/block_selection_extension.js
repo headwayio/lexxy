@@ -76,7 +76,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#registerHighlightPropagation()
     this.#registerBulletMarkerColorSync()
     this.#registerBlockSelectFormatHandler()
-    this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
+    this.#deferDragAndDrop()
     this.#registerBulletOffsetSyncListener()
     this.#registerSelectionHistoryHandlers()
   }
@@ -92,6 +92,21 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Called by the editor's #dispose lifecycle to clean up on disconnect.
   dispose() {
     this.destroy()
+  }
+
+  // BlockDragAndDrop handles mouse hover (drag handle, add button) and
+  // drag-and-drop — none of which is needed until the mouse enters the editor.
+  // Deferring creation keeps editor bootstrap fast.
+  #deferDragAndDrop() {
+    const createIfNeeded = () => {
+      if (this.#dragAndDrop) return
+      this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
+    }
+
+    this.editorElement.addEventListener("mouseenter", createIfNeeded, { once: true })
+    this.#cleanupFns.push(() => {
+      this.editorElement.removeEventListener("mouseenter", createIfNeeded)
+    })
   }
 
   setShowHandles(show) {
