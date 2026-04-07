@@ -61,15 +61,15 @@ export class CodeLanguagePicker extends HTMLElement {
   }
 
   #copyCodeToClipboard(button) {
-    this.editor.getEditorState().read(() => {
-      const codeNode = this.#getCurrentCodeNode()
-      if (!codeNode) return
+    // Use the hovered code element's text content directly — the click
+    // may steal focus from the code block, making #getCurrentCodeNode() null.
+    const codeElement = this.#hoveredCodeElement
+    if (!codeElement) return
 
-      const text = codeNode.getTextContent()
-      navigator.clipboard.writeText(text).then(() => {
-        button.innerHTML = CHECK_ICON
-        setTimeout(() => { button.innerHTML = COPY_ICON }, 1500)
-      })
+    const text = codeElement.textContent
+    navigator.clipboard.writeText(text).then(() => {
+      button.innerHTML = CHECK_ICON
+      setTimeout(() => { button.innerHTML = COPY_ICON }, 1500)
     })
   }
 
