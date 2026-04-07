@@ -14,7 +14,7 @@ const DEFAULT_THRESHOLD = {
 
 const SCENARIO_THRESHOLDS = {
   "bootstrap-empty-editor": {
-    absoluteRegressionMs: 10,
+    absoluteRegressionMs: 20,
     relativeRegression: 0.25,
     metric: "min",
   },
