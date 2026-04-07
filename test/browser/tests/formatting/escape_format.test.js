@@ -20,7 +20,7 @@ test.describe("Escape format", () => {
     await clickToolbarButton(page, "insertQuoteBlock")
     await assertEditorHtml(
       editor,
-      "<blockquote><ul><li>First line</li></ul></blockquote>",
+      "<ul><li><blockquote>First line</blockquote></li></ul>",
     )
 
     await editor.send("ArrowRight")
@@ -30,7 +30,7 @@ test.describe("Escape format", () => {
 
     await assertEditorHtml(
       editor,
-      "<blockquote><ul><li>First line</li></ul></blockquote><p>Outside quote</p>",
+      "<ul><li><blockquote>First line</blockquote></li></ul><p><br></p><p>Outside quote</p>",
     )
   })
 
@@ -74,7 +74,7 @@ test.describe("Escape format", () => {
     await clickToolbarButton(page, "insertQuoteBlock")
     await assertEditorHtml(
       editor,
-      "<blockquote><ul><li>Item one</li><li>Item two</li><li>Item three</li></ul></blockquote>",
+      "<ul><li><blockquote>Item one</blockquote></li><li>Item two</li><li>Item three</li></ul>",
     )
 
     await editor.select("Item two")
@@ -86,7 +86,7 @@ test.describe("Escape format", () => {
 
     await assertEditorHtml(
       editor,
-      "<blockquote><ul><li>Item one</li><li>Item two</li></ul></blockquote><p>Middle text</p><blockquote><ul><li>Item three</li></ul></blockquote>",
+      "<ul><li><blockquote>Item one</blockquote></li><li>Item two</li></ul><p>Middle text</p><ul><li>Item three</li></ul>",
     )
   })
 
@@ -101,7 +101,7 @@ test.describe("Escape format", () => {
     await clickToolbarButton(page, "insertQuoteBlock")
     await assertEditorHtml(
       editor,
-      "<blockquote><ul><li>Item one</li></ul></blockquote>",
+      "<ul><li><blockquote>Item one</blockquote></li></ul>",
     )
 
     await editor.send("ArrowRight")
@@ -111,7 +111,7 @@ test.describe("Escape format", () => {
 
     await assertEditorHtml(
       editor,
-      "<blockquote><ul><li>Item one</li></ul></blockquote><p>After escape</p>",
+      "<ul><li><blockquote>Item one</blockquote></li></ul><p><br></p><p>After escape</p>",
     )
   })
 

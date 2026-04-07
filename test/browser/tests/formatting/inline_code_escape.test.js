@@ -45,7 +45,7 @@ test.describe("Inline code escape with arrow keys", () => {
     await editor.send("ArrowRight")
     await editor.send(" plain")
 
-    const codeButton = editor.page.getByRole("button", { name: "Code" })
+    const codeButton = editor.page.getByRole("button", { name: "Code", exact: true })
     await expect(codeButton).toHaveAttribute("aria-pressed", "false")
   })
 })
