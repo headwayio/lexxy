@@ -28,7 +28,7 @@ import {
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $isCodeNode } from "@lexical/code"
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
-import { TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
+import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
@@ -508,7 +508,8 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   // Block keys suitable for arrow-key navigation — excludes ListNode
-  // containers since they aren't visually selectable.
+  // containers and hidden elements (provisional paragraphs) since they
+  // aren't visually selectable.
   #getNavigableBlockKeys() {
     const allKeys = this.#getDocumentOrderBlockKeys()
     return allKeys.filter(key => {
@@ -516,6 +517,10 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.editor.getEditorState().read(() => {
         const node = $getNodeByKey(key)
         if ($isListNode(node)) isNavigable = false
+        else {
+          const el = this.editor.getElementByKey(key)
+          if (el?.hidden || el?.classList.contains("hidden")) isNavigable = false
+        }
       })
       return isNavigable
     })
@@ -980,19 +985,18 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Apply color to ALL text nodes in all selected blocks (and their children).
   // Skips code blocks. Pass null values to remove color.
   #applyColorToSelectedBlocks(styleProp, value) {
+    const scrollY = window.scrollY
+
     this.editor.update(() => {
       const keys = [ ...this.#selectedBlockKeys ]
       for (const key of keys) {
         const node = $getNodeByKey(key)
         if (!node) continue
 
-        const textNodes = []
-        this.#collectTextNodes(node, textNodes)
-        const ownWrapper = $isListItemNode(node) ? this.#getOwnStructuralWrapper(node) : null
-        if (ownWrapper) this.#collectAllDescendantTextNodes(ownWrapper, textNodes)
+        const textNodes = this.#getAllTextNodesForItem(node)
 
         for (const t of textNodes) {
-          const existing = getStyleObjectFromCSS(t.getStyle() || "")
+          const existing = { ...getStyleObjectFromCSS(t.getStyle() || "") }
           if (value) {
             existing[styleProp] = value
           } else {
@@ -1003,6 +1007,8 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
     }, { tag: "history-push" })
+
+    queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
 
     requestAnimationFrame(() => this.#syncSelectionClasses())
   }
@@ -2340,9 +2346,6 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
-    // eslint-disable-next-line no-unused-vars
-    const nodeKey = node.getKey()
-
     // Capture the node's own structural wrapper (children) BEFORE the move.
     // It travels with the node as a unit.
     const ownWrapper = this.#getOwnStructuralWrapper(node)
@@ -2999,8 +3002,6 @@ export class BlockSelectionExtension extends LexxyExtension {
         // Save scroll position — selectStart() causes Lexical to set DOM
         // selection which triggers browser scroll-into-view.
         const scrollY = window.scrollY
-        const scrollEl = this.root?.closest("[style*=overflow], [class*=overflow]")
-        const scrollTop = scrollEl?.scrollTop
         this.editor.update(() => {
           const keys = [ ...this.#selectedBlockKeys ]
           if (keys.length === 0) return
@@ -3021,11 +3022,34 @@ export class BlockSelectionExtension extends LexxyExtension {
           selection?.formatText(format)
           $setSelection(null)
         })
-        // Restore scroll position and focus without scrolling
-        window.scrollTo({ top: scrollY })
-        if (scrollEl && scrollTop !== undefined) scrollEl.scrollTop = scrollTop
+        // Restore scroll after Lexical's DOM reconciliation
+        queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
         this.root?.focus({ preventScroll: true })
         requestAnimationFrame(() => this.#syncSelectionClasses())
+        return true
+      }, COMMAND_PRIORITY_CRITICAL),
+
+      // Intercept highlight commands so the toolbar dropdown works in
+      // block-select mode (where there's no Lexical range selection).
+      this.editor.registerCommand(TOGGLE_HIGHLIGHT_COMMAND, (styles) => {
+        if (!this.isBlockSelectMode) return false
+
+        for (const [ prop, value ] of Object.entries(styles || {})) {
+          if (value) {
+            this.#applyColorToSelectedBlocks(prop, value)
+          } else {
+            this.#applyColorToSelectedBlocks(null, null)
+          }
+        }
+
+        this.root?.focus({ preventScroll: true })
+        return true
+      }, COMMAND_PRIORITY_CRITICAL),
+
+      this.editor.registerCommand(REMOVE_HIGHLIGHT_COMMAND, () => {
+        if (!this.isBlockSelectMode) return false
+        this.#applyColorToSelectedBlocks(null, null)
+        this.root?.focus({ preventScroll: true })
         return true
       }, COMMAND_PRIORITY_CRITICAL)
     )
@@ -3246,10 +3270,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (!allMatch) return
 
     // Apply the parent's color to existing text nodes in the child
-    const childTextNodes = []
-    this.#collectTextNodes(node, childTextNodes)
-    const ownWrapper = this.#getOwnStructuralWrapper(node)
-    if (ownWrapper) this.#collectAllDescendantTextNodes(ownWrapper, childTextNodes)
+    const childTextNodes = this.#getAllTextNodesForItem(node)
 
     for (const textNode of childTextNodes) {
       const newStyle = this.#mergeHighlightIntoCSS(textNode.getStyle(), firstHighlight)
@@ -3408,7 +3429,18 @@ export class BlockSelectionExtension extends LexxyExtension {
     )
   }
 
-  // Collect text nodes, skipping code blocks (they have their own syntax colors)
+  // Collect all text nodes for a block item, including any children carried
+  // by its structural wrapper. Skips code blocks (they have their own syntax
+  // colors). This is the primary entry point — use instead of calling
+  // #collectTextNodes + #getOwnStructuralWrapper manually.
+  #getAllTextNodesForItem(node) {
+    const result = []
+    this.#collectTextNodes(node, result)
+    const ownWrapper = $isListItemNode(node) ? this.#getOwnStructuralWrapper(node) : null
+    if (ownWrapper) this.#collectAllDescendantTextNodes(ownWrapper, result)
+    return result
+  }
+
   #collectTextNodes(node, result) {
     if ($isCodeNode(node)) return
     if ($isTextNode(node)) result.push(node)
@@ -3439,15 +3471,12 @@ export class BlockSelectionExtension extends LexxyExtension {
   // parent, inherit the color (saving the original). If moved OUT of a
   // highlighted parent, restore the original color.
   #applyOrRestoreParentHighlight(node) {
-    const parentColor = this.#getUniformParentHighlight(node)
+    const parentColor = this.#getParentHighlight(node)
 
     if (parentColor) {
       // Entering a highlighted parent — save original and apply parent color
       // to node AND all its descendants
-      const textNodes = []
-      this.#collectTextNodes(node, textNodes)
-      const ownWrapper = this.#getOwnStructuralWrapper(node)
-      if (ownWrapper) this.#collectAllDescendantTextNodes(ownWrapper, textNodes)
+      const textNodes = this.#getAllTextNodesForItem(node)
       for (const t of textNodes) {
         const key = t.getKey()
         if (!this.#savedHighlightStyles.has(key)) {
@@ -3463,10 +3492,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       // No highlighted parent — restore ONLY styles that were changed by
       // inheritance (saved in the map). Items that had their own color
       // before being moved are not in the map, so they keep their color.
-      const textNodes = []
-      this.#collectTextNodes(node, textNodes)
-      const ownWrapper2 = this.#getOwnStructuralWrapper(node)
-      if (ownWrapper2) this.#collectAllDescendantTextNodes(ownWrapper2, textNodes)
+      const textNodes = this.#getAllTextNodesForItem(node)
       for (const t of textNodes) {
         const key = t.getKey()
         if (this.#savedHighlightStyles.has(key)) {
@@ -3481,27 +3507,34 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Walks up through structural wrappers to find the nearest content item
   // with highlight styles. Skips code blocks (they don't carry color).
   // Returns the style string if found, null otherwise.
-  #getUniformParentHighlight(node) {
+  //
+  // maxLevels controls how far up the tree to look:
+  //   Infinity (default) — walk all ancestors until a match or root
+  //   1                  — only check the immediate parent
+  #getParentHighlight(node, maxLevels = Infinity) {
     let currentList = node.getParent()
+    if (!$isListNode(currentList) && $isListItemNode(node)) currentList = node.getParent()
+    let level = 0
 
-    while ($isListNode(currentList)) {
+    while ($isListNode(currentList) && level < maxLevels) {
+      level++
       const wrapper = currentList.getParent()
       if (!$isListItemNode(wrapper)) break
 
       const textItem = wrapper.getPreviousSibling()
       if (!textItem || !$isListItemNode(textItem)) break
 
-      // Skip code blocks — check the next ancestor up
+      // Collect text nodes from the parent item (skipping nested lists)
       const textNodes = []
       textItem.getChildren().forEach(c => { if (!$isListNode(c)) this.#collectTextNodes(c, textNodes) })
 
       if (textNodes.length > 0) {
         const style = textNodes[0].getStyle()
-        if (style && hasHighlightStyles(style) && textNodes.every(t => t.getStyle() === style)) {
-          return style
-        }
-        // Parent has text but no uniform highlight — stop looking
-        return null
+        if (!style || !hasHighlightStyles(style)) return null
+
+        // Verify all parent text nodes share the same highlight
+        const allMatch = textNodes.every(t => this.#highlightColorsMatch(style, t.getStyle()))
+        return allMatch ? style : null
       }
 
       // No text nodes (code block or empty) — walk up to grandparent
@@ -3509,38 +3542,6 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
 
     return null
-  }
-
-  // Like #getUniformParentHighlight but only checks the immediate parent,
-  // not ancestors further up the tree.
-  #getImmediateParentHighlight(listItem) {
-    const parentList = listItem.getParent()
-    if (!$isListNode(parentList)) return null
-
-    const wrapper = parentList.getParent()
-    if (!$isListItemNode(wrapper)) return null
-
-    const textItem = wrapper.getPreviousSibling()
-    if (!textItem || !$isListItemNode(textItem)) return null
-
-    const textNodes = []
-    textItem.getChildren().forEach(c => {
-      if (!$isListNode(c)) this.#collectTextNodes(c, textNodes)
-    })
-
-    if (textNodes.length === 0) return null
-
-    const firstHighlight = this.#extractHighlightFromCSS(textNodes[0].getStyle())
-    if (!firstHighlight) return null
-
-    // Verify all parent text nodes share the same highlight
-    const allMatch = textNodes.every(t => {
-      const h = this.#extractHighlightFromCSS(t.getStyle())
-      return h &&
-        (h.color || "") === (firstHighlight.color || "") &&
-        (h["background-color"] || "") === (firstHighlight["background-color"] || "")
-    })
-    return allMatch ? textNodes[0].getStyle() : null
   }
 
   #highlightColorsMatch(style1, style2) {
@@ -3556,7 +3557,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     let current = node
     while (current) {
       if ($isListItemNode(current)) {
-        const parentColor = this.#getImmediateParentHighlight(current)
+        const parentColor = this.#getParentHighlight(current, 1)
         return parentColor !== null && this.#highlightColorsMatch(currentStyle, parentColor)
       }
       current = current.getParent()
