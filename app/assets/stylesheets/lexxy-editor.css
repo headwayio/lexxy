@@ -4,6 +4,11 @@
   --lexxy-editor-padding: 1ch;
   --lexxy-block-handle-gutter: 62px;
   --lexxy-content-padding-block: 62px;
+  --lexxy-drop-indicator-size: 3px;
+  --lexxy-code-block-radius: 10px;
+  --lexxy-bullet-size: 5px;
+  --lexxy-bullet-gradient-radius: 2.5px;
+  --lexxy-bullet-offset-x: 8.5px;
 
   &[block-handles="false"] {
     --lexxy-block-handle-gutter: var(--lexxy-editor-padding);
@@ -353,7 +358,7 @@
   .lexxy-drop-target--list-before::before,
   .lexxy-drop-target--list-after::after {
     background-color: var(--lexxy-focus-ring-color);
-    block-size: 3px;
+    block-size: var(--lexxy-drop-indicator-size);
     border-radius: 1px;
     content: "";
     inset-inline: 0;
@@ -384,7 +389,7 @@
     border-radius: 1px;
     content: "";
     inset-block: 0;
-    inline-size: 3px;
+    inline-size: var(--lexxy-drop-indicator-size);
     pointer-events: none;
     position: absolute;
   }
@@ -682,9 +687,9 @@
   > :is(:first-child, .hidden + *):is(table)  { margin-top: -28px !important; }
   > :is(:first-child, .hidden + *):is(blockquote) { margin-top: -0.5px !important; }
   /* HR fresh (provisional-p → figure): measured 42 → 48 */
-  > :is(:first-child, .hidden + *):is(figure.horizontal-divider) { margin-top: -5px !important; padding-top: 0 !important; }
+  > :is(:first-child, .hidden + *):is(figure.horizontal-divider) { margin-top: -5px !important; }
   /* HR saved (p wraps figure): measured 51 → 48 */
-  > :is(:first-child, .hidden + *):has(> .horizontal-divider) { margin-top: -8px !important; padding-top: 0 !important; }
+  > :is(:first-child, .hidden + *):has(> .horizontal-divider) { margin-top: -8px !important; }
   /* Other figures (attachments etc.) */
   > :is(:first-child, .hidden + *):is(figure:not(.horizontal-divider)) { margin-top: -8px !important; }
 }
@@ -712,7 +717,7 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
 
     &:is(pre),
     &[data-language] {
-      border-radius: 10px;
+      border-radius: var(--lexxy-code-block-radius);
       display: block;
       hyphens: none;
       margin-block: 0 var(--lexxy-content-margin, 1rem);
@@ -764,11 +769,11 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     &::before {
       content: "";
       position: absolute;
-      right: calc(100% + 8.5px);
+      right: calc(100% + var(--lexxy-bullet-offset-x));
       top: 0px;
-      width: 5px;
+      width: var(--lexxy-bullet-size);
       height: 1lh;
-      background: radial-gradient(circle, currentColor 2.5px, transparent 2.5px) center no-repeat;
+      background: radial-gradient(circle, currentColor var(--lexxy-bullet-gradient-radius), transparent var(--lexxy-bullet-gradient-radius)) center no-repeat;
     }
   }
 
@@ -815,12 +820,12 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
       display: block;
       position: absolute;
       /* X: ~11px from the first glyph, matching native bullet offset */
-      right: calc(100% + 8.5px);
+      right: calc(100% + var(--lexxy-bullet-offset-x));
       /* Y: --bullet-offset-y positions so offset + 12 = first-line center.
-         Add 11.5 to center the 5px dot (12 - 2.5 + 2 nudge down). */
+         Add 10.5 to center the bullet dot (12 - 2.5 + 1 nudge down). */
       top: calc(var(--bullet-offset-y, 0px) + 10.5px);
-      width: 5px;
-      height: 5px;
+      width: var(--lexxy-bullet-size);
+      height: var(--lexxy-bullet-size);
       border-radius: 50%;
       background: var(--lexxy-color-ink-lighter);
       font-size: 0;
@@ -1984,7 +1989,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> pre)::after,
   :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> code[data-language])::after,
   :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> pre)::after {
-    border-radius: 10px;
+    border-radius: var(--lexxy-code-block-radius);
     inset: -4px -4px -4px -39px;
   }
 
