@@ -2165,6 +2165,9 @@ export class BlockSelectionExtension extends LexxyExtension {
             if (this.#focusKey === oldKey) this.#focusKey = newKey
           }
         }
+
+        // Inherit color from the parent list item if it has one
+        this.#inheritParentHighlight(listItem)
       }
     }
   }
@@ -2760,6 +2763,9 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (this.#anchorKey === oldKey) this.#anchorKey = newKey
           if (this.#focusKey === oldKey) this.#focusKey = newKey
         }
+
+        // Inherit color from the parent list item if it has one
+        this.#inheritParentHighlight(listItem)
       }
     } else {
       if (isDown) {
