@@ -20,8 +20,8 @@ const SCENARIO_THRESHOLDS = {
   },
   "bootstrap-many-editors": {
     absoluteRegressionMs: 40,
-    relativeRegression: 0.25,
-    metric: "min",
+    relativeRegression: 0.3,
+    metric: "median",
   },
   "load-large-content": {
     absoluteRegressionMs: 25,

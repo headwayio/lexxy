@@ -62,7 +62,20 @@
   mark,
   .lexxy-content__highlight {
     background-color: transparent;
+    border-radius: 6px;
     color: inherit;
+  }
+
+  mark[style*="background-color"] {
+    padding: 2px 0;
+  }
+
+  mark[style*="background-color"][data-pad-start] {
+    padding-left: 4px;
+  }
+
+  mark[style*="background-color"][data-pad-end] {
+    padding-right: 4px;
   }
 
   blockquote {
