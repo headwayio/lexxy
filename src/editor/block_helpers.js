@@ -9,7 +9,12 @@ export const NESTED_LISTITEM_CLASS = "lexxy-nested-listitem"
 
 // Default fallback sizes (px) when computed styles aren't available.
 export const DEFAULT_HANDLE_HEIGHT = 24
+export const DEFAULT_ADD_BUTTON_WIDTH = 20
 export const DEFAULT_ROOT_PADDING = 28
+
+// Positioning gaps (px) used by drag handles and drop indicators.
+export const HANDLE_CONTENT_GAP = 19
+export const VIEWPORT_PADDING = 8
 
 // A structural wrapper is a ListItemNode whose only children are ListNodes.
 // Lexical uses these to represent nested list indentation — they contain

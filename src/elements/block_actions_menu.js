@@ -1,4 +1,5 @@
 import ToolbarIcons from "./toolbar_icons"
+import { VIEWPORT_PADDING } from "../editor/block_helpers"
 
 const TURN_INTO_OPTIONS = [
   { command: "setFormatParagraph", label: "Text", icon: ToolbarIcons.paragraph },
@@ -218,15 +219,15 @@ export class BlockActionsMenu extends HTMLElement {
     let top = anchorRect.bottom + 4
 
     // Clamp right edge
-    if (left + menuWidth > window.innerWidth - 8) {
-      left = window.innerWidth - menuWidth - 8
+    if (left + menuWidth > window.innerWidth - VIEWPORT_PADDING) {
+      left = window.innerWidth - menuWidth - VIEWPORT_PADDING
     }
     // Flip above anchor if not enough room below
-    if (top + menuHeight > window.innerHeight - 8) {
+    if (top + menuHeight > window.innerHeight - VIEWPORT_PADDING) {
       top = anchorRect.top - menuHeight - 4
     }
-    if (left < 8) left = 8
-    if (top < 8) top = 8
+    if (left < VIEWPORT_PADDING) left = VIEWPORT_PADDING
+    if (top < VIEWPORT_PADDING) top = VIEWPORT_PADDING
 
     this.style.left = `${left}px`
     this.style.top = `${top}px`
@@ -375,12 +376,12 @@ export class BlockActionsMenu extends HTMLElement {
     const flyoutTop = mainRect.top + topOffset
 
     // Clamp: if it would overflow below the viewport, shift it up
-    if (flyoutTop + flyoutHeight > window.innerHeight - 8) {
-      topOffset = (window.innerHeight - 8 - flyoutHeight) - mainRect.top
+    if (flyoutTop + flyoutHeight > window.innerHeight - VIEWPORT_PADDING) {
+      topOffset = (window.innerHeight - VIEWPORT_PADDING - flyoutHeight) - mainRect.top
     }
     // Clamp: don't let it go above the viewport
-    if (mainRect.top + topOffset < 8) {
-      topOffset = 8 - mainRect.top
+    if (mainRect.top + topOffset < VIEWPORT_PADDING) {
+      topOffset = VIEWPORT_PADDING - mainRect.top
     }
 
     panel.style.top = `${topOffset}px`
@@ -388,7 +389,7 @@ export class BlockActionsMenu extends HTMLElement {
 
     // Cap max-height to available viewport space from the final top position
     const finalTop = mainRect.top + topOffset
-    const availableHeight = window.innerHeight - finalTop - 8
+    const availableHeight = window.innerHeight - finalTop - VIEWPORT_PADDING
     panel.style.maxHeight = `${Math.max(availableHeight, 200)}px`
   }
 
