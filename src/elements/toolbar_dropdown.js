@@ -42,7 +42,11 @@ export class ToolbarDropdown extends HTMLElement {
   }
 
   close() {
-    this.editor.focus()
+    if (this.editorElement?.hasBlockSelection) {
+      this.editor.getRootElement()?.focus({ preventScroll: true })
+    } else {
+      this.editor.focus()
+    }
     this.container.open = false
   }
 

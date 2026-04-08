@@ -130,7 +130,10 @@ export class LexicalToolbarElement extends HTMLElement {
       this.editor.dispatchCommand(command, payload)
     }, { tag: isKeyboard ? SKIP_DOM_SELECTION_TAG : undefined })
 
-    if (!isKeyboard) this.editor.focus()
+    // Skip editor.focus() in block-select mode — the root is already focused
+    // and Lexical's focus() would create a selection at root.selectEnd(),
+    // triggering scrollIntoViewIfNeeded and jumping the page.
+    if (!isKeyboard && !this.editorElement.hasBlockSelection) this.editor.focus()
   }
 
   #bindHotkeys() {
