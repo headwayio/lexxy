@@ -7,7 +7,7 @@ import {
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { createElement } from "../helpers/html_helper"
-import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, NESTED_LISTITEM_CLASS } from "./block_helpers"
+import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "./block_helpers"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>
@@ -211,74 +211,20 @@ export class BlockDragAndDrop {
 
     const editorRect = this.#editorElement.getBoundingClientRect()
     const handleHeight = this.#handleElement.offsetHeight || DEFAULT_HANDLE_HEIGHT
-    const handleWidth = this.#handleElement.offsetWidth || 20
+    const handleWidth = this.#handleElement.offsetWidth || DEFAULT_ADD_BUTTON_WIDTH
 
     const blockRect = blockElement.getBoundingClientRect()
     let top
 
     if (blockElement.tagName === "LI") {
-      const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || DEFAULT_HANDLE_HEIGHT
-      // -1: font ascent places the bullet character slightly above lineHeight/2
-      const defaultBulletCenter = blockRect.top + (liLineHeight / 2) - 1
-      let handleCenter = defaultBulletCenter
-
-      const innerTable = blockElement.querySelector("table, .lexxy-content__table-wrapper")
-      const innerAttachment = blockElement.querySelector("figure.attachment, .attachment-gallery, .attachment")
-      const innerHeading = blockElement.querySelector("h1, h2, h3, h4, h5, h6")
-      const innerHR = blockElement.querySelector(".horizontal-divider, hr")
-
-      if (innerHR) {
-        // HR: center on the actual <hr> line, not the figure wrapper with padding
-        const hrLine = innerHR.tagName === "HR" ? innerHR : innerHR.querySelector("hr")
-        const hrRect = (hrLine || innerHR).getBoundingClientRect()
-        handleCenter = hrRect.top + (hrRect.height / 2) - 1
-      } else if (innerTable) {
-        const firstRow = innerTable.querySelector("tr")
-        if (firstRow) {
-          const rowRect = firstRow.getBoundingClientRect()
-          handleCenter = rowRect.top + (rowRect.height / 2) - 1
-        }
-      } else if (innerAttachment) {
-        handleCenter = innerAttachment.getBoundingClientRect().top + (handleHeight / 2)
-      } else if (innerHeading) {
-        // Headings have larger font/line-height — use their first char center
-        // +1px nudge: charRect center lands slightly above visual center
-        const charRect = this.#getFirstCharRect(innerHeading)
-        if (charRect && charRect.height > 0) {
-          handleCenter = charRect.top + (charRect.height / 2) - 1
-        }
-      } else {
-        // Blockquotes, code blocks, and other wrapped content with internal
-        // padding: use their first character center instead of li.lineHeight
-        const innerCode = blockElement.querySelector("pre, code[data-language]")
-        const innerBlockquote = !innerCode ? blockElement.querySelector("blockquote") : null
-        if (innerCode) {
-          // Code blocks: center in the language-selector row (top padding area)
-          const codeRect = innerCode.getBoundingClientRect()
-          const paddingTop = parseFloat(getComputedStyle(innerCode).paddingTop) || 0
-          handleCenter = codeRect.top + (paddingTop / 2)
-        } else if (innerBlockquote) {
-          const charRect = this.#getFirstCharRect(innerBlockquote)
-          if (charRect && charRect.height > 0) {
-            handleCenter = charRect.top + (charRect.height / 2)
-          }
-        } else {
-          // Other wrapped content
-          const innerBlock = blockElement.querySelector("blockquote, pre")
-          if (innerBlock) {
-            const charRect = this.#getFirstCharRect(innerBlock)
-            if (charRect && charRect.height > 0) {
-              handleCenter = charRect.top + (charRect.height / 2)
-            }
-          }
-        }
-      }
+      const handleCenter = this.#calculateListItemCenter(blockElement, blockRect)
+          ?? (blockRect.top + (parseFloat(getComputedStyle(blockElement).lineHeight) || DEFAULT_HANDLE_HEIGHT) / 2 - 1)
 
       top = handleCenter - editorRect.top - (handleHeight / 2)
 
-      // --bullet-offset-y positions a 24px-tall ::before box so its center
-      // aligns with handleCenter. The radial-gradient dot is centered in the box.
-      const bulletTop = handleCenter - blockRect.top - 12
+      // --bullet-offset-y positions a ::before box so its center aligns with
+      // handleCenter. The radial-gradient dot is centered in the box.
+      const bulletTop = handleCenter - blockRect.top - (DEFAULT_HANDLE_HEIGHT / 2)
       if (Math.abs(bulletTop) > 1) {
         blockElement.style.setProperty("--bullet-offset-y", `${bulletTop}px`)
       } else {
@@ -320,9 +266,9 @@ export class BlockDragAndDrop {
     // bullet markers for list items). Like Notion, the handle sits to the left
     // of bullets/numbers, not overlapping them.
     const contentLeft = this.#getBlockVisualLeft(blockElement)
-    const addWidth = this.#addButtonElement?.offsetWidth || 20
+    const addWidth = this.#addButtonElement?.offsetWidth || DEFAULT_ADD_BUTTON_WIDTH
     const gap = 1 // gap between + and ⠿
-    const left = contentLeft - editorRect.left - handleWidth - 19
+    const left = contentLeft - editorRect.left - handleWidth - HANDLE_CONTENT_GAP
 
     this.#handleElement.style.top = `${top}px`
     this.#handleElement.style.left = `${left}px`
@@ -336,6 +282,60 @@ export class BlockDragAndDrop {
     }
   }
 
+  // Determine the vertical center (viewport Y) for a list item's wrapped
+  // content. Returns null for regular text list items that don't need a
+  // custom center (the default lineHeight/2 center is fine). Shared by
+  // both #positionHandle (drag handle) and syncBulletOffset (bullet dot).
+  #calculateListItemCenter(blockElement, blockRect) {
+    const innerHR = blockElement.querySelector(".horizontal-divider, hr")
+    const innerTable = blockElement.querySelector("table, .lexxy-content__table-wrapper")
+    const innerAttachment = blockElement.querySelector("figure.attachment, .attachment-gallery, .attachment")
+    const innerHeading = blockElement.querySelector("h1, h2, h3, h4, h5, h6")
+    const innerCode = blockElement.querySelector("pre, code[data-language]")
+    const innerBlockquote = !innerCode ? blockElement.querySelector("blockquote") : null
+
+    if (innerHR) {
+      const hrLine = innerHR.tagName === "HR" ? innerHR : innerHR.querySelector("hr")
+      const hrRect = (hrLine || innerHR).getBoundingClientRect()
+      return hrRect.top + (hrRect.height / 2) - 1
+    }
+
+    if (innerTable) {
+      const firstRow = innerTable.querySelector("tr")
+      if (firstRow) {
+        const rowRect = firstRow.getBoundingClientRect()
+        return rowRect.top + (rowRect.height / 2) - 1
+      }
+    }
+
+    if (innerAttachment) {
+      return innerAttachment.getBoundingClientRect().top + (DEFAULT_HANDLE_HEIGHT / 2)
+    }
+
+    if (innerHeading) {
+      const charRect = this.#getFirstCharRect(innerHeading)
+      if (charRect && charRect.height > 0) {
+        return charRect.top + (charRect.height / 2) - 1
+      }
+    }
+
+    if (innerCode) {
+      const codeRect = innerCode.getBoundingClientRect()
+      const paddingTop = parseFloat(getComputedStyle(innerCode).paddingTop) || 0
+      return codeRect.top + (paddingTop / 2)
+    }
+
+    if (innerBlockquote) {
+      const charRect = this.#getFirstCharRect(innerBlockquote)
+      if (charRect && charRect.height > 0) {
+        return charRect.top + (charRect.height / 2)
+      }
+    }
+
+    // Regular text list item — no custom center needed
+    return null
+  }
+
   // Compute and set --bullet-offset-y on a list item so the bullet ::before
   // aligns with the content center (same calculation as #positionHandle).
   // Called from block_selection_extension after keyboard moves and turn-into.
@@ -343,51 +343,17 @@ export class BlockDragAndDrop {
     if (!blockElement || blockElement.tagName !== "LI") return
 
     const blockRect = blockElement.getBoundingClientRect()
-    const liLineHeight = parseFloat(getComputedStyle(blockElement).lineHeight) || DEFAULT_HANDLE_HEIGHT
-    let handleCenter = blockRect.top + (liLineHeight / 2) - 1
+    const handleCenter = this.#calculateListItemCenter(blockElement, blockRect)
 
-    const innerHeading = blockElement.querySelector("h1, h2, h3, h4, h5, h6")
-    const innerTable = blockElement.querySelector("table, .lexxy-content__table-wrapper")
-    const innerAttachment = blockElement.querySelector("figure.attachment, .attachment-gallery, .attachment")
-    const innerHR = blockElement.querySelector(".horizontal-divider, hr")
-    const innerCode = blockElement.querySelector("pre, code[data-language]")
-    const innerBlockquote = !innerCode ? blockElement.querySelector("blockquote") : null
-
-    if (innerHR) {
-      const hrLine = innerHR.tagName === "HR" ? innerHR : innerHR.querySelector("hr")
-      const hrRect = (hrLine || innerHR).getBoundingClientRect()
-      handleCenter = hrRect.top + (hrRect.height / 2) - 1
-    } else if (innerTable) {
-      const firstRow = innerTable.querySelector("tr")
-      if (firstRow) {
-        const rowRect = firstRow.getBoundingClientRect()
-        handleCenter = rowRect.top + (rowRect.height / 2) - 1
-      }
-    } else if (innerAttachment) {
-      handleCenter = innerAttachment.getBoundingClientRect().top + 12
-    } else if (innerHeading) {
-      const charRect = this.#getFirstCharRect(innerHeading)
-      if (charRect && charRect.height > 0) {
-        handleCenter = charRect.top + (charRect.height / 2) - 1
-      }
-    } else if (innerCode) {
-      const codeRect = innerCode.getBoundingClientRect()
-      const paddingTop = parseFloat(getComputedStyle(innerCode).paddingTop) || 0
-      handleCenter = codeRect.top + (paddingTop / 2)
-    } else if (innerBlockquote) {
-      const charRect = this.#getFirstCharRect(innerBlockquote)
-      if (charRect && charRect.height > 0) {
-        handleCenter = charRect.top + (charRect.height / 2)
-      }
-    } else {
+    if (handleCenter === null) {
       // Regular text list item — no offset needed
       blockElement.style.removeProperty("--bullet-offset-y")
       return
     }
 
-    // --bullet-offset-y positions a 24px-tall ::before box so its center
-    // aligns with handleCenter. The radial-gradient dot is centered in the box.
-    const bulletTop = handleCenter - blockRect.top - 12
+    // --bullet-offset-y positions a ::before box so its center aligns with
+    // handleCenter. The radial-gradient dot is centered in the box.
+    const bulletTop = handleCenter - blockRect.top - (DEFAULT_HANDLE_HEIGHT / 2)
     if (Math.abs(bulletTop) > 1) {
       blockElement.style.setProperty("--bullet-offset-y", `${bulletTop}px`)
     } else {
@@ -985,8 +951,6 @@ export class BlockDragAndDrop {
     // root level adjacent to the list, not inside it. Show indicator at root.
     const isInList = resolvedBlock.tagName === "LI"
     if (isInList && !draggedIsListContent && position !== "inside") {
-      // eslint-disable-next-line no-unused-vars
-      const rootList = resolvedBlock.closest(`.${root.className.split(" ")[0]} > ul, .${root.className.split(" ")[0]} > ol`) || root.querySelector("ul, ol")
       const rootRect = root.getBoundingClientRect()
       const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || DEFAULT_ROOT_PADDING
       const contentLeft = rootRect.left + rootPadding
