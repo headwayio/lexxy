@@ -255,81 +255,72 @@
   }
 
   .attachment--preview.attachment--collapsed {
-    background: transparent;
+    align-items: center;
+    background-color: var(--lexxy-color-canvas);
+    border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
     border-radius: var(--lexxy-radius);
+    display: flex;
+    gap: 0.75rem;
+    inline-size: 100%;
+    padding: 0.75rem;
+    position: relative;
+
+    &, & * {
+      ::selection {
+        background: transparent;
+      }
+    }
 
     .attachment__preview-view {
       display: none;
     }
 
     .attachment__card-view {
-      align-items: center;
-      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      display: contents;
+    }
+
+    .attachment__icon {
+      background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+      block-size: 2.5rem;
+      inline-size: 2.5rem;
+      border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
       border-radius: var(--lexxy-radius);
+      box-sizing: border-box;
+      color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+      display: grid;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      place-content: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .attachment__caption {
       display: flex;
-      gap: 0.75rem;
-      inline-size: 100%;
-      padding: 0.75rem;
+      flex-direction: column;
+      flex: 1;
+      gap: 0.125rem;
+      min-width: 0;
+      text-align: start;
+    }
 
-      .attachment__icon {
-        background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
-        block-size: 2.5rem;
-        inline-size: 2.5rem;
-        border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
-        border-radius: var(--lexxy-radius);
-        box-sizing: border-box;
-        color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
-        display: grid;
-        font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        overflow: hidden;
-        place-content: center;
-        text-transform: uppercase;
-        white-space: nowrap;
-        flex-shrink: 0;
-      }
+    .attachment__name {
+      color: var(--lexxy-color-ink);
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-      .attachment__caption {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        gap: 0.125rem;
-        min-width: 0;
-        text-align: start;
-      }
-
-      .attachment__name {
-        color: var(--lexxy-color-ink);
-        font-size: 0.875rem;
-        font-weight: 600;
-        line-height: 1.3;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .attachment__meta {
-        display: flex;
-        align-items: baseline;
-        gap: 0.5rem;
-      }
-
-      .attachment__caption-text {
-        color: var(--lexxy-color-text-subtle, #9ca3af);
-        font-size: 0.8125rem;
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .attachment__subtitle {
-        color: var(--lexxy-color-text-subtle, #9ca3af);
-        font-size: 0.75rem;
-        flex-shrink: 0;
-      }
+    .attachment__subtitle {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.75rem;
+      flex-shrink: 0;
     }
 
     lexxy-node-delete-button {
@@ -409,12 +400,20 @@
 
   .attachment--file {
     align-items: center;
+    background-color: var(--lexxy-color-canvas);
     border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
     border-radius: var(--lexxy-radius);
     display: flex;
     gap: 0.75rem;
     inline-size: 100%;
     padding: 0.75rem;
+    position: relative;
+
+    &, & * {
+      ::selection {
+        background: transparent;
+      }
+    }
 
     .attachment__icon {
       background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
@@ -1938,6 +1937,22 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     overflow: hidden;
   }
 
+  /* Attachments: the ::after fills the same width as other block
+     selections. An inset box-shadow tints the card interior (the card's
+     opaque background covers the ::after within its bounds). The outline
+     provides the blue focus ring on the card itself. */
+  .attachment.block--selected,
+  .attachment.block--selected.block--focused {
+    outline: var(--lexxy-focus-ring-size) solid var(--lexxy-focus-ring-color);
+    outline-offset: var(--lexxy-focus-ring-offset);
+    box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, transparent);
+  }
+  /* Compensate for the card's 1px border — ::after is positioned relative
+     to the padding box, so extend 1px extra on each side. */
+  .attachment.block--selected::after {
+    inset: -7px -7px -7px -8px;
+  }
+
   /* Wrapped block selector used across multiple rules below. */
 
   /* Zero inner element margins to prevent collapse-through on all wrapped
@@ -2441,4 +2456,205 @@ lexxy-editor.lexxy-editor--keyboard-menu * {
   font-size: 13px;
   font-weight: 700;
   flex-shrink: 0;
+}
+
+/* Preview modal */
+/* -------------------------------------------------------------------------- */
+
+body.lexxy-preview-modal--open {
+  overflow: hidden;
+}
+
+.lexxy-preview-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--lexxy-preview-backdrop, rgba(0, 0, 0, 0.7));
+  z-index: var(--lexxy-preview-z-index, 10012);
+}
+
+.lexxy-preview-modal__dialog {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--lexxy-preview-z-index, 10012) + 1);
+  display: flex;
+  flex-direction: column;
+  background: var(--lexxy-preview-bg, white);
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .lexxy-preview-modal__dialog {
+    inset: 5vh 2.5vw;
+    border-radius: 0.75rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.lexxy-preview-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--lexxy-preview-header-border, #e5e7eb);
+  flex-shrink: 0;
+  background: var(--lexxy-preview-bg, white);
+}
+
+.lexxy-preview-modal__title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.lexxy-preview-modal__icon {
+  display: grid;
+  place-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--lexxy-radius, 0.375rem);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+  border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+  color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+}
+
+.lexxy-preview-modal__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--lexxy-preview-title-color, #111827);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lexxy-preview-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.lexxy-preview-modal__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--lexxy-preview-download-color, #374151);
+  background: var(--lexxy-preview-bg, white);
+  border: 1px solid var(--lexxy-preview-download-border, #d1d5db);
+  border-radius: 0.375rem;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--lexxy-color-ink-lightest, #f9fafb);
+  }
+}
+
+.lexxy-preview-modal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem;
+  background: none;
+  border: none;
+  border-radius: 0.375rem;
+  color: var(--lexxy-preview-close-color, #9ca3af);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lexxy-preview-close-hover, #374151);
+    background: var(--lexxy-color-ink-lightest, #f3f4f6);
+  }
+}
+
+.lexxy-preview-modal__content {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--lexxy-preview-content-bg, #f3f4f6);
+}
+
+.lexxy-preview-modal__image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 0.5rem;
+}
+
+.lexxy-preview-modal__iframe {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--lexxy-preview-header-border, #e5e7eb);
+  border-radius: 0.5rem;
+  background: white;
+}
+
+.lexxy-preview-modal__video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 0.5rem;
+}
+
+.lexxy-preview-modal__audio {
+  width: 100%;
+  max-width: 32rem;
+}
+
+.lexxy-preview-modal__generic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+.lexxy-preview-modal__generic-icon {
+  display: grid;
+  place-content: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: var(--lexxy-radius, 0.375rem);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+  border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+  color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+}
+
+.lexxy-preview-modal__generic-hint {
+  font-size: 0.875rem;
+  color: var(--lexxy-color-ink-light, #9ca3af);
+}
+
+.lexxy-preview-modal__generic-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--lexxy-preview-download-color, #374151);
+  background: var(--lexxy-preview-bg, white);
+  border: 1px solid var(--lexxy-preview-download-border, #d1d5db);
+  border-radius: 0.375rem;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--lexxy-color-ink-lightest, #f9fafb);
+  }
 }
