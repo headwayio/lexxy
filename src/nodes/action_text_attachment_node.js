@@ -1,6 +1,6 @@
 import Lexxy from "../config/lexxy"
 import { $getEditor, $getNearestRootOrShadowRoot, DecoratorNode, HISTORY_MERGE_TAG } from "lexical"
-import { createAttachmentFigure, createElement, isPreviewableImage } from "../helpers/html_helper"
+import { attachmentIconLabel, createAttachmentFigure, createElement, dispatch, isPreviewableImage } from "../helpers/html_helper"
 import { bytesToHumanSize, extractFileName } from "../helpers/storage_helper"
 import { parseBoolean } from "../helpers/string_helper"
 
@@ -26,6 +26,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
             node: new ActionTextAttachmentNode({
               sgid: attachment.getAttribute("sgid"),
               src: attachment.getAttribute("url"),
+              blobUrl: attachment.getAttribute("blob-url"),
               previewable: attachment.getAttribute("previewable"),
               altText: attachment.getAttribute("alt"),
               caption: attachment.getAttribute("caption"),
@@ -79,12 +80,13 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return Lexxy.global.get("attachmentTagName")
   }
 
-  constructor({ tagName, sgid, src, previewable, altText, caption, contentType, fileName, fileSize, width, height }, key) {
+  constructor({ tagName, sgid, src, blobUrl, previewable, altText, caption, contentType, fileName, fileSize, width, height }, key) {
     super(key)
 
     this.tagName = tagName || ActionTextAttachmentNode.TAG_NAME
     this.sgid = sgid
     this.src = src
+    this.blobUrl = blobUrl || null
     this.previewable = parseBoolean(previewable)
     this.altText = altText || ""
     this.caption = caption || ""
@@ -100,13 +102,19 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   createDOM() {
     const figure = this.createAttachmentFigure()
 
-    if (this.isPreviewableAttachment) {
-      figure.appendChild(this.#createDOMForImage())
-      figure.appendChild(this.#createEditableCaption())
+    if (this.isPreviewableImage) {
+      const previewView = createElement("div", { className: "attachment__preview-view" })
+      previewView.appendChild(this.#createDOMForImage())
+      previewView.appendChild(this.#createEditableCaption())
+      figure.appendChild(previewView)
+
+      figure.appendChild(this.#createCardView())
     } else {
       figure.appendChild(this.#createDOMForFile())
       figure.appendChild(this.#createDOMForNotImage())
     }
+
+    figure.addEventListener("dblclick", (event) => this.#handlePreviewClick(event))
 
     return figure
   }
@@ -133,6 +141,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       sgid: this.sgid,
       previewable: this.previewable || null,
       url: this.src,
+      "blob-url": this.blobUrl || null,
       alt: this.altText,
       caption: this.caption,
       "content-type": this.contentType,
@@ -153,6 +162,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       tagName: this.tagName,
       sgid: this.sgid,
       src: this.src,
+      blobUrl: this.blobUrl,
       previewable: this.previewable,
       altText: this.altText,
       caption: this.caption,
@@ -168,10 +178,16 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return null
   }
 
-  createAttachmentFigure(previewable = this.isPreviewableAttachment) {
+  createAttachmentFigure(previewable = this.isPreviewableImage) {
     const figure = createAttachmentFigure(this.contentType, previewable, this.fileName)
     figure.draggable = true
     figure.dataset.lexicalNodeKey = this.__key
+    figure.dataset.src = this.src || ""
+    figure.dataset.contentType = this.contentType || ""
+    figure.dataset.fileName = this.fileName || ""
+    figure.dataset.fileSize = this.fileSize || ""
+    figure.dataset.sgid = this.sgid || ""
+    if (this.blobUrl) figure.dataset.blobUrl = this.blobUrl
 
     const deleteButton = createElement("lexxy-node-delete-button")
     figure.appendChild(deleteButton)
@@ -223,9 +239,30 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     }
   }
 
+  #createCardView() {
+    const cardView = createElement("div", { className: "attachment__card-view" })
+
+    const extension = this.fileName ? this.fileName.split(".").pop().toLowerCase() : "unknown"
+    const icon = createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
+
+    const caption = createElement("figcaption", { className: "attachment__caption" })
+    const name = createElement("strong", { className: "attachment__name", textContent: this.caption || this.fileName })
+    caption.appendChild(name)
+
+    if (this.fileSize) {
+      const subtitle = createElement("span", { className: "attachment__subtitle", textContent: bytesToHumanSize(this.fileSize) })
+      caption.appendChild(subtitle)
+    }
+
+    cardView.appendChild(icon)
+    cardView.appendChild(caption)
+
+    return cardView
+  }
+
   #createDOMForFile() {
     const extension = this.fileName ? this.fileName.split(".").pop().toLowerCase() : "unknown"
-    return createElement("span", { className: "attachment__icon", textContent: `${extension}` })
+    return createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
   }
 
   #createDOMForNotImage() {
@@ -291,6 +328,19 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     // The caption textarea is outside Lexical's content model and should
     // handle its own keyboard events natively (Ctrl+A, Ctrl+C, Ctrl+X, etc.).
     event.stopPropagation()
+  }
+
+  #handlePreviewClick(event) {
+    if (event.target.closest("textarea, lexxy-node-delete-button, button")) return
+
+    dispatch(event.currentTarget, "lexxy:preview-attachment", {
+      src: this.src,
+      blobUrl: this.blobUrl,
+      fileName: this.fileName,
+      contentType: this.contentType,
+      fileSize: this.fileSize,
+      sgid: this.sgid
+    }, true)
   }
 }
 

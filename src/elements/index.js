@@ -1,3 +1,4 @@
+import Lexxy from "../config/lexxy"
 import Toolbar from "./toolbar"
 
 import Editor from "./editor"
@@ -7,6 +8,7 @@ import DropdownHighlight from "./dropdown/highlight"
 import Prompt from "./prompt"
 import CodeLanguagePicker from "./code_language_picker"
 import NodeDeleteButton from "./node_delete_button"
+import PreviewModal from "./preview_modal"
 import TableTools from "./table/table_tools"
 
 export function defineElements() {
@@ -22,7 +24,15 @@ export function defineElements() {
     "lexxy-table-tools": TableTools,
   }
 
+  if (Lexxy.global.get("previewModal")) {
+    elements["lexxy-preview-modal"] = PreviewModal
+  }
+
   Object.entries(elements).forEach(([ name, element ]) => {
     customElements.define(name, element)
   })
+
+  if (Lexxy.global.get("previewModal")) {
+    document.body.appendChild(document.createElement("lexxy-preview-modal"))
+  }
 }

@@ -2,7 +2,7 @@ import { $isRootOrShadowRoot, SKIP_DOM_SELECTION_TAG } from "lexical"
 import Lexxy from "../config/lexxy"
 import { SILENT_UPDATE_TAGS } from "../helpers/lexical_helper"
 import { ActionTextAttachmentNode } from "./action_text_attachment_node"
-import { createElement, dispatch } from "../helpers/html_helper"
+import { attachmentIconLabel, createElement, dispatch } from "../helpers/html_helper"
 import { loadFileIntoImage } from "../helpers/upload_helper"
 import { bytesToHumanSize } from "../helpers/storage_helper"
 
@@ -111,7 +111,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
 
   #createDOMForFile() {
     const extension = this.#getFileExtension()
-    const span = createElement("span", { className: "attachment__icon", textContent: extension })
+    const span = createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
     return span
   }
 
@@ -262,7 +262,8 @@ class AttachmentNodeConversion {
     return new ActionTextAttachmentNode({
       ...this.uploadNode,
       ...this.#propertiesFromBlob,
-      src: this.#src
+      src: this.#src,
+      blobUrl: this.#blobSrc
     })
   }
 
