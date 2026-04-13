@@ -643,6 +643,13 @@
   outline: none !important;
 }
 
+/* Suppress code block hover controls during block selection and drag */
+.block-selection-active ~ lexxy-code-language-picker,
+:where(lexxy-editor).lexxy-block-dragging lexxy-code-language-picker {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* Placeholder */
 :where(.lexxy-editor--empty) {
   .lexxy-editor__content:not(:has(h1, h2, h3, h4, h5, h6, table, ul, ol, figure, .attachment-gallery))::before {
