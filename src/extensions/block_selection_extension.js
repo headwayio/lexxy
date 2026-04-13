@@ -1767,6 +1767,19 @@ export class BlockSelectionExtension extends LexxyExtension {
     while (target && $isListItemNode(target) && $isStructuralWrapper(target)) {
       target = isUp ? target.getPreviousSibling() : target.getNextSibling()
     }
+    // Decorator nodes (HR, attachments, images): Lexical keeps empty separator
+    // paragraphs between adjacent decorators. Skip them to reach the real
+    // target, matching the single-item behavior in #moveTopLevelBlock.
+    if (target && group.some(({ node }) => $isDecoratorNode(node))) {
+      while (target && $isParagraphNode(target) && target.getTextContentSize() === 0) {
+        const beyond = isUp ? target.getPreviousSibling() : target.getNextSibling()
+        if (beyond) {
+          target = beyond
+        } else {
+          break
+        }
+      }
+    }
 
     if (!target) {
       // At list boundary — promote the group out.
