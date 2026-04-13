@@ -2226,6 +2226,36 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   .lexxy-drop-indicator[data-depth="0"] .lexxy-drop-indicator__circle {
     display: none;
   }
+  .lexxy-drop-indicator[data-depth="0"] .lexxy-drop-indicator__line {
+    margin-inline: -1px;
+  }
+
+  /* OL drop indicator: show "#." instead of a circle to indicate
+     numbered list insertion without implying a specific number.
+     Right-align to match the OL counter position. */
+  .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__circle {
+    border: none;
+    border-radius: 0;
+    background: none;
+    inline-size: auto;
+    block-size: auto;
+    margin-inline-start: -11px;
+    margin-inline-end: var(--indicator-gap, 0px);
+    font-size: 0.85em;
+    font-weight: 500;
+    line-height: 0;
+    color: var(--lexxy-focus-ring-color);
+    position: relative;
+    top: 0px;
+  }
+  .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__circle::before {
+    content: "#.";
+  }
+  .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__line {
+    position: relative;
+    top: 4px;
+    left: 1px;
+  }
 
   .lexxy-drop-indicator__line {
     flex: 1;

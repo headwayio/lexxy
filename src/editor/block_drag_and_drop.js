@@ -961,6 +961,7 @@ export class BlockDragAndDrop {
 
     const targetDepth = this.#getElementNestingDepth(resolvedBlock, root)
     const closestList = resolvedBlock.closest("ul, ol")
+    const listType = closestList?.tagName?.toLowerCase() || null
     const listPadding = closestList
       ? parseFloat(getComputedStyle(closestList).paddingInlineStart) || DEFAULT_ROOT_PADDING
       : 28
@@ -1002,7 +1003,7 @@ export class BlockDragAndDrop {
           if (snap.depth < targetDepth) {
             const snapContentLeft = snap.pixelLeft + listPadding
             const snapBulletLeft = snap.depth === 0 ? snapContentLeft : snapContentLeft - 12
-            return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft }
+            return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft, listType }
           }
         }
       }
@@ -1014,7 +1015,7 @@ export class BlockDragAndDrop {
       const insideDepth = targetDepth + 1
       const insideContentLeft = blockLeft + listPadding
       const insideBulletLeft = insideContentLeft - 12
-      return { element: resolvedBlock, nodeKey, position, depth: insideDepth, bulletLeft: insideBulletLeft, contentLeft: insideContentLeft }
+      return { element: resolvedBlock, nodeKey, position, depth: insideDepth, bulletLeft: insideBulletLeft, contentLeft: insideContentLeft, listType }
     }
 
     // For "after" on list items, use cursor X to select depth via snap
@@ -1050,7 +1051,7 @@ export class BlockDragAndDrop {
         const snapBulletLeft = snap.depth === 0 ? snapContentLeft : snapContentLeft - 12
         // Self-target is only valid when depth actually changes (outdent)
         if (isSelfTarget && snap.depth >= targetDepth) return null
-        return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft }
+        return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft, listType }
       }
     }
 
@@ -1062,7 +1063,7 @@ export class BlockDragAndDrop {
     // Subtract the indicator circle radius (3px) so the circle center aligns.
     // At depth 0 (root level) there's no bullet, so no offset needed.
     const bulletLeft = targetDepth === 0 ? blockLeft : blockLeft - 12
-    return { element: blockElement, nodeKey, position, depth: targetDepth, bulletLeft, contentLeft: blockLeft }
+    return { element: blockElement, nodeKey, position, depth: targetDepth, bulletLeft, contentLeft: blockLeft, listType }
   }
 
   // List items: before / inside / after zones. When the item already has
@@ -1193,6 +1194,10 @@ export class BlockDragAndDrop {
       const prev = this.#previousContentSibling(target.element, root)
       if (prev) {
         top = (prev.getBoundingClientRect().bottom + blockRect.top) / 2 - editorRect.top - lineOffset
+      } else if (target.element.tagName === "LI") {
+        // First item in a list: offset above the item so the indicator
+        // doesn't crowd it.
+        top = blockRect.top - editorRect.top - 8
       } else {
         top = blockRect.top - editorRect.top - 1
       }
@@ -1210,6 +1215,10 @@ export class BlockDragAndDrop {
       const next = this.#nextContentSibling(target.element, root)
       if (next && target.position === "after") {
         top = (blockRect.bottom + next.getBoundingClientRect().top) / 2 - editorRect.top - lineOffset
+      } else if (target.position === "after" && target.element.tagName === "LI") {
+        // Last item in a list: offset below the item so the indicator
+        // doesn't crowd it.
+        top = blockRect.bottom - editorRect.top + 6
       } else {
         top = blockRect.bottom - editorRect.top - 1
       }
@@ -1236,6 +1245,7 @@ export class BlockDragAndDrop {
     indicator.style.setProperty("--indicator-gap", `${Math.max(0, gap)}px`)
 
     indicator.dataset.depth = target.depth
+    indicator.dataset.listType = target.listType || ""
 
     indicator.classList.add("lexxy-drop-indicator--visible")
   }
