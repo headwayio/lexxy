@@ -284,6 +284,8 @@ class AttachmentNodeConversion {
   }
 
   get #blobSrc() {
+    if (!this.uploadNode.blobUrlTemplate) return null
+
     return this.uploadNode.blobUrlTemplate
       .replace(":signed_id", this.blob.signed_id)
       .replace(":filename", encodeURIComponent(this.blob.filename))

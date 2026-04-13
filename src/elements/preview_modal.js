@@ -1,14 +1,13 @@
 import Lexxy from "../config/lexxy"
 import { createElement } from "../helpers/html_helper"
-import { bytesToHumanSize } from "../helpers/storage_helper"
 
-const CLOSE_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`
+const CLOSE_ICON = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6L6 18M6 6l12 12\"/></svg>"
 
-const DOWNLOAD_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
+const DOWNLOAD_ICON = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"/></svg>"
 
-const PDF_TYPES = ["application/pdf"]
-const VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/*"]
-const AUDIO_TYPES = ["audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/*"]
+const PDF_TYPES = [ "application/pdf" ]
+const VIDEO_TYPES = [ "video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/*" ]
+const AUDIO_TYPES = [ "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/*" ]
 
 function isImageType(contentType) {
   return contentType?.startsWith("image/")

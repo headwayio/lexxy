@@ -639,7 +639,9 @@ export class BlockDragAndDrop {
 
   // Given a hidden element, find the nearest visible sibling by clientY
   #nearestVisibleSibling(element, clientY) {
-    const isVisible = (el) => el && !el.hidden && !el.classList.contains("hidden")
+    function isVisible(el) {
+      return el && !el.hidden && !el.classList.contains("hidden")
+    }
     let prev = element.previousElementSibling
     while (prev && !isVisible(prev)) prev = prev.previousElementSibling
     let next = element.nextElementSibling
