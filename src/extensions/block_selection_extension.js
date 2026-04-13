@@ -1332,7 +1332,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (outdent) {
             const didOutdent = this.#outdentWrappedBlock(node)
             if (!didOutdent && isWrapped) {
-              // At root-level list — collect for group exit
+              // At root-level list — collect for in-place extraction
               const wrapper = this.#getOwnStructuralWrapper(node)
               exitGroup.push({ node, wrapper })
             } else if (!didOutdent && hasChildren) {
@@ -1361,14 +1361,11 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
 
-      // Exit collected wrapped items as a group — same path as Cmd+Shift+Up.
-      // This ensures Shift+Tab and Cmd+Shift+Up produce identical results
-      // when unwrapping a list.
+      // Extract wrapped items in place, splitting lists as needed.
+      // Regular bullets stay in list segments that form naturally
+      // from the splits, preserving document order.
       if (exitGroup.length > 0) {
-        const sourceList = exitGroup[0].node.getParent()
-        if ($isListNode(sourceList)) {
-          this.#exitGroupFromList(exitGroup, sourceList, "up")
-        }
+        this.#extractWrappedItemsInPlace(exitGroup)
       }
 
       $setSelection(null)
@@ -3803,6 +3800,63 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Remove the now-empty structural wrapper
     ownWrapper.remove()
+  }
+
+  // Extract wrapped items from their lists in place. Each wrapped item is
+  // unwrapped to its original block type and the list splits around it,
+  // leaving regular bullets in naturally-formed list segments.
+  #extractWrappedItemsInPlace(exitGroup) {
+    for (const { node, wrapper: ownWrapper } of exitGroup) {
+      const currentList = node.getParent()
+      if (!$isListNode(currentList)) continue
+
+      const listType = currentList.getListType()
+
+      // Collect trailing siblings (everything after this item and its wrapper)
+      const startAfter = ownWrapper || node
+      const trailing = []
+      let sib = startAfter.getNextSibling()
+      while (sib) {
+        trailing.push(sib)
+        sib = sib.getNextSibling()
+      }
+
+      // Handle children (structural wrapper with nested items)
+      let childrenList = null
+      if (ownWrapper) {
+        const innerList = ownWrapper.getChildren().find(c => $isListNode(c))
+        if (innerList) {
+          innerList.remove()
+          childrenList = innerList
+        }
+        ownWrapper.remove()
+      }
+
+      // Extract the wrapped content back to its original block type
+      const extracted = this.#extractWrappedContent(node)
+      if (!extracted) continue
+
+      const nodeKey = node.getKey()
+      node.remove()
+
+      // Place extracted content after the current list
+      currentList.insertAfter(extracted)
+      if (childrenList) extracted.insertAfter(childrenList)
+
+      // Move trailing items to a new list after the extracted content
+      if (trailing.length > 0) {
+        const insertAfterNode = childrenList || extracted
+        const newList = $createListNode(listType)
+        insertAfterNode.insertAfter(newList)
+        for (const t of trailing) {
+          newList.append(t)
+        }
+      }
+
+      // Clean up current list if now empty
+      this.#cleanupEmptyList(currentList)
+      this.#updateKeyAfterUnwrap(nodeKey, extracted.getKey())
+    }
   }
 
   // -- Click handling ---------------------------------------------------------
