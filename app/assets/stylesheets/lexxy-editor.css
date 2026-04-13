@@ -398,6 +398,7 @@
     outline-offset: var(--lexxy-focus-ring-offset);
   }
 
+
   .attachment--file {
     align-items: center;
     background-color: var(--lexxy-color-canvas);
@@ -635,6 +636,11 @@
       }
     }
   }
+}
+
+/* Suppress attachment hover outline while dragging */
+.lexxy-block-dragging .attachment:hover {
+  outline: none !important;
 }
 
 /* Placeholder */
@@ -2216,6 +2222,11 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     margin-inline-end: var(--indicator-gap, 0px);
   }
 
+  /* Hide the bullet for root-level drops — only show within lists */
+  .lexxy-drop-indicator[data-depth="0"] .lexxy-drop-indicator__circle {
+    display: none;
+  }
+
   .lexxy-drop-indicator__line {
     flex: 1;
     block-size: 2px;
@@ -2234,8 +2245,8 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   border-radius: var(--lexxy-radius, 0.5ch);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
   background: color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 5%, var(--lexxy-color-canvas, #fff));
-  padding: 4px 8px 8px;
-  overflow: hidden;
+  opacity: 0.85;
+  padding: 8px;
 }
 
 /* Drag ghost: match text dimness, background, and code treatment to originals */
@@ -2243,6 +2254,18 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
   padding: 0;
   min-block-size: 0;
+  display: flow-root; /* BFC prevents child margins from collapsing through */
+  /* Clip tall content here (not on the ghost) so the ghost's bottom
+     padding remains visible below the clipped edge. overflow:hidden
+     on the ghost would clip at the padding box, filling the padding. */
+  max-height: calc(280px - 16px);
+  overflow: hidden;
+  border-radius: var(--lexxy-radius, 0.5ch);
+}
+/* Specificity must beat :where(.lexxy-editor__content) > :is(:first-child, .hidden + *):is(.attachment)
+   which resolves to (0,3,1) with !important. Using .lexxy-content.lexxy-editor__content bumps us to (0,4,0). */
+.lexxy-drag-ghost .lexxy-content.lexxy-editor__content > :first-child {
+  margin: 0 !important;
 }
 .lexxy-drag-ghost .lexxy-editor__content blockquote,
 .lexxy-drag-ghost .lexxy-editor__content a {
@@ -2261,6 +2284,36 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   border-radius: inherit;
   pointer-events: none;
   z-index: 1;
+}
+
+/* Drag ghost: strip preview attachment chrome (padding, background)
+   so only the ghost's own 8px padding provides the border.
+   File cards and collapsed previews keep their internal padding. */
+.lexxy-drag-ghost .attachment--preview:not(.attachment--collapsed) {
+  padding: 0 !important;
+  background: transparent;
+}
+.lexxy-drag-ghost .attachment--file,
+.lexxy-drag-ghost .attachment--collapsed {
+  background: transparent;
+}
+/* Preview images: the figure's padding/bg is stripped (above), so the
+   image sits directly inside the ghost's 8px padding. Override the JS
+   inline width to shrink-wrap around the image. */
+.lexxy-drag-ghost:has(.attachment--preview:not(.attachment--collapsed)) {
+  width: fit-content !important;
+}
+.lexxy-drag-ghost .attachment--preview img {
+  margin: 0;
+}
+
+/* File cards and collapsed previews: full width with subtle outline */
+.lexxy-drag-ghost .attachment--file,
+.lexxy-drag-ghost .attachment--preview.attachment--collapsed {
+  inline-size: 100%;
+  outline: var(--lexxy-focus-ring-size, 2px) solid color-mix(in oklch, var(--lexxy-focus-ring-color) 50%, transparent);
+  outline-offset: var(--lexxy-focus-ring-offset, -2px);
+  box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 8%, transparent);
 }
 
 /* Block drag handle ----------------------------------------------------------- */
