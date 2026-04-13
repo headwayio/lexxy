@@ -2555,21 +2555,30 @@ body.lexxy-preview-modal--open {
   overflow: hidden;
 }
 
-.lexxy-preview-modal__backdrop {
-  position: fixed;
-  inset: 0;
+dialog.lexxy-preview-modal {
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  max-width: none;
+  max-height: none;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+dialog.lexxy-preview-modal::backdrop {
   background: var(--lexxy-preview-backdrop, rgba(0, 0, 0, 0.7));
-  z-index: var(--lexxy-preview-z-index, 10012);
 }
 
 .lexxy-preview-modal__dialog {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: calc(var(--lexxy-preview-z-index, 10012) + 1);
   display: flex;
   flex-direction: column;
   background: var(--lexxy-preview-bg, white);
   overflow: hidden;
+  outline: none;
 }
 
 @media (min-width: 768px) {

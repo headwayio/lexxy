@@ -35,8 +35,6 @@ export class PreviewModal extends HTMLElement {
     if (!Lexxy.global.get("previewModal")) return
 
     this.handlePreviewEvent = (event) => this.#onPreviewRequest(event)
-    this.handleKeydown = (event) => { if (event.key === "Escape") this.#close() }
-
     document.addEventListener("lexxy:preview-attachment", this.handlePreviewEvent)
   }
 
@@ -61,27 +59,63 @@ export class PreviewModal extends HTMLElement {
 
     const downloadSrc = blobUrl || src
 
-    this.backdrop = createElement("div", { className: "lexxy-preview-modal__backdrop" })
-    this.dialog = createElement("div", { className: "lexxy-preview-modal__dialog" })
+    // Use <dialog> for native Escape handling — the cancel event fires
+    // even when focus is inside native video/audio controls.
+    this.dialog = document.createElement("dialog")
+    this.dialog.className = "lexxy-preview-modal"
 
-    this.dialog.appendChild(this.#buildHeader(downloadSrc, fileName, contentType))
-    this.dialog.appendChild(this.#buildContent(src, blobUrl, fileName, contentType))
+    this.dialogBox = createElement("div", {
+      className: "lexxy-preview-modal__dialog",
+      tabIndex: -1,
+      autofocus: true
+    })
+    this.dialogBox.appendChild(this.#buildHeader(downloadSrc, fileName, contentType))
+    this.dialogBox.appendChild(this.#buildContent(src, blobUrl, fileName, contentType))
+    this.dialog.appendChild(this.dialogBox)
 
-    this.backdrop.addEventListener("click", (e) => { if (e.target === this.backdrop) this.#close() })
-    document.addEventListener("keydown", this.handleKeydown)
+    // Cancel event fires on Escape even from native video controls
+    this.dialog.addEventListener("cancel", (event) => {
+      event.preventDefault()
+      this.#pauseMedia()
+      this.#close()
+    })
 
-    document.body.appendChild(this.backdrop)
+    // Backdrop click: click on dialog element (not content box) closes modal.
+    // On desktop the content box is inset, leaving visible backdrop area.
+    this.dialog.addEventListener("click", (event) => {
+      if (!this.dialogBox.contains(event.target)) this.#close()
+    })
+
+    // Space toggles play/pause on video/audio (skip if focused on a control)
+    this.dialog.addEventListener("keydown", (event) => {
+      if (event.key !== " ") return
+      const media = this.dialog.querySelector("video, audio")
+      if (!media) return
+      if (document.activeElement?.closest("button, a, select, input, textarea")) return
+      event.preventDefault()
+      if (media.paused) media.play()
+      else media.pause()
+    })
+
     document.body.appendChild(this.dialog)
+    this.dialog.showModal()
+    // Focus the content box (not a button) so Space immediately toggles
+    // play/pause without needing to tab to the video controls first.
+    this.dialogBox.focus()
     document.body.classList.add("lexxy-preview-modal--open")
   }
 
+  #pauseMedia() {
+    const media = this.dialog?.querySelector("video, audio")
+    if (media && !media.paused) media.pause()
+  }
+
   #close() {
-    document.removeEventListener("keydown", this.handleKeydown)
     document.body.classList.remove("lexxy-preview-modal--open")
-    this.backdrop?.remove()
+    if (this.dialog?.open) this.dialog.close()
     this.dialog?.remove()
-    this.backdrop = null
     this.dialog = null
+    this.dialogBox = null
   }
 
   #buildHeader(src, fileName, contentType) {
