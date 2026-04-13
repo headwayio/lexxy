@@ -1,7 +1,7 @@
 # Block Editing: Architecture & Implementation
 
 > Notion-style block selection, movement, drag-and-drop, and formatting for Lexxy.
-> Branch: `block-editing-standalone` — 38 files changed, ~10,600 lines added.
+> Branch: `block-editing-standalone` — 44 files changed, ~10,900 lines added.
 
 ## Overview
 
@@ -42,7 +42,7 @@ The design goal is Notion-style block semantics: every visible element (paragrap
 | `src/elements/dropdown/link.js` | +3 | Renamed `connectedCallback` → `initialize()`. | **Yes.** Consistency refactor, not block-editing specific. |
 | `src/config/lexxy.js` | +3 | Added `markdown: true` to default config. | **Yes.** Enables list-heading shortcuts but is a config default, not structural. |
 | `src/helpers/lexical_helper.js` | +6 | Added `getListItemNode()` utility. | **Could be.** Small helper, but useful beyond block editing. |
-| `src/extensions/highlight_extension.js` | +27 | Mark padding sync (`data-pad-start`/`data-pad-end` on `<mark>` elements). | **Yes.** Visual polish for highlights, independent of block editing. |
+| `src/extensions/highlight_extension.js` | +27 | Mark padding sync (`data-pad-start`/`data-pad-end` on `<mark>` elements). Corresponding CSS rules added to `lexxy-content.css`. | **Yes.** Visual polish for highlights, independent of block editing. |
 | `app/assets/stylesheets/lexxy-editor.css` | +1,482 | All block selection visual styling. | **No.** Editor-level CSS must ship with the editor, not be injected by an extension. |
 | `app/assets/stylesheets/lexxy-content.css` | +175 | Custom bullet rendering (radial-gradient markers), list margin/padding restructuring, code block spacing, attachment icon sizing. | **Partially.** The list bullet redesign (replacing browser markers with `::before` pseudo-elements) was necessary to enable block selection's left-gutter highlighting. The code block and attachment changes are independent improvements. |
 
@@ -54,7 +54,7 @@ Based on the analysis above, candidates for moving back to the extension (or spl
 2. **`link.js` rename** — Consistency refactor, separate PR.
 3. **`config/lexxy.js` markdown default** — Config change for list shortcuts, could ship independently.
 4. **`code_language_picker.js` copy button + hover** — Code block UX improvements, independent feature.
-5. **`highlight_extension.js` mark padding** — Visual polish, independent feature.
+5. **`highlight_extension.js` mark padding** — Visual polish, independent feature. CSS rules now added to `lexxy-content.css` (complete on this branch).
 6. **`editor.js` `#applyCodeSettings()`** — The CSS variable for code tab-size could be set by the extension's `initializeEditor()` hook instead.
 
 ---
