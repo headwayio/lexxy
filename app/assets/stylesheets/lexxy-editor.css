@@ -638,8 +638,9 @@
   }
 }
 
-/* Suppress attachment hover outline while dragging */
-.lexxy-block-dragging .attachment:hover {
+/* Suppress attachment hover outline while dragging, but preserve it
+   on the selected attachment and the one being dragged */
+.lexxy-block-dragging .attachment:hover:not(.node--selected):not(.lexxy-dragging) {
   outline: none !important;
 }
 

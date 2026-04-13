@@ -105,6 +105,8 @@ export class NodeDeleteButton extends HTMLElement {
     const isCollapsed = figure.classList.contains("attachment--collapsed")
     this.collapseButton.innerHTML = isCollapsed ? EXPAND_ICON : COLLAPSE_ICON
     this.collapseButton.setAttribute("aria-label", isCollapsed ? "Expand preview" : "Collapse preview")
+
+    figure.dispatchEvent(new Event("lexxy:sync-wrapped-block", { bubbles: true }))
   }
 
   #deleteNode() {

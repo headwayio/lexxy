@@ -1,7 +1,7 @@
 # Block Editing: Architecture & Implementation
 
 > Notion-style block selection, movement, drag-and-drop, and formatting for Lexxy.
-> Branch: `block-editing-standalone` — 44 files changed, ~10,900 lines added.
+> Branch: `block-editing-standalone` — 53 files changed, ~11,800 lines added.
 
 ## Overview
 
@@ -17,13 +17,13 @@ The design goal is Notion-style block semantics: every visible element (paragrap
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/extensions/block_selection_extension.js` | 3,919 | Core extension: selection state, keyboard navigation, block movement, formatting, highlight propagation |
-| `src/editor/block_drag_and_drop.js` | 2,135 | Drag handles, drop indicators, drag ghosts, auto-scroll, hover detection |
-| `src/elements/block_actions_menu.js` | 595 | Floating context menu: turn-into, highlight colors, delete |
-| `src/editor/block_helpers.js` | 22 | Shared constants (`BLOCK_SELECTED_CLASS`, etc.) and `$isStructuralWrapper()` helper |
+| `src/extensions/block_selection_extension.js` | 4,027 | Core extension: selection state, keyboard navigation, block movement, formatting, highlight propagation |
+| `src/editor/block_drag_and_drop.js` | 2,242 | Drag handles, drop indicators, drag ghosts, auto-scroll, hover detection |
+| `src/elements/block_actions_menu.js` | 596 | Floating context menu: turn-into, highlight colors, delete |
+| `src/editor/block_helpers.js` | 26 | Shared constants (`BLOCK_SELECTED_CLASS`, etc.) and `$isStructuralWrapper()` helper |
 | `src/nodes/wrapped_table_node.js` | 74 | TableNode subclass for tables inside list items; provisional escape item tracking |
 | `src/editor/markdown/list_heading_shortcut.js` | 102 | Markdown shortcuts (`# `, `## `, `> `) inside list items → wrapped blocks |
-| `test/browser/tests/block_editing/*.test.js` | 1,247 | 8 Playwright test files covering selection, drag-and-drop, movement, actions menu |
+| `test/browser/tests/block_editing/*.test.js` | 1,447 | 9 Playwright test files covering selection, drag-and-drop, movement, actions menu |
 
 ### Modified core files
 
@@ -63,7 +63,7 @@ Based on the analysis above, candidates for moving back to the extension (or spl
 
 ### Extension subsystems
 
-The `BlockSelectionExtension` (3,919 lines) has 12 interconnected subsystems:
+The `BlockSelectionExtension` (4,027 lines) has 13 interconnected subsystems:
 
 #### 1. Mode management
 Dual-mode system: `"edit"` (normal text editing) and `"block-select"` (block-level operations). Escape toggles between them. Entering block-select adds `block-selection-active` to the editor root (hides caret, disables text selection via CSS). Exiting removes it and commits any pending highlight color changes.
@@ -126,17 +126,18 @@ Cmd+Shift+Up/Down with group:
 Key concepts:
 - **Root keys**: `#filterToRootKeys` identifies the top-level items in the selection; children travel with their root via structural wrappers
 - **Structural wrappers**: ListItemNodes containing only nested ListNodes — they carry child content when a parent item moves
-- **Cursor approach**: `#exitGroupFromList` creates a temporary ParagraphNode as a stable reference point, places extracted items relative to it, then removes it (or keeps it as a separator to prevent Lexical's adjacent-list merge)
+- **Cursor approach**: `#exitGroupFromList` creates a temporary ParagraphNode as a stable reference point, places extracted items relative to it, then removes it (or keeps it as a separator to prevent Lexical's adjacent-list merge). When a retained separator is itself a decorator paragraph, subsequent group moves skip over it when computing the target index.
 - **Batch exit**: consecutive regular items are collected into a single standalone list to prevent merge-induced infinite loops
 
 #### 7. Drag-and-drop
 `BlockDragAndDrop` (separate file, 2,135 lines) manages:
 - Drag handle element with 6-dot grip icon, positioned on hover
 - Add-block button (plus icon)
-- Drop indicator (thin horizontal line at drop target)
-- Drag ghost (translucent clone of dragged block)
+- Drop indicator: depth-aware positioning, gap resolution, center-aligned on the target edge; OL drop targets render `#.` rather than a bullet circle
+- Drag ghost (translucent clone of dragged block, width matches source)
 - Auto-scroll when dragging near container edges
 - Multi-block drag (Shift+click, Cmd+click for range/toggle selection)
+- Post-drop cleanup: removes empty ListItemNodes left behind by Lexical's normalization after an unwrap
 
 #### 8. Block actions menu
 `BlockActionsMenu` (separate file, 595 lines) — floating context menu opened via Cmd+/ or right-click:
@@ -159,7 +160,7 @@ Sophisticated color propagation system for nested list highlights:
 #### 11. Indent / outdent
 Tab/Shift+Tab in block-select mode calls `#handleIndentOutdent`. For wrapped blocks (headings/quotes/code inside list items), uses special `#indentWrappedBlock` / `#outdentWrappedBlock` that manipulate the structural wrapper nesting. When a root-level item can't outdent further, `#flattenChildrenOneLevel` promotes children to siblings.
 
-Shift+Tab convergence: when wrapped items can't outdent further, they're collected into an `exitGroup` and processed via `#exitGroupFromList` — same code path as Cmd+Shift+Up boundary exit.
+Shift+Tab on mixed root-level lists (wrapped blocks + regular bullets) extracts each wrapped item in place by splitting the list around it. Regular bullets stay in the naturally-formed list segments, preserving interleaved document order. `#exitGroupFromList` is still used for Cmd+Shift+Up boundary exit, but no longer for root-level outdent.
 
 #### 12. Wrapped block escape
 Tables and code blocks inside list items need special arrow-key escape. Registered in `tables_extension.js` at `COMMAND_PRIORITY_CRITICAL`:
@@ -167,6 +168,11 @@ Tables and code blocks inside list items need special arrow-key escape. Register
 - Arrow Down at bottom → creates provisional sibling below
 - Provisional items auto-remove on selection change if left empty
 - Backspace in a provisional returns focus to the adjacent table/code
+
+#### 13. Bootstrap deferral
+Every block-editing feature that doesn't affect initial render is deferred until the user actually touches the editor. On construction the extension wires a pair of one-shot listeners — `mouseenter` on the editor element and `focusin` on the root — and only on the first fire does it register its `registerCommand`s, keyboard handlers, and instantiate `BlockDragAndDrop`. The only work that stays in the bootstrap path is the bullet-marker node transform, because it needs to run during initial content reconciliation to style pre-existing lists.
+
+Impact: removes 14 `registerCommand` calls, 1 `registerNodeTransform`, and several `addEventListener` calls per editor from the bootstrap path. This is load-bearing for the `bootstrap-many-editors` benchmark and why the per-editor cost stays close to the pre-branch baseline.
 
 ### Lexical list structure
 
@@ -201,6 +207,8 @@ Selection highlighting uses `::after` pseudo-elements at `z-index: -1` as the pr
 
 **List bullet redesign**: Browser default markers were replaced with `::before` pseudo-elements using radial-gradient bullets and CSS counter numbers. This was necessary because block selection's left-gutter highlight extends beyond the bullet position, and browser markers can't be styled to integrate with the highlight fill.
 
+**Code block hover controls**: The copy button and language picker are hidden while block-select mode is active or a drag is in progress, so they don't paint on top of the block highlight or interfere with the drop target.
+
 ### Lexical reconciler caveats
 
 - **Adjacent-list merge**: Lexical silently merges adjacent `ListNode`s of the same type during DOM reconciliation. Any operation that places two same-type lists next to each other will have them merged. Prevent by: (a) batching items into a single list, (b) keeping a ParagraphNode separator between lists.
@@ -221,7 +229,7 @@ Selection highlighting uses `::after` pseudo-elements at `z-index: -1` as the pr
 
 1. **Undo/redo after group operations**: Lexical's history captures the changes but selection state restoration needs verification. Undo after group exit may not perfectly restore nesting levels.
 2. **Selection tracking after key changes**: Lexical's copy-on-write may change node keys during updates. `#resyncWrappedKeys` handles some cases but group operations that create/destroy nodes may leave stale keys.
-3. **Drag-and-drop into nested lists**: Drop targeting works at root level and one level deep; deeply nested drop targets need more work.
+3. **Drag-and-drop into nested lists**: Depth-aware drop positioning now resolves the drop target based on cursor proximity to nesting columns, covering most nested cases. Extreme nesting (many levels deep) and drops at the exact boundary between two valid depths can still be ambiguous.
 
 ---
 
