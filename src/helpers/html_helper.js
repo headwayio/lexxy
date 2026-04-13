@@ -26,6 +26,28 @@ export function createAttachmentFigure(contentType, isPreviewable, fileName) {
   })
 }
 
+const ICON_LABELS = {
+  md: "M\u2193",
+  markdown: "M\u2193",
+  xlsx: "XLS",
+  docx: "DOC",
+  png: "IMG",
+  jpg: "IMG",
+  jpeg: "IMG",
+  webp: "IMG",
+  svg: "IMG",
+  bmp: "IMG",
+  tiff: "IMG",
+  tif: "IMG",
+  ico: "IMG",
+  avif: "IMG",
+  heic: "IMG"
+}
+
+export function attachmentIconLabel(extension) {
+  return ICON_LABELS[extension] || extension
+}
+
 export function isPreviewableImage(contentType) {
   return contentType.startsWith("image/") && !contentType.includes("svg")
 }
