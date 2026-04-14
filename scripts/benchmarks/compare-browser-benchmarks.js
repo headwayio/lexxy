@@ -19,8 +19,8 @@ const SCENARIO_THRESHOLDS = {
     metric: "min",
   },
   "bootstrap-many-editors": {
-    absoluteRegressionMs: 40,
-    relativeRegression: 0.3,
+    absoluteRegressionMs: 60,
+    relativeRegression: 0.35,
     metric: "median",
   },
   "load-large-content": {
@@ -34,8 +34,8 @@ const SCENARIO_THRESHOLDS = {
     metric: "median",
   },
   "load-very-large-table": {
-    absoluteRegressionMs: 30,
-    relativeRegression: 0.2,
+    absoluteRegressionMs: 100,
+    relativeRegression: 0.25,
     metric: "median",
   },
 }

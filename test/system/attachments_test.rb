@@ -13,15 +13,12 @@ class AttachmentsTest < ApplicationSystemTestCase
     assert_image_figure_attachment content_type: "image/png", caption: "example.png"
   end
 
-  test "upload previewable attachment shows file icon while preview loads" do
+  test "upload previewable attachment" do
     attach_file file_fixture("dummy.pdf") do
       click_on "Upload files"
     end
 
-    assert_figure_attachment content_type: "application/pdf" do
-      assert_selector ".attachment__icon"
-      assert_selector ".attachment__name", text: "dummy.pdf"
-    end
+    assert_image_figure_attachment content_type: "application/pdf", caption: "dummy.pdf"
   end
 
   test "upload image via image button" do
