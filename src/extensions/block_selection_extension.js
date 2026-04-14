@@ -77,17 +77,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#deferInteractionHandlers()
   }
 
-  destroy() {
+  dispose() {
     this.#exitBlockSelectMode()
     this.#dragAndDrop?.destroy()
     this.#blockActionsMenu?.remove()
     for (const fn of this.#cleanupFns) fn()
     this.#cleanupFns = []
-  }
-
-  // Called by the editor's #dispose lifecycle to clean up on disconnect.
-  dispose() {
-    this.destroy()
   }
 
   #deferInteractionHandlers() {
