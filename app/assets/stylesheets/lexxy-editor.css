@@ -254,6 +254,64 @@
     display: none;
   }
 
+  /* Audio preview: file card with audio player below */
+  .attachment--preview[data-content-type^="audio"] {
+    inline-size: 100%;
+
+    .attachment__preview-view {
+      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      border-radius: var(--lexxy-radius);
+      overflow: hidden;
+
+      /* File info row: icon + caption side by side */
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto auto;
+      align-items: center;
+      gap: 0 0.75rem;
+      padding: 0.75rem;
+
+      > .attachment__icon {
+        grid-row: 1 / -1;
+      }
+
+      > figcaption {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+        text-align: start;
+        padding: 0;
+        position: relative;
+        top: 1px;
+
+        .attachment__name {
+          color: var(--lexxy-color-ink);
+          font-size: 0.875rem;
+          font-weight: 600;
+          line-height: 1.3;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .attachment__size {
+          color: var(--lexxy-color-text-subtle, #9ca3af);
+          font-size: 0.75rem;
+        }
+      }
+
+      audio {
+        grid-column: 1 / -1;
+        box-shadow: 0 -1px 0 var(--lexxy-color-ink-lighter, #e5e7eb);
+        display: block;
+        inline-size: calc(100% + 1.5rem);
+        margin: 0.75rem -0.75rem -0.75rem;
+        padding: 0.75rem;
+      }
+    }
+  }
+
   .attachment--preview.attachment--collapsed {
     align-items: center;
     background-color: var(--lexxy-color-canvas);
@@ -304,6 +362,7 @@
       flex: 1;
       gap: 0.125rem;
       min-width: 0;
+      padding: 0;
       text-align: start;
     }
 
@@ -332,10 +391,8 @@
     }
   }
 
-  .attachment--preview.attachment--caption-hidden {
-    figcaption {
-      display: none;
-    }
+  .attachment--preview.attachment--caption-hidden:not([data-content-type^="audio"]) .attachment__preview-view figcaption {
+    display: none;
   }
 
   .attachment__name-input,
@@ -461,6 +518,7 @@
       flex: 1;
       gap: 0.125rem;
       min-width: 0;
+      padding: 0;
       text-align: start;
     }
 
@@ -490,7 +548,8 @@
       white-space: nowrap;
     }
 
-    .attachment__subtitle {
+    .attachment__subtitle,
+    .attachment__size {
       color: var(--lexxy-color-text-subtle, #9ca3af);
       font-size: 0.75rem;
       flex-shrink: 0;
