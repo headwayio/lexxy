@@ -106,7 +106,15 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   createDOM() {
     const figure = this.createAttachmentFigure()
 
-    if (this.isPreviewableImage) {
+    if (this.isAudio) {
+      const previewView = createElement("div", { className: "attachment__preview-view" })
+      previewView.appendChild(this.#createDOMForFile())
+      previewView.appendChild(this.#createDOMForNotImage())
+      previewView.appendChild(this.#createAudioPlayer())
+      figure.appendChild(previewView)
+
+      figure.appendChild(this.#createCardView())
+    } else if (this.isPreviewableAttachment) {
       const previewView = createElement("div", { className: "attachment__preview-view" })
       previewView.appendChild(this.#createDOMForImage())
       previewView.appendChild(this.#createEditableCaption())
@@ -132,11 +140,13 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       caption.value = this.caption
     }
 
-    // Sync file attachment name display (non-image attachments).
+    // Sync file/audio attachment name display (non-image attachments).
     // When captionHidden, show original filename; otherwise show caption or filename.
-    const nameTag = dom.querySelector(".attachment__name")
-    if (nameTag && !nameTag.querySelector("input")) {
-      nameTag.textContent = this.captionHidden ? this.fileName : (this.caption || this.fileName)
+    const displayName = this.captionHidden ? this.fileName : (this.caption || this.fileName)
+    for (const nameTag of dom.querySelectorAll(".attachment__name")) {
+      if (!nameTag.querySelector("input")) {
+        nameTag.textContent = displayName
+      }
     }
 
     dom.classList.toggle("attachment--collapsed", this.collapsed)
@@ -199,7 +209,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return null
   }
 
-  createAttachmentFigure(previewable = this.isPreviewableImage) {
+  createAttachmentFigure(previewable = this.isPreviewableAttachment) {
     const figure = createAttachmentFigure(this.contentType, previewable, this.fileName)
     figure.draggable = true
     figure.dataset.lexicalNodeKey = this.__key
@@ -217,11 +227,15 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   }
 
   get isPreviewableAttachment() {
-    return this.isPreviewableImage || this.previewable
+    return this.isPreviewableImage || this.previewable || this.isAudio
   }
 
   get isPreviewableImage() {
     return isPreviewableImage(this.contentType)
+  }
+
+  get isAudio() {
+    return this.contentType?.startsWith("audio/")
   }
 
   #createDOMForImage(options = {}) {
@@ -267,7 +281,8 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const icon = createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
 
     const caption = createElement("figcaption", { className: "attachment__caption" })
-    const name = createElement("strong", { className: "attachment__name", textContent: this.caption || this.fileName })
+    const displayName = this.captionHidden ? this.fileName : (this.caption || this.fileName)
+    const name = createElement("strong", { className: "attachment__name", textContent: displayName })
     caption.appendChild(name)
 
     if (this.fileSize) {
@@ -279,6 +294,13 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     cardView.appendChild(caption)
 
     return cardView
+  }
+
+  #createAudioPlayer() {
+    const audio = createElement("audio", { controls: true, preload: "metadata" })
+    const source = createElement("source", { src: this.blobUrl || this.src, type: this.contentType })
+    audio.appendChild(source)
+    return audio
   }
 
   #createDOMForFile() {

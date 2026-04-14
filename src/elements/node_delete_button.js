@@ -209,7 +209,13 @@ export class NodeDeleteButton extends HTMLElement {
       this.collapseButton.setAttribute("aria-label", isCollapsed ? "Expand preview" : "Collapse preview")
     })
 
-    this.#figure?.dispatchEvent(new Event("lexxy:sync-wrapped-block", { bubbles: true }))
+    // Double-RAF: first waits for Lexical's DOM reconciliation to apply
+    // the collapsed class, second ensures layout is computed before repositioning
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this.#figure?.dispatchEvent(new Event("lexxy:sync-wrapped-block", { bubbles: true }))
+      })
+    })
   }
 
   #toggleCaption() {
