@@ -51,62 +51,19 @@ export class NodeDeleteButton extends HTMLElement {
   #attachButtons() {
     const container = createElement("div", { className: "lexxy-floating-controls__group" })
 
-    // Preview (eye) button
-    const previewButton = createElement("button", {
-      className: "lexxy-node-preview",
-      type: "button",
-      "aria-label": "Preview"
-    })
-    previewButton.tabIndex = -1
-    previewButton.innerHTML = PREVIEW_ICON
-    previewButton.addEventListener("click", () => this.#openPreview())
-    container.appendChild(previewButton)
+    container.appendChild(this.#floatingButton("lexxy-node-preview", "Preview", PREVIEW_ICON, () => this.#openPreview()))
 
-    // Collapse/expand toggle for image previews
     if (this.#isPreviewAttachment) {
-      this.collapseButton = createElement("button", {
-        className: "lexxy-node-collapse",
-        type: "button",
-        "aria-label": "Collapse preview"
-      })
-      this.collapseButton.tabIndex = -1
-      this.collapseButton.innerHTML = COLLAPSE_ICON
-      this.collapseButton.addEventListener("click", () => this.#toggleCollapse())
+      this.collapseButton = this.#floatingButton("lexxy-node-collapse", "Collapse preview", COLLAPSE_ICON, () => this.#toggleCollapse())
       container.appendChild(this.collapseButton)
     }
 
-    // Edit name (pencil) button
-    const editButton = createElement("button", {
-      className: "lexxy-node-edit",
-      type: "button",
-      "aria-label": "Edit name"
-    })
-    editButton.tabIndex = -1
-    editButton.innerHTML = EDIT_ICON
-    editButton.addEventListener("click", () => this.#triggerNameEdit())
-    container.appendChild(editButton)
+    container.appendChild(this.#floatingButton("lexxy-node-edit", "Edit name", EDIT_ICON, () => this.#triggerNameEdit()))
 
-    // Caption show/hide toggle
-    this.captionButton = createElement("button", {
-      className: "lexxy-node-caption-toggle",
-      type: "button",
-      "aria-label": "Hide caption"
-    })
-    this.captionButton.tabIndex = -1
-    this.captionButton.innerHTML = CAPTION_SHOW_ICON
-    this.captionButton.addEventListener("click", () => this.#toggleCaption())
+    this.captionButton = this.#floatingButton("lexxy-node-caption-toggle", "Hide caption", CAPTION_SHOW_ICON, () => this.#toggleCaption())
     container.appendChild(this.captionButton)
 
-    // Delete button
-    const deleteButton = createElement("button", {
-      className: "lexxy-node-delete",
-      type: "button",
-      "aria-label": "Remove"
-    })
-    deleteButton.tabIndex = -1
-    deleteButton.innerHTML = DELETE_ICON
-    deleteButton.addEventListener("click", () => this.#deleteNode())
-    container.appendChild(deleteButton)
+    container.appendChild(this.#floatingButton("lexxy-node-delete", "Remove", DELETE_ICON, () => this.#deleteNode()))
 
     this.appendChild(container)
 
@@ -114,6 +71,14 @@ export class NodeDeleteButton extends HTMLElement {
     // Deferred to next frame because the Lexical node may not be registered yet
     // when connectedCallback fires during DOM construction.
     requestAnimationFrame(() => this.#syncButtonStates())
+  }
+
+  #floatingButton(className, label, icon, onClick) {
+    const button = createElement("button", { className, type: "button", "aria-label": label })
+    button.tabIndex = -1
+    button.innerHTML = icon
+    button.addEventListener("click", onClick)
+    return button
   }
 
   get #figure() {
