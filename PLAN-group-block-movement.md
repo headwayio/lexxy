@@ -1,7 +1,7 @@
 # Block Editing: Architecture & Implementation
 
 > Notion-style block selection, movement, drag-and-drop, and formatting for Lexxy.
-> Branch: `block-editing-standalone` — 53 files changed, ~11,800 lines added.
+> Branch: `block-editing-standalone` — 62 files changed, ~12,800 lines added.
 
 ## Overview
 
@@ -17,13 +17,18 @@ The design goal is Notion-style block semantics: every visible element (paragrap
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/extensions/block_selection_extension.js` | 4,027 | Core extension: selection state, keyboard navigation, block movement, formatting, highlight propagation |
-| `src/editor/block_drag_and_drop.js` | 2,242 | Drag handles, drop indicators, drag ghosts, auto-scroll, hover detection |
+| `src/extensions/block_selection_extension.js` | 4,022 | Core extension: selection state, keyboard navigation, block movement, formatting, highlight propagation |
+| `src/editor/block_drag_and_drop.js` | 2,279 | Drag handles, drop indicators, drag ghosts, auto-scroll, hover detection |
 | `src/elements/block_actions_menu.js` | 596 | Floating context menu: turn-into, highlight colors, delete |
+| `src/elements/attachment_icons.js` | 41 | Shared SVG icon strings for attachment floating controls and preview modal chrome |
+| `src/preview/dialog_builder.js` | 181 | Shared preview-modal DOM builder used by the editor element and the standalone show-page script |
+| `src/preview/content_preview.js` | 106 | Rollup entry for `lexxy-content-preview.js` — the show-page script host apps import on pages that render ActionText content |
 | `src/editor/block_helpers.js` | 26 | Shared constants (`BLOCK_SELECTED_CLASS`, etc.) and `$isStructuralWrapper()` helper |
 | `src/nodes/wrapped_table_node.js` | 74 | TableNode subclass for tables inside list items; provisional escape item tracking |
 | `src/editor/markdown/list_heading_shortcut.js` | 102 | Markdown shortcuts (`# `, `## `, `> `) inside list items → wrapped blocks |
-| `test/browser/tests/block_editing/*.test.js` | 1,447 | 9 Playwright test files covering selection, drag-and-drop, movement, actions menu |
+| `lib/lexxy/attachment_icon_helper.rb` | 21 | Ruby mirror of the JS icon-label map. Included into ActionView::Base by the engine so the show-page blob partial uses the same labels |
+| `lib/lexxy/attachment_helper.rb` | 54 | Helpers (`lexxy_attachment_actions`, `lexxy_attachment_preview_caption`, `lexxy_attachment_file_caption`) used by `_blob.html.erb` to keep the partial free of tag-concatenation |
+| `test/browser/tests/block_editing/*.test.js` | 1,301 | 8 Playwright test files covering selection, drag-and-drop, movement, actions menu |
 
 ### Modified core files
 
@@ -63,7 +68,7 @@ Based on the analysis above, candidates for moving back to the extension (or spl
 
 ### Extension subsystems
 
-The `BlockSelectionExtension` (4,027 lines) has 13 interconnected subsystems:
+The `BlockSelectionExtension` (4,022 lines) has 13 interconnected subsystems:
 
 #### 1. Mode management
 Dual-mode system: `"edit"` (normal text editing) and `"block-select"` (block-level operations). Escape toggles between them. Entering block-select adds `block-selection-active` to the editor root (hides caret, disables text selection via CSS). Exiting removes it and commits any pending highlight color changes.
@@ -244,7 +249,9 @@ All attachment types render with **preview** (eye icon) and **download** action 
 
 ### Preview modal (`lexxy-content-preview.js`)
 
-Standalone script for show pages. Provides:
+Standalone script for show pages. Source lives at `src/preview/content_preview.js`; rollup emits the `app/assets/javascript/lexxy-content-preview.js` bundle alongside `lexxy.js`. Both the editor's `<lexxy-preview-modal>` custom element and this script share the DOM-building logic in `src/preview/dialog_builder.js`, so the two modals render identically.
+
+Provides:
 - Full-screen `<dialog>` modal with header (icon, caption, filename, file size) + content area
 - Content-type detection: image zoom, video player, audio player, PDF iframe, generic download
 - Playback time sync: opening modal from an inline player carries over `currentTime`; closing syncs it back
