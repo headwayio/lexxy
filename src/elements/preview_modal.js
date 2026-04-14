@@ -1,5 +1,5 @@
 import Lexxy from "../config/lexxy"
-import { createElement } from "../helpers/html_helper"
+import { attachmentIconLabel, createElement } from "../helpers/html_helper"
 import { bytesToHumanSize } from "../helpers/storage_helper"
 
 const CLOSE_ICON = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6L6 18M6 6l12 12\"/></svg>"
@@ -129,7 +129,7 @@ export class PreviewModal extends HTMLElement {
     const ext = fileExtension(fileName)
     const icon = createElement("span", {
       className: `lexxy-preview-modal__icon attachment--${ext}`,
-      textContent: ext.toUpperCase()
+      textContent: attachmentIconLabel(ext)
     })
 
     const titleGroup = createElement("div", { className: "lexxy-preview-modal__title-group" })
@@ -240,7 +240,7 @@ export class PreviewModal extends HTMLElement {
 
     const icon = createElement("span", {
       className: `lexxy-preview-modal__generic-icon attachment--${ext}`,
-      textContent: ext.toUpperCase()
+      textContent: attachmentIconLabel(ext)
     })
 
     const name = createElement("strong", {

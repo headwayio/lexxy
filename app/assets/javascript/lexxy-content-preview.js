@@ -9,6 +9,22 @@ function fileExtension(fileName) {
   return fileName ? fileName.split(".").pop().toLowerCase() : ""
 }
 
+// Keep in sync with ICON_LABELS in src/helpers/html_helper.js and the
+// matching Ruby map in the blob partial. This file is a standalone
+// show-page script so it can't import from src/.
+const ICON_LABELS = {
+  md: "M\u2193", markdown: "M\u2193",
+  png: "IMG", jpg: "IMG", jpeg: "IMG", webp: "IMG", svg: "IMG",
+  bmp: "IMG", tiff: "IMG", tif: "IMG", ico: "IMG", avif: "IMG", heic: "IMG",
+  docx: "DOC", xlsx: "XLS", pptx: "PPT",
+  rar: "ZIP", webm: "VID", avi: "VID"
+}
+
+function iconLabel(ext) {
+  if (!ext) return ""
+  return ICON_LABELS[ext] || ext.toUpperCase()
+}
+
 function formatFileSize(bytes) {
   if (!bytes) return ""
   bytes = Number(bytes)
@@ -39,7 +55,7 @@ function openPreviewModal(src, fileName, contentType, caption, fileSize) {
 
   const icon = document.createElement("span")
   icon.className = `lexxy-preview-modal__icon attachment--${ext}`
-  icon.textContent = ext.toUpperCase()
+  icon.textContent = iconLabel(ext)
   titleGroup.appendChild(icon)
 
   const titleInfo = document.createElement("div")
@@ -131,7 +147,7 @@ function openPreviewModal(src, fileName, contentType, caption, fileSize) {
     wrapper.className = "lexxy-preview-modal__generic"
     const genIcon = document.createElement("span")
     genIcon.className = `lexxy-preview-modal__generic-icon attachment--${ext}`
-    genIcon.textContent = ext.toUpperCase()
+    genIcon.textContent = iconLabel(ext)
 
     const displayName = (caption && caption !== fileName) ? caption : (fileName || "Unknown file")
     const name = document.createElement("strong")

@@ -26,11 +26,13 @@ export function createAttachmentFigure(contentType, isPreviewable, fileName) {
   })
 }
 
+// Extension → short label shown inside .attachment__icon. Any extension not in
+// this map falls back to its uppercased form (".sql" → "SQL"). Keep in sync
+// with Lexxy::AttachmentIconHelper on the Ruby side — the show-page
+// _blob.html.erb partial uses the same labels.
 const ICON_LABELS = {
   md: "M\u2193",
   markdown: "M\u2193",
-  xlsx: "XLS",
-  docx: "DOC",
   png: "IMG",
   jpg: "IMG",
   jpeg: "IMG",
@@ -41,11 +43,18 @@ const ICON_LABELS = {
   tif: "IMG",
   ico: "IMG",
   avif: "IMG",
-  heic: "IMG"
+  heic: "IMG",
+  docx: "DOC",
+  xlsx: "XLS",
+  pptx: "PPT",
+  rar: "ZIP",
+  webm: "VID",
+  avi: "VID"
 }
 
 export function attachmentIconLabel(extension) {
-  return ICON_LABELS[extension] || extension
+  if (!extension) return ""
+  return ICON_LABELS[extension] || extension.toUpperCase()
 }
 
 export function isPreviewableImage(contentType) {
