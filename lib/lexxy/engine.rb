@@ -33,13 +33,21 @@ module Lexxy
       end
     end
 
+    initializer "lexxy.attachment_attributes" do
+      ActionText::Attachment::ATTRIBUTES.push("data-caption-hidden", "data-collapsed")
+    end
+
     initializer "lexxy.sanitization" do |app|
       ActiveSupport.on_load(:action_text_content) do
         default_allowed_tags = Class.new.include(ActionText::ContentHelper).new.sanitizer_allowed_tags
-        ActionText::ContentHelper.allowed_tags = default_allowed_tags + %w[ video audio source embed table tbody tr th td ]
+        ActionText::ContentHelper.allowed_tags = default_allowed_tags + %w[ video audio source embed table tbody tr th td svg path ]
 
         default_allowed_attributes = Class.new.include(ActionText::ContentHelper).new.sanitizer_allowed_attributes
-        ActionText::ContentHelper.allowed_attributes = default_allowed_attributes + %w[ controls poster data-language style ]
+        ActionText::ContentHelper.allowed_attributes = default_allowed_attributes + %w[
+          controls poster data-language style autoplay loop muted playsinline preload
+          viewBox xmlns d fill download target aria-label
+          data-collapsed data-caption-hidden
+        ]
 
         Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var" # Allow CSS variables
       end

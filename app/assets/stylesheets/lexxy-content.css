@@ -427,11 +427,12 @@
   }
 
   .attachment--preview {
+    padding: 0;
+
     img, video {
       border-radius: var(--lexxy-radius);
       block-size: auto;
       display: block;
-      margin-inline: auto;
       max-inline-size: 100%;
       user-select: none;
     }
@@ -516,6 +517,120 @@
     }
   }
 
+  .attachment--audio {
+    border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+    border-radius: var(--lexxy-radius);
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+    padding: 0;
+
+    .attachment__file-info {
+      align-items: center;
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.75rem;
+    }
+
+    .attachment__caption {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 0.125rem;
+      min-width: 0;
+      text-align: start;
+    }
+
+    .attachment__name {
+      color: var(--lexxy-color-ink);
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    audio {
+      border-top: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      display: block;
+      inline-size: 100%;
+      padding: 0.75rem;
+    }
+  }
+
+  .attachment--preview.attachment--caption-hidden,
+  action-text-attachment[data-caption-hidden] .attachment--preview {
+    figcaption, .attachment__caption {
+      display: none;
+    }
+  }
+
+  action-text-attachment[data-collapsed] .attachment--preview {
+    .attachment__media, .attachment__preview-view {
+      display: none;
+    }
+
+    .attachment__card-view {
+      align-items: center;
+      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      border-radius: var(--lexxy-radius);
+      display: flex;
+      gap: 0.75rem;
+      inline-size: 100%;
+      padding: 0.75rem;
+    }
+  }
+
+  .attachment__media {
+    display: inline-block;
+    margin-inline: auto;
+    position: relative;
+  }
+
+  .attachment__actions {
+    display: flex;
+    gap: 0.25rem;
+    position: absolute;
+    inset-block-start: 0.5rem;
+    inset-inline-end: 0.5rem;
+    z-index: 1;
+  }
+
+  .attachment__action {
+    align-items: center;
+    background: var(--lexxy-color-ink, #1a1a1a);
+    border-radius: 6px;
+    color: var(--lexxy-color-ink-inverted, #fff);
+    display: inline-flex;
+    fill: currentColor;
+    justify-content: center;
+    block-size: 1.75rem;
+    inline-size: 1.75rem;
+    opacity: 0;
+    transition: opacity 150ms;
+
+    svg {
+      block-size: 1rem;
+      inline-size: 1rem;
+    }
+  }
+
+  .attachment:hover .attachment__action,
+  .attachment:focus-within .attachment__action {
+    opacity: 1;
+  }
+
+  .attachment--file {
+    position: relative;
+  }
+
+  .attachment--pdf {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(30% 0.05 27);
+  }
+
   .attachment--psd,
   .attachment--key,
   .attachment--sketch,
@@ -525,7 +640,9 @@
   .attachment--svg,
   .attachment--ppt,
   .attachment--pptx {
-    --lexxy-attachment-icon-color: var(--lexxy-color-red);
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 27);
   }
 
   .attachment--css,
@@ -537,23 +654,67 @@
   .attachment--erb,
   .attachment--ts,
   .attachment--js {
-    --lexxy-attachment-icon-color: var(--lexxy-color-purple);
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 305);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 305);
   }
 
   .attachment--txt,
-  .attachment--pages,
   .attachment--rtf,
-  .attachment--md,
+  .attachment--md {
+    --lexxy-attachment-icon-bg: oklch(55% 0 0);
+    --lexxy-attachment-icon-border: oklch(55% 0 0);
+    --lexxy-attachment-icon-text: white;
+  }
+
   .attachment--doc,
-  .attachment--docx {
-    --lexxy-attachment-icon-color: var(--lexxy-color-blue);
+  .attachment--docx,
+  .attachment--pages {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: oklch(45% 0.196 258);
   }
 
   .attachment--csv,
-  .attachment--numbers,
+  .attachment--numbers {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: oklch(45% 0.15 160);
+  }
+
   .attachment--xls,
   .attachment--xlsx {
-    --lexxy-attachment-icon-color: var(--lexxy-color-green);
+    --lexxy-attachment-icon-bg: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--png,
+  .attachment--jpg,
+  .attachment--jpeg,
+  .attachment--gif,
+  .attachment--webp {
+    --lexxy-attachment-icon-bg: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--mp3,
+  .attachment--wav,
+  .attachment--ogg,
+  .attachment--aac {
+    --lexxy-attachment-icon-bg: oklch(55% 0.15 305);
+    --lexxy-attachment-icon-border: oklch(55% 0.15 305);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--mp4,
+  .attachment--mov,
+  .attachment--webm,
+  .attachment--avi {
+    --lexxy-attachment-icon-bg: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: white;
   }
 
   .attachment--error {
