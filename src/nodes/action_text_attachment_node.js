@@ -113,14 +113,19 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       previewView.appendChild(this.#createAudioPlayer())
       figure.appendChild(previewView)
 
-      figure.appendChild(this.#createCardView())
+      // Audio's card view is identical DOM to the preview-view header (icon + name),
+      // so defer creation until it's actually needed (collapsed mode).
+      if (this.collapsed) figure.appendChild(this.#createCardView())
     } else if (this.isPreviewableAttachment) {
       const previewView = createElement("div", { className: "attachment__preview-view" })
       previewView.appendChild(this.#createDOMForImage())
       previewView.appendChild(this.#createEditableCaption())
       figure.appendChild(previewView)
 
-      figure.appendChild(this.#createCardView())
+      // Card view is hidden by CSS until the user collapses the attachment.
+      // Skip creating it eagerly — significant DOM cost when rendering many
+      // attachments at once. updateDOM recreates it when `collapsed` flips.
+      if (this.collapsed) figure.appendChild(this.#createCardView())
     } else {
       figure.appendChild(this.#createDOMForFile())
       figure.appendChild(this.#createDOMForNotImage())
@@ -140,6 +145,12 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       caption.value = this.caption
     }
 
+    // Lazy card-view creation: if collapsed flipped on and the card view was
+    // never rendered (skipped at createDOM for perf), build it now.
+    if (this.collapsed && this.#supportsCardView && !dom.querySelector(".attachment__card-view")) {
+      dom.appendChild(this.#createCardView())
+    }
+
     // Sync file/audio attachment name display (non-image attachments).
     // When captionHidden, show original filename; otherwise show caption or filename.
     const displayName = this.captionHidden ? this.fileName : (this.caption || this.fileName)
@@ -153,6 +164,10 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     dom.classList.toggle("attachment--caption-hidden", this.captionHidden)
 
     return false
+  }
+
+  get #supportsCardView() {
+    return this.isAudio || this.isPreviewableAttachment
   }
 
   getTextContent() {
