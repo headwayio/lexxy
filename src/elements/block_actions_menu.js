@@ -1,6 +1,10 @@
 import ToolbarIcons from "./toolbar_icons"
 import { VIEWPORT_PADDING } from "../editor/block_helpers"
 
+const PALETTE_ICON = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M8 1C4.136 1 1 4.136 1 8s3.136 7 7 7c.644 0 1.167-.523 1.167-1.167 0-.303-.117-.573-.292-.77a1.15 1.15 0 01-.292-.763c0-.644.523-1.167 1.167-1.167h1.377c2.254 0 4.083-1.829 4.083-4.083C14.21 3.757 11.454 1 8 1zM3.917 8a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm2.333-3.5a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm3.5 0a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm2.333 3.5a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333z" fill="currentColor"/>
+</svg>`
+
 const TURN_INTO_OPTIONS = [
   { command: "setFormatParagraph", label: "Text", icon: ToolbarIcons.paragraph },
   { command: "setFormatHeadingLarge", label: "Heading 2", icon: ToolbarIcons.h2 },
@@ -588,9 +592,5 @@ export class BlockActionsMenu extends HTMLElement {
   }
 
 }
-
-const PALETTE_ICON = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M8 1C4.136 1 1 4.136 1 8s3.136 7 7 7c.644 0 1.167-.523 1.167-1.167 0-.303-.117-.573-.292-.77a1.15 1.15 0 01-.292-.763c0-.644.523-1.167 1.167-1.167h1.377c2.254 0 4.083-1.829 4.083-4.083C14.21 3.757 11.454 1 8 1zM3.917 8a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm2.333-3.5a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm3.5 0a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm2.333 3.5a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333z" fill="currentColor"/>
-</svg>`
 
 export default BlockActionsMenu
