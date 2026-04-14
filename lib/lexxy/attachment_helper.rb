@@ -41,14 +41,13 @@ module Lexxy
     end
 
     private
+      def lexxy_attachment_name_and_size(blob)
+        tag.span(blob.filename, class: "attachment__name") +
+          tag.span(number_to_human_size(blob.byte_size), class: "attachment__size")
+      end
 
-    def lexxy_attachment_name_and_size(blob)
-      tag.span(blob.filename, class: "attachment__name") +
-        tag.span(number_to_human_size(blob.byte_size), class: "attachment__size")
-    end
-
-    def lexxy_attachment_icon_svg(path_data)
-      tag.svg(tag.path(d: path_data), viewBox: "0 0 18 18", xmlns: "http://www.w3.org/2000/svg")
-    end
+      def lexxy_attachment_icon_svg(path_data)
+        tag.svg(tag.path(d: path_data), viewBox: "0 0 18 18", xmlns: "http://www.w3.org/2000/svg")
+      end
   end
 end
