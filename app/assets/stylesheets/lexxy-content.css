@@ -458,20 +458,15 @@
       .attachment__preview-view {
         display: none;
       }
-
-      .attachment__card-view {
-        align-items: center;
-        border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
-        border-radius: var(--lexxy-radius);
-        display: flex;
-        gap: 0.75rem;
-        inline-size: 100%;
-        padding: 0.75rem;
-      }
     }
   }
 
-  .attachment--file {
+  /* Shared card look: file attachments, collapsed previews, and show-page
+     collapsed captions all render as an outlined row with icon + text. */
+  .attachment--file,
+  .attachment--preview.attachment--collapsed .attachment__card-view,
+  action-text-attachment[data-collapsed] .attachment--preview > .attachment__caption,
+  action-text-attachment[data-collapsed] .attachment--preview .attachment__card-view {
     align-items: center;
     border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
     border-radius: var(--lexxy-radius);
@@ -479,7 +474,22 @@
     gap: 0.75rem;
     inline-size: 100%;
     padding: 0.75rem;
+  }
 
+  /* Shared "strong name" text style used everywhere a file name appears in a card. */
+  .attachment--file .attachment__name,
+  .attachment--audio .attachment__name,
+  action-text-attachment[data-collapsed] .attachment--preview .attachment__name {
+    color: var(--lexxy-color-ink);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attachment--file {
     .attachment__caption {
       display: flex;
       flex-direction: column;
@@ -488,16 +498,6 @@
       padding: 0;
       min-width: 0;
       text-align: start;
-    }
-
-    .attachment__name {
-      color: var(--lexxy-color-ink);
-      font-size: 0.875rem;
-      font-weight: 600;
-      line-height: 1.3;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
 
     .attachment__meta {
@@ -548,16 +548,6 @@
       text-align: start;
     }
 
-    .attachment__name {
-      color: var(--lexxy-color-ink);
-      font-size: 0.875rem;
-      font-weight: 600;
-      line-height: 1.3;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
     audio {
       border-top: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
       display: block;
@@ -589,14 +579,8 @@
       display: none;
     }
 
-    /* Show page: restyle the caption as a file card */
+    /* Show page: restyle the caption as a file card (card look shared above) */
     > .attachment__caption {
-      align-items: center;
-      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
-      border-radius: var(--lexxy-radius);
-      display: flex;
-      gap: 0.75rem;
-      padding: 0.75rem;
       text-align: start;
 
       > .attachment__icon {
@@ -610,30 +594,10 @@
         min-width: 0;
       }
 
-      .attachment__name {
-        color: var(--lexxy-color-ink);
-        font-size: 0.875rem;
-        font-weight: 600;
-        line-height: 1.3;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
       .attachment__size {
         color: var(--lexxy-color-text-subtle, #9ca3af);
         font-size: 0.75rem;
       }
-    }
-
-    .attachment__card-view {
-      align-items: center;
-      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
-      border-radius: var(--lexxy-radius);
-      display: flex;
-      gap: 0.75rem;
-      inline-size: 100%;
-      padding: 0.75rem;
     }
   }
 
