@@ -291,23 +291,13 @@ export class ActionTextAttachmentNode extends DecoratorNode {
 
   #createCardView() {
     const cardView = createElement("div", { className: "attachment__card-view" })
-
-    const extension = this.fileName ? this.fileName.split(".").pop().toLowerCase() : "unknown"
-    const icon = createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
-
     const caption = createElement("figcaption", { className: "attachment__caption" })
-    const displayName = this.captionHidden ? this.fileName : (this.caption || this.fileName)
-    const name = createElement("strong", { className: "attachment__name", textContent: displayName })
-    caption.appendChild(name)
-
+    caption.appendChild(this.#createNameTag())
     if (this.fileSize) {
-      const subtitle = createElement("span", { className: "attachment__subtitle", textContent: bytesToHumanSize(this.fileSize) })
-      caption.appendChild(subtitle)
+      caption.appendChild(createElement("span", { className: "attachment__subtitle", textContent: bytesToHumanSize(this.fileSize) }))
     }
-
-    cardView.appendChild(icon)
+    cardView.appendChild(this.#createIconLabel())
     cardView.appendChild(caption)
-
     return cardView
   }
 
@@ -319,29 +309,34 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   }
 
   #createDOMForFile() {
-    const extension = this.fileName ? this.fileName.split(".").pop().toLowerCase() : "unknown"
-    return createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
+    return this.#createIconLabel()
   }
 
   #createDOMForNotImage() {
     const figcaption = createElement("figcaption", { className: "attachment__caption" })
-
-    const displayName = this.captionHidden ? this.fileName : (this.caption || this.fileName)
-    const nameTag = createElement("strong", {
-      className: "attachment__name",
-      textContent: displayName,
-      title: "Click to rename"
-    })
+    const nameTag = this.#createNameTag({ title: "Click to rename" })
     nameTag.addEventListener("click", (event) => this.#startEditingName(event, nameTag))
-
     figcaption.appendChild(nameTag)
-
     if (this.fileSize) {
-      const sizeSpan = createElement("span", { className: "attachment__size", textContent: bytesToHumanSize(this.fileSize) })
-      figcaption.appendChild(sizeSpan)
+      figcaption.appendChild(createElement("span", { className: "attachment__size", textContent: bytesToHumanSize(this.fileSize) }))
     }
-
     return figcaption
+  }
+
+  #createIconLabel() {
+    return createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(this.#fileExtension) })
+  }
+
+  #createNameTag(extraProps = {}) {
+    return createElement("strong", { className: "attachment__name", textContent: this.#displayName, ...extraProps })
+  }
+
+  get #fileExtension() {
+    return this.fileName ? this.fileName.split(".").pop().toLowerCase() : "unknown"
+  }
+
+  get #displayName() {
+    return this.captionHidden ? this.fileName : (this.caption || this.fileName)
   }
 
   #startEditingName(event, nameTag) {
