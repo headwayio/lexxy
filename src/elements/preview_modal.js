@@ -1,5 +1,6 @@
 import Lexxy from "../config/lexxy"
 import { createElement } from "../helpers/html_helper"
+import { bytesToHumanSize } from "../helpers/storage_helper"
 
 const CLOSE_ICON = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6L6 18M6 6l12 12\"/></svg>"
 
@@ -30,6 +31,9 @@ function fileExtension(fileName) {
 }
 
 export class PreviewModal extends HTMLElement {
+  #caption = null
+  #fileSize = null
+
   connectedCallback() {
     if (!Lexxy.global.get("previewModal")) return
 
@@ -47,16 +51,18 @@ export class PreviewModal extends HTMLElement {
   #onPreviewRequest(event) {
     if (event.defaultPrevented) return
 
-    const { src, blobUrl, fileName, contentType, fileSize, sgid } = event.detail
+    const { src, blobUrl, fileName, contentType, fileSize, sgid, caption } = event.detail
     if (!src && !blobUrl) return
 
-    this.#open(src, blobUrl, fileName, contentType, fileSize, sgid)
+    this.#open(src, blobUrl, fileName, contentType, fileSize, sgid, caption)
   }
 
-  #open(src, blobUrl, fileName, contentType, fileSize, sgid) {
+  #open(src, blobUrl, fileName, contentType, fileSize, sgid, caption) {
     this.#close()
 
     const downloadSrc = blobUrl || src
+    this.#caption = caption
+    this.#fileSize = fileSize
 
     // Use <dialog> for native Escape handling — the cancel event fires
     // even when focus is inside native video/audio controls.
@@ -126,11 +132,24 @@ export class PreviewModal extends HTMLElement {
       textContent: ext.toUpperCase()
     })
 
-    const title = createElement("span", { className: "lexxy-preview-modal__title", textContent: fileName || "File" })
-
     const titleGroup = createElement("div", { className: "lexxy-preview-modal__title-group" })
     titleGroup.appendChild(icon)
-    titleGroup.appendChild(title)
+
+    const titleInfo = createElement("div", { className: "lexxy-preview-modal__title-info" })
+    const formattedSize = this.#fileSize ? bytesToHumanSize(Number(this.#fileSize) || 0) : ""
+    const sizeText = formattedSize ? " · " + formattedSize : ""
+
+    if (this.#caption && this.#caption !== fileName) {
+      titleInfo.appendChild(createElement("span", { className: "lexxy-preview-modal__title", textContent: this.#caption }))
+      titleInfo.appendChild(createElement("span", { className: "lexxy-preview-modal__subtitle", textContent: fileName + sizeText }))
+    } else {
+      titleInfo.appendChild(createElement("span", { className: "lexxy-preview-modal__title", textContent: fileName || "File" }))
+      if (formattedSize) {
+        titleInfo.appendChild(createElement("span", { className: "lexxy-preview-modal__subtitle", textContent: formattedSize }))
+      }
+    }
+
+    titleGroup.appendChild(titleInfo)
 
     const actions = createElement("div", { className: "lexxy-preview-modal__actions" })
 
@@ -224,7 +243,22 @@ export class PreviewModal extends HTMLElement {
       textContent: ext.toUpperCase()
     })
 
-    const name = createElement("strong", { textContent: fileName || "Unknown file" })
+    const name = createElement("strong", {
+      textContent: (this.#caption && this.#caption !== fileName) ? this.#caption : (fileName || "Unknown file")
+    })
+
+    if (this.#caption && this.#caption !== fileName) {
+      const subName = createElement("span", {
+        className: "lexxy-preview-modal__generic-hint",
+        textContent: fileName
+      })
+      wrapper.appendChild(icon)
+      wrapper.appendChild(name)
+      wrapper.appendChild(subName)
+    } else {
+      wrapper.appendChild(icon)
+      wrapper.appendChild(name)
+    }
     const hint = createElement("span", {
       className: "lexxy-preview-modal__generic-hint",
       textContent: "No preview available for this file type"
@@ -237,8 +271,6 @@ export class PreviewModal extends HTMLElement {
       textContent: "Download"
     })
 
-    wrapper.appendChild(icon)
-    wrapper.appendChild(name)
     wrapper.appendChild(hint)
     wrapper.appendChild(download)
 
