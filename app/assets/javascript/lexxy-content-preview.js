@@ -25,13 +25,16 @@ function iconLabel(ext) {
   return ICON_LABELS[ext] || ext.toUpperCase()
 }
 
+// Port of bytesToHumanSize in src/helpers/storage_helper.js. Kept in sync so
+// the editor preview modal and the show-page preview modal print identical
+// file sizes for the same blob.
 function formatFileSize(bytes) {
   if (!bytes) return ""
   bytes = Number(bytes)
-  if (bytes < 1024) return bytes + " B"
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1).replace(/\.0$/, '') + " KB"
-  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1).replace(/\.0$/, '') + " MB"
-  return (bytes / 1073741824).toFixed(2) + " GB"
+  if (bytes === 0) return "0 B"
+  const sizes = [ "B", "KB", "MB", "GB", "TB", "PB" ]
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return `${ (bytes / Math.pow(1024, i)).toFixed(2) } ${ sizes[i] }`
 }
 
 function openPreviewModal(src, fileName, contentType, caption, fileSize) {
