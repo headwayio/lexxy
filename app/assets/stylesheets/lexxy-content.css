@@ -407,6 +407,11 @@
     padding: 1ch;
   }
 
+  .attachment__size {
+    color: var(--lexxy-color-text-subtle, #9ca3af);
+    font-size: 0.75rem;
+  }
+
   .attachment__icon {
     background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
     block-size: 2.5rem;
@@ -480,6 +485,7 @@
       flex-direction: column;
       flex: 1;
       gap: 0.125rem;
+      padding: 0;
       min-width: 0;
       text-align: start;
     }
@@ -538,6 +544,7 @@
       flex: 1;
       gap: 0.125rem;
       min-width: 0;
+      padding: 0;
       text-align: start;
     }
 
@@ -559,16 +566,64 @@
     }
   }
 
-  .attachment--preview.attachment--caption-hidden,
-  action-text-attachment[data-caption-hidden] .attachment--preview {
-    figcaption, .attachment__caption {
-      display: none;
-    }
+  action-text-attachment[data-collapsed] .attachment--audio audio {
+    display: none;
+  }
+
+  .attachment--preview.attachment--caption-hidden .attachment__preview-view figcaption,
+  .attachment--preview.attachment--caption-hidden:not(.attachment--collapsed) > .attachment__caption,
+  action-text-attachment[data-caption-hidden]:not([data-collapsed]) .attachment--preview .attachment__media + .attachment__caption {
+    display: none;
+  }
+
+  /* Hide icon in preview captions by default — shown when collapsed */
+  .attachment--preview > .attachment__caption > .attachment__icon {
+    display: none;
   }
 
   action-text-attachment[data-collapsed] .attachment--preview {
+    inline-size: 100%;
+    padding: 0;
+
     .attachment__media, .attachment__preview-view {
       display: none;
+    }
+
+    /* Show page: restyle the caption as a file card */
+    > .attachment__caption {
+      align-items: center;
+      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      border-radius: var(--lexxy-radius);
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      text-align: start;
+
+      > .attachment__icon {
+        display: grid;
+      }
+
+      > .attachment__caption-text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+      }
+
+      .attachment__name {
+        color: var(--lexxy-color-ink);
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attachment__size {
+        color: var(--lexxy-color-text-subtle, #9ca3af);
+        font-size: 0.75rem;
+      }
     }
 
     .attachment__card-view {
@@ -585,7 +640,6 @@
   .attachment__media {
     display: inline-block;
     margin-inline: auto;
-    position: relative;
   }
 
   .attachment__actions {
@@ -617,11 +671,12 @@
   }
 
   .attachment:hover .attachment__action,
-  .attachment:focus-within .attachment__action {
+  .attachment:focus-within:not(:has(audio:focus-within)) .attachment__action {
     opacity: 1;
   }
 
-  .attachment--file {
+  .attachment--file,
+  .attachment--preview {
     position: relative;
   }
 
