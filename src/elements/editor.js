@@ -593,7 +593,7 @@ export class LexicalEditorElement extends HTMLElement {
 
   #createDefaultToolbar() {
     const toolbar = createElement("lexxy-toolbar")
-    toolbar.innerHTML = LexicalToolbar.defaultTemplate
+    toolbar.appendChild(LexicalToolbar.cloneDefaultTemplate())
     toolbar.setAttribute("data-attachments", this.supportsAttachments) // Drives toolbar CSS styles
     toolbar.configure(this.config.get("toolbar"))
     this.prepend(toolbar)

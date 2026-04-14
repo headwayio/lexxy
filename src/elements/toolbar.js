@@ -372,6 +372,20 @@ export class LexicalToolbarElement extends HTMLElement {
     return Array.from(this.querySelectorAll(":scope > *:not(.lexxy-editor__toolbar-overflow)"))
   }
 
+  // Parsing the default template string into DOM is one of the biggest fixed
+  // per-editor costs (14+ buttons, nested dropdowns, inline SVG icons). Cache
+  // a <template> element so additional editors clone the parsed fragment
+  // instead of re-parsing the HTML.
+  static #templateNode = null
+
+  static cloneDefaultTemplate() {
+    if (!this.#templateNode) {
+      this.#templateNode = document.createElement("template")
+      this.#templateNode.innerHTML = this.defaultTemplate
+    }
+    return this.#templateNode.content.cloneNode(true)
+  }
+
   static get defaultTemplate() {
     return `
       <button class="lexxy-editor__toolbar-button" type="button" name="image" data-command="uploadImage" data-prevent-overflow="true" title="Add images and video">
