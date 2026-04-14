@@ -309,6 +309,7 @@
 
     .attachment__name {
       color: var(--lexxy-color-ink);
+      cursor: text;
       font-size: 0.875rem;
       font-weight: 600;
       line-height: 1.3;
@@ -329,6 +330,25 @@
       inset-inline-start: unset;
       transform: translate(0, -50%);
     }
+  }
+
+  .attachment--preview.attachment--caption-hidden {
+    figcaption {
+      display: none;
+    }
+  }
+
+  .attachment__name-input,
+  .attachment__name-input:focus,
+  .attachment__name-input:focus-visible {
+    background: transparent;
+    border: none;
+    color: inherit;
+    field-sizing: content;
+    font: inherit;
+    max-inline-size: 100%;
+    outline: none;
+    padding: 0;
   }
 
   .attachment[draggable] {
@@ -636,6 +656,21 @@
       }
     }
   }
+}
+
+/* Restore native text selection highlight on name input — must be outside
+   :where(lexxy-editor) to override the inherited transparent ::selection */
+.attachment__name-input,
+.attachment__name-input:focus,
+.attachment__name-input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.attachment__name-input::selection {
+  background: #3390FF !important;
+  color: white !important;
 }
 
 /* Suppress attachment hover outline while dragging, but preserve it
@@ -1416,7 +1451,8 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     opacity: 0;
     pointer-events: none;
 
-    .node--selected & {
+    .node--selected &,
+    .attachment:hover & {
       opacity: 1;
       pointer-events: auto;
     }
@@ -2607,13 +2643,28 @@ dialog.lexxy-preview-modal::backdrop {
   min-width: 0;
 }
 
+.lexxy-preview-modal__title-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.lexxy-preview-modal__subtitle {
+  color: var(--lexxy-color-text-subtle, #9ca3af);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lexxy-preview-modal__icon {
   display: grid;
   place-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.5rem;
+  height: 2.5rem;
   border-radius: var(--lexxy-radius, 0.375rem);
-  font-size: 0.625rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -2621,6 +2672,20 @@ dialog.lexxy-preview-modal::backdrop {
   background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
   border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
   color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+}
+
+/* Modal icon colors — outside lexxy-editor scope since modal is on document.body */
+:is(.lexxy-preview-modal__icon, .lexxy-preview-modal__generic-icon) {
+  &.attachment--pdf { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.2 27); --lexxy-attachment-icon-text: oklch(30% 0.05 27); }
+  &.attachment--xls, &.attachment--xlsx { --lexxy-attachment-icon-bg: oklch(55% 0.15 160); --lexxy-attachment-icon-border: oklch(55% 0.15 160); --lexxy-attachment-icon-text: white; }
+  &.attachment--csv, &.attachment--numbers { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.15 160); --lexxy-attachment-icon-text: oklch(45% 0.15 160); }
+  &.attachment--doc, &.attachment--docx, &.attachment--pages { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.196 258); --lexxy-attachment-icon-text: oklch(45% 0.196 258); }
+  &.attachment--txt, &.attachment--rtf, &.attachment--md { --lexxy-attachment-icon-bg: oklch(55% 0 0); --lexxy-attachment-icon-border: oklch(55% 0 0); --lexxy-attachment-icon-text: white; }
+  &.attachment--png, &.attachment--jpg, &.attachment--jpeg, &.attachment--gif, &.attachment--webp { --lexxy-attachment-icon-bg: oklch(55% 0.196 258); --lexxy-attachment-icon-border: oklch(55% 0.196 258); --lexxy-attachment-icon-text: white; }
+  &.attachment--mp3, &.attachment--wav, &.attachment--ogg, &.attachment--aac { --lexxy-attachment-icon-bg: oklch(55% 0.15 305); --lexxy-attachment-icon-border: oklch(55% 0.15 305); --lexxy-attachment-icon-text: white; }
+  &.attachment--mp4, &.attachment--mov, &.attachment--webm, &.attachment--avi { --lexxy-attachment-icon-bg: oklch(55% 0.2 27); --lexxy-attachment-icon-border: oklch(55% 0.2 27); --lexxy-attachment-icon-text: white; }
+  &.attachment--psd, &.attachment--ai, &.attachment--sketch, &.attachment--ppt, &.attachment--pptx { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.2 27); --lexxy-attachment-icon-text: oklch(40% 0.15 27); }
+  &.attachment--css, &.attachment--js, &.attachment--ts, &.attachment--rb, &.attachment--json, &.attachment--html { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.15 305); --lexxy-attachment-icon-text: oklch(40% 0.15 305); }
 }
 
 .lexxy-preview-modal__title {

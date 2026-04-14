@@ -728,9 +728,19 @@ export class BlockDragAndDrop {
     // Keeping capture on a hidden element can cause browsers to drop pointer events.
     try { this.#handleElement?.releasePointerCapture(event.pointerId) } catch {}
 
+    // Clear node--selected from any previously selected elements that aren't
+    // the one being dragged, so only the dragged item appears selected.
+    const draggedEl = this.#editor.getElementByKey(nodeKey)
+    const rootElement = this.#editor.getRootElement()
+    if (rootElement) {
+      for (const el of rootElement.querySelectorAll(".node--selected")) {
+        if (el !== draggedEl) el.classList.remove("node--selected")
+      }
+    }
+
     // Apply visual drag state to the original block and its structural
     // wrapper (children) so the entire subtree fades during drag
-    const el = this.#editor.getElementByKey(nodeKey)
+    const el = draggedEl
     el?.classList.add("lexxy-dragging")
     const nextSib = el?.nextElementSibling
     if (nextSib && nextSib.classList.contains(NESTED_LISTITEM_CLASS)) {
@@ -777,13 +787,40 @@ export class BlockDragAndDrop {
     }
   }
 
-  // Escape cancels the drag without dropping
+  // Escape cancels the drag without dropping — animate ghost back to origin
   #onDragKeydown = (event) => {
     if (event.key === "Escape") {
       event.preventDefault()
       event.stopPropagation()
-      this.#cleanup()
+      this.#cancelDragWithSnapBack()
     }
+  }
+
+  #cancelDragWithSnapBack() {
+    const ghost = this.#dragGhostElement
+    const sourceEl = this.#draggedNodeKey && this.#editor.getElementByKey(this.#draggedNodeKey)
+
+    if (!ghost || !sourceEl) {
+      this.#cleanup()
+      return
+    }
+
+    // Stop responding to pointer events during the animation
+    document.removeEventListener("pointermove", this.#onDragMove)
+    document.removeEventListener("keydown", this.#onDragKeydown)
+    this.#stopAutoScroll()
+    this.#hideDropIndicator()
+
+    const sourceRect = sourceEl.getBoundingClientRect()
+
+    ghost.style.transition = "left 200ms ease, top 200ms ease, opacity 200ms ease"
+    ghost.style.left = `${sourceRect.left}px`
+    ghost.style.top = `${sourceRect.top}px`
+    ghost.style.opacity = "0"
+
+    const cleanup = () => { if (this.#isDragging) this.#cleanup() }
+    ghost.addEventListener("transitionend", cleanup, { once: true })
+    setTimeout(cleanup, 250)
   }
 
   #onDragEnd = () => {
