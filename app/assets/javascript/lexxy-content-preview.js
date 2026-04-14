@@ -176,6 +176,17 @@ function openPreviewModal(src, fileName, contentType, caption, fileSize) {
   dialog.showModal()
   box.focus()
   document.body.classList.add("lexxy-preview-modal--open")
+
+  // Sync playback from page media to modal media (continue if was playing)
+  const modalMedia = dialog.querySelector("video, audio")
+  if (modalMedia && window.__previewPageMedia) {
+    const wasPlaying = !window.__previewPageMedia.paused
+    modalMedia.currentTime = window.__previewPageMedia.currentTime
+    if (wasPlaying) {
+      window.__previewPageMedia.pause()
+      modalMedia.play()
+    }
+  }
 }
 
 function closePreviewModal() {
@@ -183,6 +194,11 @@ function closePreviewModal() {
   const dialog = document.getElementById("lexxy-content-preview")
   if (dialog) {
     const media = dialog.querySelector("video, audio")
+    // Sync playback time back to page media
+    if (media && window.__previewPageMedia) {
+      window.__previewPageMedia.currentTime = media.currentTime
+      window.__previewPageMedia = null
+    }
     if (media && !media.paused) media.pause()
     if (dialog.open) dialog.close()
     dialog.remove()
@@ -203,6 +219,10 @@ document.addEventListener("click", (event) => {
   const caption = attachment?.getAttribute("caption") || ""
   const fileSize = attachment?.getAttribute("filesize") || ""
 
+  // Store reference to the page's media element for time sync
+  window.__previewPageMedia = attachment?.querySelector("video, audio") || null
+
+  button.blur()
   openPreviewModal(src, fileName, contentType, caption, fileSize)
 })
 
@@ -219,6 +239,15 @@ function applyCustomCaptions() {
 
     const nameEl = att.querySelector(".attachment__name")
     if (nameEl) nameEl.textContent = caption
+
+    // Hide file size for non-collapsed previewable types (images, video, gif)
+    // Keep size visible on collapsed cards and file/audio attachments
+    const contentType = att.getAttribute("content-type") || ""
+    const isCollapsed = att.hasAttribute("data-collapsed")
+    if (!isCollapsed && (contentType.startsWith("image/") || contentType.startsWith("video/"))) {
+      const sizeEl = att.querySelector(".attachment__size")
+      if (sizeEl) sizeEl.style.display = "none"
+    }
   })
 }
 
@@ -230,3 +259,10 @@ if (document.readyState === "loading") {
 
 // Re-apply after Turbo navigations
 document.addEventListener("turbo:load", applyCustomCaptions)
+
+// When any media starts playing, pause all others
+document.addEventListener("play", (event) => {
+  document.querySelectorAll("video, audio").forEach(m => {
+    if (m !== event.target && !m.paused) m.pause()
+  })
+}, true)
