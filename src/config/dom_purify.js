@@ -6,7 +6,8 @@ const ALLOWED_HTML_TAGS = [ "a", "b", "blockquote", "br", "code", "div", "em",
   "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li", "mark", "ol", "p", "pre", "q", "s", "strong", "u", "ul", "table", "tbody", "tr", "th", "td" ]
 
 const ALLOWED_HTML_ATTRIBUTES = [ "alt", "blob-url", "caption", "class", "content", "content-type", "contenteditable",
-  "data-direct-upload-id", "data-sgid", "filename", "filesize", "height", "href", "presentation",
+  "data-direct-upload-id", "data-sgid", "data-collapsed", "data-caption-hidden",
+  "filename", "filesize", "height", "href", "presentation",
   "previewable", "sgid", "src", "style", "title", "url", "width" ]
 
 const ALLOWED_STYLE_PROPERTIES = [ "color", "background-color" ]

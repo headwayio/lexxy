@@ -34,7 +34,9 @@ export class ActionTextAttachmentNode extends DecoratorNode {
               fileName: attachment.getAttribute("filename"),
               fileSize: attachment.getAttribute("filesize"),
               width: attachment.getAttribute("width"),
-              height: attachment.getAttribute("height")
+              height: attachment.getAttribute("height"),
+              collapsed: attachment.getAttribute("data-collapsed"),
+              captionHidden: attachment.getAttribute("data-caption-hidden")
             })
           }), priority: 1
         }
@@ -80,7 +82,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return Lexxy.global.get("attachmentTagName")
   }
 
-  constructor({ tagName, sgid, src, blobUrl, previewable, altText, caption, contentType, fileName, fileSize, width, height }, key) {
+  constructor({ tagName, sgid, src, blobUrl, previewable, altText, caption, contentType, fileName, fileSize, width, height, collapsed, captionHidden }, key) {
     super(key)
 
     this.tagName = tagName || ActionTextAttachmentNode.TAG_NAME
@@ -95,6 +97,8 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     this.fileSize = fileSize
     this.width = width
     this.height = height
+    this.collapsed = parseBoolean(collapsed)
+    this.captionHidden = parseBoolean(captionHidden)
 
     this.editor = $getEditor()
   }
@@ -114,6 +118,9 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       figure.appendChild(this.#createDOMForNotImage())
     }
 
+    if (this.collapsed) figure.classList.add("attachment--collapsed")
+    if (this.captionHidden) figure.classList.add("attachment--caption-hidden")
+
     figure.addEventListener("dblclick", (event) => this.#handlePreviewClick(event))
 
     return figure
@@ -124,6 +131,16 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     if (caption && this.caption) {
       caption.value = this.caption
     }
+
+    // Sync file attachment name display (non-image attachments).
+    // When captionHidden, show original filename; otherwise show caption or filename.
+    const nameTag = dom.querySelector(".attachment__name")
+    if (nameTag && !nameTag.querySelector("input")) {
+      nameTag.textContent = this.captionHidden ? this.fileName : (this.caption || this.fileName)
+    }
+
+    dom.classList.toggle("attachment--collapsed", this.collapsed)
+    dom.classList.toggle("attachment--caption-hidden", this.captionHidden)
 
     return false
   }
@@ -149,7 +166,9 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       filesize: this.fileSize,
       width: this.width,
       height: this.height,
-      presentation: "gallery"
+      presentation: "gallery",
+      "data-collapsed": this.collapsed || null,
+      "data-caption-hidden": this.captionHidden || null
     })
 
     return { element: attachment }
@@ -170,7 +189,9 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       fileName: this.fileName,
       fileSize: this.fileSize,
       width: this.width,
-      height: this.height
+      height: this.height,
+      collapsed: this.collapsed,
+      captionHidden: this.captionHidden
     }
   }
 
@@ -268,7 +289,13 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   #createDOMForNotImage() {
     const figcaption = createElement("figcaption", { className: "attachment__caption" })
 
-    const nameTag = createElement("strong", { className: "attachment__name", textContent: this.caption || this.fileName })
+    const displayName = this.captionHidden ? this.fileName : (this.caption || this.fileName)
+    const nameTag = createElement("strong", {
+      className: "attachment__name",
+      textContent: displayName,
+      title: "Click to rename"
+    })
+    nameTag.addEventListener("click", (event) => this.#startEditingName(event, nameTag))
 
     figcaption.appendChild(nameTag)
 
@@ -278,6 +305,84 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     }
 
     return figcaption
+  }
+
+  #startEditingName(event, nameTag) {
+    event.stopPropagation()
+
+    // Don't create another input if already editing
+    if (nameTag.querySelector("input")) return
+
+    // Read the currently displayed text (not the stored node caption, which
+    // may be stale if the user edited but hasn't submitted yet)
+    const currentName = nameTag.textContent.trim() || this.fileName
+    let escaped = false
+
+    const input = createElement("input", {
+      type: "text",
+      className: "attachment__name-input",
+      value: currentName
+    })
+
+    input.addEventListener("blur", () => {
+      if (escaped) {
+        this.#clearCustomName(nameTag)
+      } else {
+        this.#finishEditingName(input, nameTag)
+      }
+    })
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault()
+        input.blur()
+      } else if (event.key === "Escape") {
+        event.preventDefault()
+        escaped = true
+        input.blur()
+      }
+      event.stopPropagation()
+    })
+
+    // Prevent editor from handling these
+    input.addEventListener("copy", (event) => event.stopPropagation())
+    input.addEventListener("cut", (event) => event.stopPropagation())
+    input.addEventListener("paste", (event) => event.stopPropagation())
+    input.addEventListener("dblclick", (event) => event.stopPropagation())
+    input.addEventListener("click", (event) => event.stopPropagation())
+
+    nameTag.textContent = ""
+    nameTag.appendChild(input)
+
+    // Defer focus+select to the next microtask so the originating click
+    // event doesn't immediately deselect the text
+    requestAnimationFrame(() => {
+      input.focus()
+      input.select()
+    })
+  }
+
+  #finishEditingName(input, nameTag) {
+    const newName = input.value.trim()
+    const hasCustomName = newName && newName !== this.fileName
+
+    nameTag.textContent = hasCustomName ? newName : this.fileName
+
+    this.editor.update(() => {
+      const writable = this.getWritable()
+      writable.caption = hasCustomName ? newName : ""
+      if (hasCustomName) writable.captionHidden = false
+    })
+  }
+
+  #clearCustomName(nameTag) {
+    nameTag.textContent = this.fileName
+
+    this.editor.update(() => {
+      const writable = this.getWritable()
+      writable.caption = ""
+      writable.captionHidden = true
+    })
   }
 
   #createEditableCaption() {
