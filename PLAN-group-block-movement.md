@@ -225,6 +225,124 @@ Selection highlighting uses `::after` pseudo-elements at `z-index: -1` as the pr
 
 ---
 
+## Attachment rendering & media features
+
+### Show page rendering (blob template)
+
+Lexxy ships `app/views/active_storage/blobs/_blob.html.erb` which provides out-of-the-box rendering for all attachment types:
+
+| Content type | Rendering |
+|-------------|-----------|
+| Video (mp4, webm, mov) | `<video controls>` with poster/thumbnail |
+| Audio (mp3, wav, ogg) | File card with inline `<audio controls>` player below |
+| GIF | `<img>` using direct blob URL (preserves animation, not a representation) |
+| Images (png, jpg, etc.) | `<img>` via Active Storage representation |
+| PDF | Image thumbnail representation |
+| Other files | File card with icon + filename + size |
+
+All attachment types render with **preview** (eye icon) and **download** action buttons that appear on hover. Preview opens a full modal dialog; download triggers the browser's download flow.
+
+### Preview modal (`lexxy-content-preview.js`)
+
+Standalone script for show pages. Provides:
+- Full-screen `<dialog>` modal with header (icon, caption, filename, file size) + content area
+- Content-type detection: image zoom, video player, audio player, PDF iframe, generic download
+- Playback time sync: opening modal from an inline player carries over `currentTime`; closing syncs it back
+- Pause-others: playing any media element pauses all other video/audio on the page
+- Custom caption display: reads `caption` attribute from `action-text-attachment`, shows as title with filename as subtitle
+- Turbo-compatible via `turbo:load` listener
+
+**Host app integration** — only two things needed:
+
+```ruby
+# config/importmap.rb
+pin "lexxy-content-preview", to: "lexxy-content-preview.js"
+```
+
+```javascript
+// app/javascript/application.js
+import "lexxy-content-preview"
+```
+
+If the app has a custom `app/views/active_storage/blobs/_blob.html.erb`, delete it to use Lexxy's.
+
+### Attachment state persistence
+
+Two new data attributes on `action-text-attachment` elements persist editor state to the rendered page:
+
+| Attribute | Effect in editor | Effect on show page |
+|-----------|-----------------|---------------------|
+| `data-collapsed` | Hides preview, shows file card | Hides media, renders as file card with icon + filename + size |
+| `data-caption-hidden` | Hides caption on images; shows filename instead of custom name on files | Same behavior via CSS + JS |
+
+**Pipeline for persistence:**
+1. Editor → Lexical node properties (`collapsed`, `captionHidden`)
+2. `exportDOM()` → data attributes on `action-text-attachment` element
+3. DOMPurify client-side allowlist (so attributes survive value serialization)
+4. `ActionText::Attachment::ATTRIBUTES` (so attributes survive server-side re-serialization)
+5. `ActionText::ContentHelper.allowed_attributes` (so attributes survive render-time sanitization)
+6. CSS attribute selectors + JS on the show page apply the visual state
+
+### Editor attachment controls
+
+Floating controls appear on hover and selection with this button order:
+
+| Button | Preview attachments | File attachments |
+|--------|-------------------|-----------------|
+| Preview (eye) | Opens modal | Opens modal |
+| Collapse (chevron) | Toggles preview ↔ card | — (already a card) |
+| Edit (pencil) | Shows/focuses caption textarea | Click-to-edit inline filename |
+| Caption toggle (text lines) | Show/hide caption below media | Toggle between custom name and original filename |
+| Delete (trash) | Remove attachment | Remove attachment |
+
+**Audio preview in editor**: Audio attachments render as a file card with an inline `<audio>` player below. Collapse hides the player; expand shows it. The collapsed state persists to the show page.
+
+**Inline name editing**: Click any file attachment's filename to edit it inline. Enter saves (auto-enables caption display). Escape clears and resets to original filename. The edited name is stored as the `caption` attribute.
+
+**Gallery ejection**: Collapsed images are automatically ejected from image galleries since `ImageGalleryNode.isValidChild()` excludes collapsed nodes. The gallery's `splitAroundInvalidChild` transform handles the ejection.
+
+### Sanitization configuration (all in `engine.rb`)
+
+```ruby
+# Tags
+ActionText::ContentHelper.allowed_tags += %w[video audio source embed svg path table tbody tr th td]
+
+# Attributes
+ActionText::ContentHelper.allowed_attributes += %w[
+  controls poster data-language style autoplay loop muted playsinline preload
+  viewBox xmlns d fill download target aria-label
+  data-collapsed data-caption-hidden
+]
+
+# ActionText attachment re-serialization
+ActionText::Attachment::ATTRIBUTES.push("data-collapsed", "data-caption-hidden")
+
+# Client-side (DOMPurify in dom_purify.js)
+ALLOWED_HTML_ATTRIBUTES includes: data-collapsed, data-caption-hidden
+```
+
+### Icon color system
+
+Per-extension icon colors using CSS custom properties (`--lexxy-attachment-icon-bg`, `--lexxy-attachment-icon-border`, `--lexxy-attachment-icon-text`). Defined in three places:
+1. `lexxy-editor.css` inside `:where(lexxy-editor)` — editor file cards and collapsed cards
+2. `lexxy-editor.css` outside `:where()` — preview modal icons (appended to `document.body`)
+3. `lexxy-content.css` — show page rendering
+
+---
+
+## Drag-and-drop improvements
+
+### Block handle drag
+- **Preserved selection outlines**: CSS rule `.lexxy-block-dragging .attachment:hover` narrowed with `:not(.node--selected):not(.lexxy-dragging)` so selected and dragged attachments keep their blue outlines
+- **Esc snap-back animation**: `#cancelDragWithSnapBack()` animates the ghost from cursor position back to the original element with a 200ms ease transition + fade, then cleans up
+- **Clear non-dragged selection**: `#startDrag()` removes `node--selected` from all elements except the one being dragged
+- **Hover controls**: Attachment floating controls now appear on hover (`.attachment:hover &`) in addition to selection
+
+### Attachment native drag (`AttachmentDragAndDrop`)
+The native HTML5 drag system remains active for gallery operations (merging images, reordering within galleries). Block-level moves are handled by `BlockDragAndDrop`.
+
+---
+
 ## Known limitations
 
 1. **Undo/redo after group operations**: Lexical's history captures the changes but selection state restoration needs verification. Undo after group exit may not perfectly restore nesting levels.
