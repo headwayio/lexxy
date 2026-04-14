@@ -1,10 +1,7 @@
 import Lexxy from "../config/lexxy"
 import { attachmentIconLabel, createElement } from "../helpers/html_helper"
 import { bytesToHumanSize } from "../helpers/storage_helper"
-
-const CLOSE_ICON = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6L6 18M6 6l12 12\"/></svg>"
-
-const DOWNLOAD_ICON = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"/></svg>"
+import AttachmentIcons from "./attachment_icons"
 
 const PDF_TYPES = [ "application/pdf" ]
 const VIDEO_TYPES = [ "video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/*" ]
@@ -158,7 +155,7 @@ export class PreviewModal extends HTMLElement {
       href: src,
       download: fileName || true
     })
-    downloadLink.innerHTML = DOWNLOAD_ICON
+    downloadLink.innerHTML = AttachmentIcons.download
     downloadLink.appendChild(document.createTextNode(" Download"))
 
     const closeButton = createElement("button", {
@@ -166,7 +163,7 @@ export class PreviewModal extends HTMLElement {
       type: "button",
       "aria-label": "Close preview"
     })
-    closeButton.innerHTML = CLOSE_ICON
+    closeButton.innerHTML = AttachmentIcons.close
     closeButton.addEventListener("click", () => this.#close())
 
     actions.appendChild(downloadLink)
