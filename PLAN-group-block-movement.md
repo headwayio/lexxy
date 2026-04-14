@@ -343,6 +343,125 @@ The native HTML5 drag system remains active for gallery operations (merging imag
 
 ---
 
+## Host app integration (testing uploads & previews)
+
+Everything in this section is what a Rails app needs so a human can manually drive the editor through the full matrix of attachment types and the preview modal. `test/dummy/` in this repo is a working reference; copy from it when bootstrapping a new test app.
+
+### The engine takes care of the server side
+
+`Lexxy::Engine` auto-wires these when the gem is mounted — the host app doesn't touch sanitizer config itself:
+
+- `ActionText::Attachment::ATTRIBUTES` gains `data-caption-hidden` and `data-collapsed` so the editor's UI state persists through the save → render → re-edit round-trip.
+- `ActionText::ContentHelper.allowed_tags` gains `video`, `audio`, `source`, `embed`, `svg`, `path`, `table`, `tbody`, `tr`, `th`, `td`.
+- `ActionText::ContentHelper.allowed_attributes` gains `controls poster data-language style autoplay loop muted playsinline preload viewBox xmlns d fill download target aria-label data-collapsed data-caption-hidden`.
+- `Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS` gains `var` so `--lexxy-*` CSS variables survive sanitization.
+- `ActiveStorage::Blob#as_json` is patched to include `previewable: true` and a `url` pointing at a resized representation (`ActiveStorage::BlobWithPreviewUrl`). This is the signal the editor uses to decide preview-view vs. file-card rendering for PDFs, videos, etc.
+- `rich_text_area` form helper is installed via `Lexxy::FormHelper` / `FormBuilder`.
+
+### Preview modal is opt-in (and has two separate switches)
+
+| Where | How to enable | Scope |
+|---|---|---|
+| Inside the editor (double-click or eye button on an attachment while editing) | `Lexxy.configure({ global: { previewModal: true } })` before any editors connect | Registers `<lexxy-preview-modal>` and appends one to `document.body`. Without this, the editor's preview button dispatches `lexxy:preview-attachment` but nothing handles it and the click is a no-op. |
+| On rendered show pages (eye button on rendered `<action-text-attachment>`) | `import "lexxy-content-preview"` in `application.js` (and a corresponding importmap pin) | Standalone script that attaches modal behaviour to rendered content. Independent from the editor-side switch — apps can enable one, the other, both, or neither. |
+
+Default is `previewModal: false` for both. For a test app that exercises this PR's full feature set, enable both.
+
+### Minimum Gemfile
+
+```ruby
+gem "rails"
+gem "propshaft"             # or sprockets
+gem "importmap-rails"       # or jsbundling — lexxy supports either
+gem "turbo-rails"
+gem "actiontext", require: "action_text"
+gem "activestorage"
+gem "image_processing"      # needed for Active Storage representations
+gem "lexxy"
+```
+
+Then run `bin/rails action_text:install` and `bin/rails active_storage:install`, and run the resulting migrations.
+
+### JavaScript wiring
+
+`config/importmap.rb`:
+```ruby
+pin "application"
+pin "@rails/actiontext",        to: "actiontext.esm.js"
+pin "@rails/activestorage",     to: "activestorage.esm.js"
+pin "@hotwired/turbo-rails",    to: "turbo.min.js"
+pin "lexxy",                    to: "lexxy.js"
+pin "lexxy-content-preview",    to: "lexxy-content-preview.js"  # only if show pages should open previews
+```
+
+`app/javascript/application.js`:
+```js
+import "@rails/actiontext"
+import * as ActiveStorage from "@rails/activestorage"; ActiveStorage.start()
+import "@hotwired/turbo-rails"
+import "lexxy"
+import "lexxy-content-preview"                                    // show-page modal
+Lexxy.configure({ global: { previewModal: true } })               // editor-side modal
+```
+
+### Stylesheet
+
+`<%= stylesheet_link_tag "lexxy" %>` in the layout — that file `@import`s `lexxy-content.css` (show-page rules), `lexxy-editor.css` (editor chrome + block editing styles), and `lexxy-variables.css` (custom properties).
+
+### Show page template
+
+Lexxy ships `app/views/active_storage/blobs/_blob.html.erb` with rendering for video, audio, GIF, image representations, and generic file cards plus preview + download action buttons. If the host app has its own override for this partial, **delete it** — Lexxy's version is required for the attachment action buttons and consistent markup across the matrix. Rendering stays a normal `<%= @post.body %>`.
+
+### System dependencies for attachment types
+
+`blob.previewable?` drives whether an upload gets the preview-view DOM or falls back to a file card. It depends on processors being installed on the machine running the test app:
+
+| Attachment type | Needs | What you lose without it |
+|---|---|---|
+| PNG / JPG / WEBP | libvips (preferred) or ImageMagick | Representations; editor falls back to the direct blob URL |
+| Animated GIF | Nothing extra | — |
+| PDF | poppler (`brew install poppler`) or mupdf | Preview thumbnail — falls back to file card |
+| Video (mp4 / webm / mov) | ffmpeg | Poster frame — falls back to file card |
+| Audio (mp3 / wav / ogg) | ffmpeg | Metadata; audio still plays inline via `<audio>` |
+| Other files (txt / zip / xlsx …) | Nothing extra | — |
+
+Set the processor explicitly in `config/environments/development.rb`:
+```ruby
+config.active_storage.variant_processor = :vips   # or :mini_magick
+```
+
+Also set `Rails.application.routes.default_url_options = { host: "localhost", port: 3000 }` so representations resolve to absolute URLs in the show-page preview modal.
+
+### Model + form
+
+```ruby
+class Post < ApplicationRecord
+  has_rich_text :body
+end
+```
+
+```erb
+<%= form_with model: @post do |f| %>
+  <%= f.rich_text_area :body %>                                   <%# default editor %>
+  <%# or, to exercise block editing: %>
+  <%# <%= f.rich_text_area :body, data: { block_handles: "true" } %> %>
+<% end %>
+```
+
+### Manual test matrix
+
+With the above wired up, walk through:
+
+1. Upload each: `.png`, `.gif`, `.pdf`, `.mp4`, `.mp3`, `.txt`, `.zip`. Confirm image/GIF/video/PDF all render as preview-view with a real thumbnail, audio renders as a file card with an inline `<audio>` player, and the rest render as file cards with an extension label.
+2. Hover an attachment — confirm all five floating controls appear (preview, collapse, edit, caption toggle, delete).
+3. Click the collapse button on an image — it flips to card view; reload the show page — the `data-collapsed` attribute survives and the card renders there too.
+4. Click the caption toggle — caption hides/shows; verify `data-caption-hidden` round-trips.
+5. Click the preview (eye) button — modal opens; video/audio playback time carries over from inline to modal and back; Escape and Space work via `<dialog>`'s native handling.
+6. Open the show page, click the preview button on a rendered attachment — the show-page modal opens (proves `lexxy-content-preview` is wired).
+7. Toggle `block-handles="true"` on the editor — drag handle appears on hover over each block; verify Cmd+Shift+↑/↓ movement, Cmd+/ block actions menu, and drag-and-drop all work with attachments as blocks.
+
+---
+
 ## Known limitations
 
 1. **Undo/redo after group operations**: Lexical's history captures the changes but selection state restoration needs verification. Undo after group exit may not perfectly restore nesting levels.
