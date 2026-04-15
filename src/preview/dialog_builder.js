@@ -18,7 +18,7 @@ export function buildPreviewDialog({ src, blobUrl, fileName, contentType, captio
 
   const box = createElement("div", { className: "lexxy-preview-modal__dialog", tabindex: "-1" })
   box.appendChild(buildHeader({ downloadHref, fileName, caption, fileSize, onClose: close }))
-  box.appendChild(buildContent({ src, fileName, contentType, caption }))
+  box.appendChild(buildContent({ src, blobUrl, fileName, contentType, caption }))
 
   const dialog = createElement("dialog", { className: "lexxy-preview-modal" })
   dialog.appendChild(box)
@@ -105,8 +105,12 @@ function buildHeader({ downloadHref, fileName, caption, fileSize }) {
   return header
 }
 
-function buildContent({ src, fileName, contentType, caption }) {
+function buildContent({ src, blobUrl, fileName, contentType, caption }) {
   const content = createElement("div", { className: "lexxy-preview-modal__content" })
+  // For playable media, prefer blobUrl (the actual file) over src (which may
+  // be a thumbnail representation URL in the editor). PDFs and images still
+  // use src since the editor may embed a preview image directly.
+  const mediaSrc = blobUrl || src
 
   if (isImageType(contentType)) {
     content.appendChild(createElement("img", {
@@ -117,22 +121,36 @@ function buildContent({ src, fileName, contentType, caption }) {
   } else if (isPdfType(contentType)) {
     content.appendChild(createElement("iframe", {
       className: "lexxy-preview-modal__iframe",
-      src,
+      src: mediaSrc,
       title: "PDF Preview"
     }))
   } else if (isVideoType(contentType)) {
     const video = createElement("video", { className: "lexxy-preview-modal__video", controls: true })
-    video.appendChild(createElement("source", { src, type: contentType }))
+    video.appendChild(createElement("source", { src: mediaSrc, type: contentType }))
     content.appendChild(video)
   } else if (isAudioType(contentType)) {
     const audio = createElement("audio", { className: "lexxy-preview-modal__audio", controls: true })
-    audio.appendChild(createElement("source", { src, type: contentType }))
+    audio.appendChild(createElement("source", { src: mediaSrc, type: contentType }))
     content.appendChild(audio)
+  } else if (isTextType(contentType, fileName)) {
+    content.appendChild(buildTextPreview({ src: mediaSrc, fileName }))
   } else {
-    content.appendChild(buildGenericFallback({ src, fileName, caption }))
+    content.appendChild(buildGenericFallback({ src: mediaSrc, fileName, caption }))
   }
 
   return content
+}
+
+function buildTextPreview({ src, fileName }) {
+  const pre = createElement("pre", { className: "lexxy-preview-modal__text" })
+  pre.textContent = `Loading ${fileName || "text"}…`
+
+  fetch(src)
+    .then((response) => response.ok ? response.text() : Promise.reject(response.statusText))
+    .then((text) => { pre.textContent = text })
+    .catch((error) => { pre.textContent = `Failed to load preview: ${error}` })
+
+  return pre
 }
 
 function buildGenericFallback({ src, fileName, caption }) {
@@ -181,6 +199,18 @@ function isVideoType(contentType) {
 
 function isAudioType(contentType) {
   return contentType?.startsWith("audio/")
+}
+
+const TEXT_EXTENSIONS = new Set([
+  "txt", "md", "markdown", "csv", "tsv", "json", "xml", "yml", "yaml",
+  "log", "ini", "conf", "rb", "js", "ts", "py", "go", "rs", "java",
+  "c", "h", "cpp", "css", "scss", "html", "htm", "erb", "sh", "sql"
+])
+
+function isTextType(contentType, fileName) {
+  if (contentType?.startsWith("text/")) return true
+  const ext = fileExtension(fileName)
+  return ext && TEXT_EXTENSIONS.has(ext)
 }
 
 function fileExtension(fileName) {
