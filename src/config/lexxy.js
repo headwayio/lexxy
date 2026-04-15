@@ -6,7 +6,7 @@ const global = new Configuration({
   attachmentContentTypeNamespace: "actiontext",
   authenticatedUploads: false,
   extensions: [],
-  previewModal: false
+  previewModal: true
 })
 
 const presets = new Configuration({

@@ -26,3 +26,16 @@ export function mimeTypeToExtension(mimeType) {
   const extension = mimeType.split("/")[1]
   return extension
 }
+
+// For playable media (video, audio, PDFs), the stored url/src is often an
+// Active Storage representation URL (a thumbnail image), not the blob itself.
+// Rewrite /representations/redirect/<signed_id>/<variation>/<file> into
+// /blobs/redirect/<signed_id>/<file> so the actual file can be streamed.
+// Returns the original URL unchanged if it's not a representation URL.
+export function representationToBlobUrl(url) {
+  if (!url) return null
+  return url.replace(
+    /\/rails\/active_storage\/representations\/redirect\/([^/]+)\/[^/]+\/([^?]+)/,
+    "/rails/active_storage/blobs/redirect/$1/$2"
+  )
+}
