@@ -56,7 +56,7 @@ export class BlockActionsMenu extends HTMLElement {
     this.#removeScrollResizeListeners()
   }
 
-  show({ anchorElement, anchorRect, editorElement, onAction, onClose }) {
+  show({ anchorElement, anchorRect, editorElement, onAction, onClose, isDecoratorBlock = false }) {
     this.#onAction = onAction
     this.#onClose = onClose
     this.#anchorElement = anchorElement || null
@@ -69,14 +69,41 @@ export class BlockActionsMenu extends HTMLElement {
       this.#buildColorSubmenu(colorConfig)
     }
 
+    this.#applyDecoratorRestrictions(isDecoratorBlock)
+
     const rect = anchorElement ? anchorElement.getBoundingClientRect() : anchorRect
     this.#position(rect)
     this.hidden = false
     this.#deactivateMouse()
-    this.#focusItem(0)
+    this.#focusFirstEnabledItem()
     this.#addClickOutsideListener()
     document.addEventListener("mousemove", this.#handleMousemove)
     this.#addScrollResizeListeners()
+  }
+
+  // Attachments can only be wrapped in lists/quotes — disable color and
+  // non-wrapping turn-into options so the user can't pick a no-op.
+  #applyDecoratorRestrictions(isDecoratorBlock) {
+    const allowedForDecorator = new Set([
+      "insertUnorderedList", "insertOrderedList", "insertQuoteBlock"
+    ])
+
+    for (const button of this.querySelectorAll('[data-action="turn-into"]')) {
+      const allowed = !isDecoratorBlock || allowedForDecorator.has(button.dataset.command)
+      button.toggleAttribute("disabled", !allowed)
+      button.setAttribute("aria-disabled", String(!allowed))
+    }
+
+    for (const button of this.querySelectorAll('[data-submenu="color"]')) {
+      button.toggleAttribute("disabled", isDecoratorBlock)
+      button.setAttribute("aria-disabled", String(isDecoratorBlock))
+    }
+  }
+
+  #focusFirstEnabledItem() {
+    const items = [...this.querySelectorAll('[role="menuitem"]')]
+    const idx = items.findIndex(b => !b.hasAttribute("disabled"))
+    this.#focusItem(idx >= 0 ? idx : 0)
   }
 
   close() {
@@ -481,6 +508,7 @@ export class BlockActionsMenu extends HTMLElement {
   #handleClick = (event) => {
     const button = event.target.closest("button")
     if (!button) return
+    if (button.hasAttribute("disabled")) return
 
     const submenuName = button.dataset.submenu
     if (submenuName) {

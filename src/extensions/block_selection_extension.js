@@ -6,6 +6,7 @@ import {
   $getSelection,
   $isDecoratorNode,
   $isElementNode,
+  $isNodeSelection,
   $isParagraphNode,
   $isRangeSelection,
   $isTextNode,
@@ -27,10 +28,11 @@ import {
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $isCodeNode } from "@lexical/code"
-import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text"
+import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
+import { $createNodeSelectionWith } from "../helpers/lexical_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
 import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS } from "../editor/block_helpers"
 
@@ -637,6 +639,55 @@ export class BlockSelectionExtension extends LexxyExtension {
   #handleKeydown(event) {
     if (!this.editor) return
 
+    // Esc clears a NodeSelection (e.g. clicked attachment showing blue outline)
+    // even when the editor isn't focused. Lexical's KEY_ESCAPE_COMMAND only
+    // fires when the contenteditable owns focus, but clicking a decorator node
+    // typically moves focus to <body>, leaving the selection orphaned.
+    if (event.key === "Escape" && !this.isBlockSelectMode) {
+      // First Esc on a clicked decorator (node--selected) promotes it to
+      // block-select mode so subsequent Esc / arrows / shortcuts behave
+      // consistently with text-block selection. Match against the DOM class
+      // because Lexical can drop the NodeSelection on focus loss while the
+      // visual class persists. Lexical's KEY_ESCAPE_COMMAND alone wouldn't
+      // fire here since focus is on <body>, not the contenteditable.
+      const selectedNode = this.root?.querySelector(".node--selected")
+      const figureKey = selectedNode?.dataset.lexicalNodeKey
+      if (figureKey) {
+        event.preventDefault()
+        event.stopPropagation()
+        // Clear visual + Lexical state immediately so the figure shows only
+        // the block-selected highlight afterwards. Reset selection.js's
+        // diff tracker too — otherwise its previouslySelectedKeys keeps the
+        // stale key, and the next click on the same node looks "not new",
+        // so the sync skips re-adding node--selected.
+        selectedNode.classList.remove("node--selected")
+        this.editorElement.selection?.previouslySelectedKeys?.clear()
+        this.editor.update(() => {
+          if ($isNodeSelection($getSelection())) $setSelection(null)
+        })
+        // If the figure is wrapped in a list, target the topmost list (ul/ol)
+        // so block-select acts on the visible card frame the user sees,
+        // not the bare figure inside it.
+        let targetKey = figureKey
+        this.editor.getEditorState().read(() => {
+          let node = $getNodeByKey(figureKey)
+          let topList = null
+          while (node) {
+            if ($isListNode(node)) topList = node
+            node = node.getParent()
+          }
+          if (topList) targetKey = topList.getKey()
+        })
+        this.enterBlockSelectMode(targetKey)
+        // Re-sync the bullet offset and drag handle for the freshly selected
+        // block so they line up with the new highlight bounds (the target is
+        // a list/figure that may not have been the previous hover target).
+        this.#syncBulletOffsets()
+        this.#dragAndDrop?.repositionHandle()
+        return
+      }
+    }
+
     // ⌘⇧H applies last used color in both edit and block select modes
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "h" || event.key === "H")) {
       event.preventDefault()
@@ -824,6 +875,19 @@ export class BlockSelectionExtension extends LexxyExtension {
       return true
     }
 
+    // NodeSelection (e.g. clicked attachment shows blue outline) → clear it
+    // before falling through to block-select. Without this, Esc on a clicked
+    // attachment would jump straight to block-select, which feels surprising.
+    let hasNodeSelection = false
+    this.editor.getEditorState().read(() => {
+      hasNodeSelection = $isNodeSelection($getSelection())
+    })
+    if (hasNodeSelection) {
+      this.editor.update(() => { $setSelection(null) })
+      this.root?.blur()
+      return true
+    }
+
     // Edit mode → enter block-select on the current block
     const blockKey = this.#getBlockKeyContainingCursor()
     if (blockKey) {
@@ -927,11 +991,20 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.editorElement.appendChild(this.#blockActionsMenu)
     }
 
+    // Attachments can only be wrapped in lists/quotes — color and text-style
+    // conversions don't apply. Flag the menu so it can disable those items.
+    let isDecoratorBlock = false
+    this.editor.getEditorState().read(() => {
+      const node = $getNodeByKey(this.#focusKey)
+      isDecoratorBlock = node != null && $isDecoratorNode(node)
+    })
+
     this.#blockActionsMenu.show({
       anchorElement: focusedEl,
       editorElement: this.editorElement,
       onAction: (action) => this.#handleBlockAction(action),
-      onClose: () => this.root?.focus()
+      onClose: () => this.root?.focus(),
+      isDecoratorBlock
     })
 
     this.#blockActionsMenu.focus()
@@ -1066,6 +1139,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     this.editor.update(() => {
       const newSelectedKeys = new Set()
+      const replacedKeys = new Set()
 
       for (const key of this.#selectedBlockKeys) {
         const node = $getNodeByKey(key)
@@ -1107,6 +1181,47 @@ export class BlockSelectionExtension extends LexxyExtension {
             this.#wrapListItemContent(node, command)
             newSelectedKeys.add(node.getKey())
           }
+        } else if ($isDecoratorNode(node)) {
+          // DecoratorNode (attachment, embed, etc.) — Lexical's command
+          // handlers operate on RangeSelection of text content and silently
+          // no-op on a NodeSelection of a decorator. Wrap the node manually
+          // so list/quote commands work on attachments. Heading and
+          // paragraph conversions don't apply to decorators — skip.
+          if (isListCommand) {
+            // Idempotent: if already inside a list item of the same type,
+            // don't double-wrap. Just surface the existing list item as the
+            // selection target.
+            const parent = node.getParent()
+            if ($isListItemNode(parent) && $isListNode(parent.getParent()) && parent.getParent().getListType() === listType) {
+              newSelectedKeys.add(parent.getKey())
+              replacedKeys.add(key)
+            } else {
+              const list = $createListNode(listType)
+              const listItem = $createListItemNode()
+              list.append(listItem)
+              node.replace(list)
+              listItem.append(node)
+              this.#wrappedBlockKeys.add(listItem.getKey())
+              newSelectedKeys.add(listItem.getKey())
+              replacedKeys.add(key)
+            }
+          } else if (command === "insertQuoteBlock") {
+            // Idempotent: if already inside a blockquote, don't nest another.
+            const parent = node.getParent()
+            if ($isQuoteNode(parent)) {
+              newSelectedKeys.add(parent.getKey())
+              replacedKeys.add(key)
+            } else {
+              const quote = $createQuoteNode()
+              node.replace(quote)
+              quote.append(node)
+              newSelectedKeys.add(quote.getKey())
+              replacedKeys.add(key)
+            }
+          } else {
+            // Heading / paragraph / code — not meaningful for decorators.
+            newSelectedKeys.add(node.getKey())
+          }
         } else {
           // Non-list block: use temporary selection + command dispatch.
           // The command may replace the node (e.g., paragraph → heading),
@@ -1130,8 +1245,11 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Merge keys from #extractListItemAsBlock with new keys.
       // Only include nodes still attached to the document tree —
       // replaced nodes (e.g., paragraph → heading) linger in the
-      // node map as orphans during the update callback.
+      // node map as orphans during the update callback. Skip keys we
+      // explicitly replaced (e.g., decorator → list item wrapper) so the
+      // merge doesn't resurrect them alongside their new wrapper.
       for (const key of this.#selectedBlockKeys) {
+        if (replacedKeys.has(key)) continue
         if (!newSelectedKeys.has(key)) {
           const node = $getNodeByKey(key)
           if (node && node.getParent() !== null) newSelectedKeys.add(key)
@@ -3884,7 +4002,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // NodeSelection (and showing its own delete-button UI) for these elements.
   #registerDecoratorClickInterceptor() {
     function isNodeControlClick(event) {
-      return event.target.closest("lexxy-node-delete-button")
+      return event.target.closest("lexxy-attachment-controls")
     }
 
     const onMouseDown = (event) => {
