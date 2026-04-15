@@ -63,8 +63,8 @@ test.describe("Attachments", () => {
     await expect(figure).toBeVisible({ timeout: 10_000 })
 
     await figure.locator("img").click()
-    await expect(page.locator("lexxy-node-delete-button")).toBeVisible()
-    await page.locator("lexxy-node-delete-button button[aria-label='Remove']").click()
+    await expect(page.locator("lexxy-attachment-controls")).toBeVisible()
+    await page.locator("lexxy-attachment-controls button[aria-label='Remove']").click()
 
     await expect(figure).toHaveCount(0)
     await assertEditorHtml(editor, "")

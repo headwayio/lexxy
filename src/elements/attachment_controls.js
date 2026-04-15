@@ -1,10 +1,11 @@
 import { $getNearestNodeFromDOMNode } from "lexical"
 import { createElement, dispatch } from "../helpers/html_helper"
+import { representationToBlobUrl } from "../helpers/storage_helper"
 import { $isActionTextAttachmentNode } from "../nodes/action_text_attachment_node"
 import { $isImageGalleryNode } from "../nodes/image_gallery_node"
 import AttachmentIcons from "./attachment_icons"
 
-export class NodeDeleteButton extends HTMLElement {
+export class AttachmentControls extends HTMLElement {
   connectedCallback() {
     this.editorElement = this.closest("lexxy-editor")
     this.editor = this.editorElement.editor
@@ -23,7 +24,7 @@ export class NodeDeleteButton extends HTMLElement {
   #attachButtons() {
     const container = createElement("div", { className: "lexxy-floating-controls__group" })
 
-    container.appendChild(this.#floatingButton("lexxy-node-preview", "Preview", AttachmentIcons.preview, () => this.#openPreview()))
+    container.appendChild(this.#floatingButton("lexxy-node-preview", "Open", AttachmentIcons.preview, () => this.#openPreview()))
 
     if (this.#isPreviewAttachment) {
       this.collapseButton = this.#floatingButton("lexxy-node-collapse", "Collapse preview", AttachmentIcons.collapse, () => this.#toggleCollapse())
@@ -46,11 +47,18 @@ export class NodeDeleteButton extends HTMLElement {
   }
 
   #floatingButton(className, label, icon, onClick) {
-    const button = createElement("button", { className, type: "button", "aria-label": label })
+    const button = createElement("button", { className, type: "button", "aria-label": label, title: label })
     button.tabIndex = -1
     button.innerHTML = icon
     button.addEventListener("click", onClick)
     return button
+  }
+
+  // Update both aria-label (for assistive tech) and title (for tooltips) when
+  // a button's label changes between states (collapse/expand, show/hide caption).
+  #setButtonLabel(button, label) {
+    button.setAttribute("aria-label", label)
+    button.setAttribute("title", label)
   }
 
   get #figure() {
@@ -67,12 +75,12 @@ export class NodeDeleteButton extends HTMLElement {
 
     if (figure.classList.contains("attachment--collapsed") && this.collapseButton) {
       this.collapseButton.innerHTML = AttachmentIcons.expand
-      this.collapseButton.setAttribute("aria-label", "Expand preview")
+      this.#setButtonLabel(this.collapseButton, "Expand preview")
     }
 
     if (figure.classList.contains("attachment--caption-hidden")) {
       this.captionButton.innerHTML = AttachmentIcons.captionHide
-      this.captionButton.setAttribute("aria-label", "Show caption")
+      this.#setButtonLabel(this.captionButton, "Show caption")
     }
   }
 
@@ -80,52 +88,72 @@ export class NodeDeleteButton extends HTMLElement {
     const figure = this.#figure
     if (!figure) return
 
-    // For file attachments: click the name to edit inline
-    const nameTag = figure.querySelector(".attachment__name")
-    if (nameTag && !this.#isPreviewAttachment) {
-      nameTag.click()
-      return
+    // Ensure the caption is visible so there's actually something to edit.
+    this.editor.update(() => {
+      const node = $getNearestNodeFromDOMNode(this)
+      if (!$isActionTextAttachmentNode(node) || !node.captionHidden) return
+
+      node.getWritable().captionHidden = false
+      this.captionButton.innerHTML = AttachmentIcons.captionShow
+      this.#setButtonLabel(this.captionButton, "Hide caption")
+    })
+
+    // After the DOM reconciles, focus the appropriate editor:
+    //   - .attachment__name (file cards, audio preview, collapsed card view)
+    //     → click to open the inline rename input
+    //   - figcaption textarea (expanded image-style previews)
+    //     → focus + select-all
+    requestAnimationFrame(() => {
+      const visibleName = this.#visibleElement(figure.querySelectorAll(".attachment__name"))
+      if (visibleName) {
+        visibleName.click()
+        return
+      }
+
+      const textarea = this.#visibleElement(figure.querySelectorAll("figcaption textarea"))
+      if (textarea) {
+        textarea.focus()
+        textarea.select()
+      }
+    })
+  }
+
+  #visibleElement(nodeList) {
+    for (const el of nodeList) {
+      if (el.offsetParent !== null) return el
     }
-
-    // For preview attachments: ensure caption is visible, then focus textarea
-    if (this.#isPreviewAttachment) {
-      this.editor.update(() => {
-        const node = $getNearestNodeFromDOMNode(this)
-        if (!$isActionTextAttachmentNode(node)) return
-
-        if (node.captionHidden) {
-          const writable = node.getWritable()
-          writable.captionHidden = false
-          this.captionButton.innerHTML = AttachmentIcons.captionShow
-          this.captionButton.setAttribute("aria-label", "Hide caption")
-        }
-      })
-
-      requestAnimationFrame(() => {
-        const textarea = figure.querySelector("figcaption textarea")
-        if (textarea) {
-          textarea.focus()
-          textarea.select()
-        }
-      })
-    }
+    return null
   }
 
   #openPreview() {
     const figure = this.#figure
     if (!figure) return
 
-    const nameEl = figure.querySelector(".attachment__name")
-    const caption = nameEl?.textContent !== figure.dataset.fileName ? nameEl?.textContent : ""
+    // Read caption from whichever DOM element is rendering it — the name
+    // strong (file cards, collapsed cards, audio preview) or the editable
+    // textarea (image/video preview). Skip Lexical state reads here because
+    // the preview button click fires outside of Lexical's read/update context.
+    // Caption rendering in the modal is independent of the inline
+    // caption-hidden toggle — the modal always shows a custom caption when
+    // one exists, with the filename + size as subtitle. The authoritative
+    // caption is kept on the figure's `data-caption` by updateDOM; fall
+    // back to visible name/textarea text in case the dataset isn't synced.
+    const nameText = figure.querySelector(".attachment__name")?.textContent
+    const textareaText = figure.querySelector("figcaption textarea")?.value
+    const fileName = figure.dataset.fileName || ""
+    const candidate = (figure.dataset.caption || nameText || textareaText || "").trim()
+    const caption = candidate && candidate !== fileName ? candidate : ""
+    const src = figure.querySelector("img")?.src || figure.dataset.src
 
     dispatch(figure, "lexxy:preview-attachment", {
-      src: figure.querySelector("img")?.src || figure.dataset.src,
-      blobUrl: figure.dataset.blobUrl,
-      fileName: figure.dataset.fileName,
+      src,
+      blobUrl: figure.dataset.blobUrl || representationToBlobUrl(src),
+      fileName,
       contentType: figure.dataset.contentType,
       fileSize: figure.dataset.fileSize,
       sgid: figure.dataset.sgid,
-      caption
+      caption,
+      pageMedia: figure.querySelector("video, audio") || null
     }, true)
   }
 
@@ -143,7 +171,7 @@ export class NodeDeleteButton extends HTMLElement {
 
       const isCollapsed = writable.collapsed
       this.collapseButton.innerHTML = isCollapsed ? AttachmentIcons.expand : AttachmentIcons.collapse
-      this.collapseButton.setAttribute("aria-label", isCollapsed ? "Expand preview" : "Collapse preview")
+      this.#setButtonLabel(this.collapseButton, isCollapsed ? "Expand preview" : "Collapse preview")
     })
 
     // Double-RAF: first waits for Lexical's DOM reconciliation to apply
@@ -165,7 +193,7 @@ export class NodeDeleteButton extends HTMLElement {
 
       const isHidden = writable.captionHidden
       this.captionButton.innerHTML = isHidden ? AttachmentIcons.captionHide : AttachmentIcons.captionShow
-      this.captionButton.setAttribute("aria-label", isHidden ? "Show caption" : "Hide caption")
+      this.#setButtonLabel(this.captionButton, isHidden ? "Show caption" : "Hide caption")
     })
   }
 
@@ -177,4 +205,4 @@ export class NodeDeleteButton extends HTMLElement {
   }
 }
 
-export default NodeDeleteButton
+export default AttachmentControls

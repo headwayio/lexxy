@@ -7,7 +7,7 @@ import DropdownLink from "./dropdown/link"
 import DropdownHighlight from "./dropdown/highlight"
 import Prompt from "./prompt"
 import CodeLanguagePicker from "./code_language_picker"
-import NodeDeleteButton from "./node_delete_button"
+import AttachmentControls from "./attachment_controls"
 import PreviewModal from "./preview_modal"
 import TableTools from "./table/table_tools"
 
@@ -20,7 +20,7 @@ export function defineElements() {
     "lexxy-highlight-dropdown": DropdownHighlight,
     "lexxy-prompt": Prompt,
     "lexxy-code-language-picker": CodeLanguagePicker,
-    "lexxy-node-delete-button": NodeDeleteButton,
+    "lexxy-attachment-controls": AttachmentControls,
     "lexxy-table-tools": TableTools,
   }
 

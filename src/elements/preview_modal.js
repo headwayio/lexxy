@@ -1,5 +1,6 @@
 import Lexxy from "../config/lexxy"
 import { buildPreviewDialog } from "../preview/dialog_builder"
+import { attachPlaybackSync, installPauseOthers } from "../preview/playback_sync"
 
 // <lexxy-preview-modal> is registered by the editor when the host app opts
 // in via Lexxy.configure({ global: { previewModal: true } }). It listens for
@@ -14,6 +15,8 @@ export class PreviewModal extends HTMLElement {
 
     this.handlePreviewEvent = (event) => this.#onPreviewRequest(event)
     document.addEventListener("lexxy:preview-attachment", this.handlePreviewEvent)
+
+    installPauseOthers()
   }
 
   disconnectedCallback() {
@@ -26,22 +29,24 @@ export class PreviewModal extends HTMLElement {
   #onPreviewRequest(event) {
     if (event.defaultPrevented) return
 
-    const { src, blobUrl, fileName, contentType, fileSize, caption } = event.detail
+    const { src, blobUrl, fileName, contentType, fileSize, caption, pageMedia } = event.detail
     if (!src && !blobUrl) return
 
-    this.#open({ src, blobUrl, fileName, contentType, fileSize, caption })
+    this.#open({ src, blobUrl, fileName, contentType, fileSize, caption, pageMedia })
   }
 
-  #open(options) {
+  #open({ pageMedia, ...dialogOptions }) {
     this.#close?.()
 
-    const { dialog, box, close } = buildPreviewDialog(options)
+    const { dialog, box, close } = buildPreviewDialog(dialogOptions)
     this.#close = close
 
     document.body.appendChild(dialog)
     dialog.showModal()
     box.focus()
     document.body.classList.add("lexxy-preview-modal--open")
+
+    attachPlaybackSync(dialog, pageMedia)
   }
 }
 
