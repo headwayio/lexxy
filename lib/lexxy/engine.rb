@@ -44,12 +44,24 @@ module Lexxy
     initializer "lexxy.sanitization" do |app|
       ActiveSupport.on_load(:action_text_content) do
         default_allowed_tags = Class.new.include(ActionText::ContentHelper).new.sanitizer_allowed_tags
-        ActionText::ContentHelper.allowed_tags = default_allowed_tags + %w[ video audio source embed table tbody tr th td svg path ]
+        # SVG primitives (circle, rect, etc.) are allowlisted so SVG attachments
+        # can render inline — ActiveStorage's binary-types list forces SVG blobs
+        # to download, so the show-page partial embeds the raw SVG markup instead
+        # of using an <img src="...">. Sanitizer still scrubs <script> children.
+        ActionText::ContentHelper.allowed_tags = default_allowed_tags + %w[
+          video audio source embed table tbody tr th td
+          svg path circle ellipse line polyline polygon rect g defs use text tspan title desc
+          linearGradient radialGradient stop clipPath mask pattern symbol marker
+        ]
 
         default_allowed_attributes = Class.new.include(ActionText::ContentHelper).new.sanitizer_allowed_attributes
         ActionText::ContentHelper.allowed_attributes = default_allowed_attributes + %w[
           controls poster data-language style autoplay loop muted playsinline preload
           viewBox xmlns d fill download target aria-label
+          cx cy r rx ry x y x1 y1 x2 y2 points transform stroke stroke-width stroke-linecap stroke-linejoin
+          stroke-dasharray stroke-dashoffset stroke-opacity fill-opacity opacity offset stop-color stop-opacity
+          gradientUnits gradientTransform spreadMethod patternUnits patternTransform clip-path mask
+          font-family font-size font-weight text-anchor dominant-baseline preserveAspectRatio
           data-collapsed data-caption-hidden
         ]
 

@@ -10,15 +10,29 @@ module Lexxy
 
     def lexxy_attachment_preview_action(blob)
       link_to rails_blob_path(blob, disposition: :inline),
-              class: "attachment__action", target: "_blank", aria: { label: "Preview" } do
+              class: "attachment__action", target: "_blank", title: "Open", aria: { label: "Open" } do
         lexxy_attachment_icon_svg(PREVIEW_ICON_PATH)
       end
     end
 
     def lexxy_attachment_download_action(blob)
       link_to url_for(blob),
-              class: "attachment__action", download: blob.filename, aria: { label: "Download" } do
+              class: "attachment__action", download: blob.filename, title: "Download", aria: { label: "Download" } do
         lexxy_attachment_icon_svg(DOWNLOAD_ICON_PATH)
+      end
+    end
+
+    # SVGs are forced to download by ActiveStorage's binary-types list (a
+    # security default — SVGs can embed <script>). Embed the SVG markup
+    # directly so the browser renders it; the ActionText sanitizer strips
+    # <script> children before render, and Lexxy::Engine extends the
+    # allowlist to cover common SVG primitives.
+    def lexxy_attachment_image_tag(blob)
+      if blob.content_type == "image/svg+xml"
+        markup = blob.download.sub(/\A<\?xml[^>]*\?>\s*/, "")
+        markup.html_safe
+      else
+        image_tag(url_for(blob))
       end
     end
 
@@ -41,9 +55,36 @@ module Lexxy
     end
 
     private
+      # When the ActionText::Attachment has a caption and the editor-managed
+      # `data-caption-hidden` flag is NOT set, we display the caption as the
+      # name and suppress the size on image/video previews (caption carries the
+      # meaningful label). Otherwise fall back to the original filename + size.
+      # `blob` here is actually the ActionText::Attachment (passed by
+      # ActionText via `object: attachment`); method_missing delegates to the
+      # real ActiveStorage::Blob for filename, byte_size, content_type, etc.
       def lexxy_attachment_name_and_size(blob)
-        tag.span(blob.filename, class: "attachment__name") +
-          tag.span(number_to_human_size(blob.byte_size), class: "attachment__size")
+        caption = lexxy_attachment_caption(blob)
+        if caption
+          display_name = caption
+          show_size = !blob.content_type.to_s.start_with?("image/", "video/")
+        else
+          display_name = blob.filename
+          show_size = true
+        end
+
+        name_tag = tag.span(display_name, class: "attachment__name")
+        size_tag = show_size ? tag.span(number_to_human_size(blob.byte_size), class: "attachment__size") : ActiveSupport::SafeBuffer.new
+        name_tag + size_tag
+      end
+
+      # Returns the non-hidden caption string, or nil if no caption is set or
+      # if it's explicitly hidden via the editor's caption-toggle.
+      def lexxy_attachment_caption(blob)
+        return nil unless blob.respond_to?(:caption) && blob.respond_to?(:node)
+        return nil if blob.node["data-caption-hidden"].present?
+
+        caption = blob.caption
+        caption if caption.present?
       end
 
       def lexxy_attachment_icon_svg(path_data)

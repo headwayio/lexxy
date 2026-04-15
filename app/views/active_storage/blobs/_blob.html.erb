@@ -17,10 +17,7 @@
   <figure class="attachment attachment--audio attachment--<%= extension %>">
     <div class="attachment__file-info">
       <span class="attachment__icon"><%= icon_label %></span>
-      <div class="attachment__caption">
-        <span class="attachment__name"><%= blob.filename %></span>
-        <span class="attachment__size"><%= number_to_human_size blob.byte_size %></span>
-      </div>
+      <%= lexxy_attachment_file_caption(blob) %>
       <%= actions %>
     </div>
     <%= tag.audio controls: true, preload: "metadata" do %>
@@ -28,10 +25,12 @@
     <% end %>
   </figure>
 
-<% elsif blob.content_type == "image/gif" %>
-  <figure class="attachment attachment--preview attachment--gif">
+<% elsif %w[ image/gif image/webp image/avif image/svg+xml ].include?(blob.content_type) %>
+  <%# Serve animated and vector image formats directly — going through %>
+  <%# blob.representation strips animation (GIF/WebP/AVIF) or rasterizes (SVG). %>
+  <figure class="attachment attachment--preview attachment--<%= extension %>">
     <div class="attachment__media">
-      <%= image_tag url_for(blob) %>
+      <%= lexxy_attachment_image_tag(blob) %>
     </div>
     <%= lexxy_attachment_preview_caption(blob, icon_label) %>
     <%= actions %>

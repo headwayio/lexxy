@@ -8,7 +8,7 @@ module Lexxy
   module AttachmentIconHelper
     ICON_LABELS = {
       "md" => "M\u2193", "markdown" => "M\u2193",
-      "png" => "IMG", "jpg" => "IMG", "jpeg" => "IMG", "webp" => "IMG", "svg" => "IMG",
+      "png" => "IMG", "jpg" => "IMG", "jpeg" => "IMG", "webp" => "IMG", "svg" => "SVG",
       "bmp" => "IMG", "tiff" => "IMG", "tif" => "IMG", "ico" => "IMG", "avif" => "IMG", "heic" => "IMG",
       "docx" => "DOC", "xlsx" => "XLS", "pptx" => "PPT",
       "rar" => "ZIP", "webm" => "VID", "avi" => "VID"
