@@ -216,9 +216,9 @@
         position: absolute;
       }
 
-      lexxy-node-delete-button {
-        inset-block-start: 1.5ch;
-        inset-inline-end: 1.5ch;
+      lexxy-attachment-controls {
+        inset-block-start: 12px;
+        inset-inline-end: 12px;
         inset-inline-start: unset;
       }
     }
@@ -383,9 +383,9 @@
       flex-shrink: 0;
     }
 
-    lexxy-node-delete-button {
+    lexxy-attachment-controls {
       inset-block-start: 50%;
-      inset-inline-end: 1ch;
+      inset-inline-end: 12px;
       inset-inline-start: unset;
       transform: translate(0, -50%);
     }
@@ -393,6 +393,15 @@
 
   .attachment--preview.attachment--caption-hidden:not([data-content-type^="audio"]) .attachment__preview-view figcaption {
     display: none;
+  }
+
+  /* Inline video preview styling */
+  .attachment__video {
+    block-size: auto;
+    border-radius: var(--lexxy-radius);
+    display: block;
+    inline-size: 100%;
+    max-inline-size: 100%;
   }
 
   .attachment__name-input,
@@ -555,9 +564,9 @@
       flex-shrink: 0;
     }
 
-    lexxy-node-delete-button {
+    lexxy-attachment-controls {
       inset-block-start: 50%;
-      inset-inline-end: 1ch;
+      inset-inline-end: 12px;
       inset-inline-start: unset;
       transform: translate(0, -50%);
     }
@@ -611,12 +620,17 @@
   .attachment--ai,
   .attachment--eps,
   .attachment--indd,
-  .attachment--svg,
   .attachment--ppt,
   .attachment--pptx {
     --lexxy-attachment-icon-bg: white;
     --lexxy-attachment-icon-border: oklch(55% 0.2 27);
     --lexxy-attachment-icon-text: oklch(40% 0.15 27);
+  }
+
+  .attachment--svg {
+    --lexxy-attachment-icon-bg: oklch(72% 0.18 65);
+    --lexxy-attachment-icon-border: oklch(72% 0.18 65);
+    --lexxy-attachment-icon-text: white;
   }
 
   .attachment--css,
@@ -1504,7 +1518,7 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
   /* --------------------------------------------------------------------------
   /* Attachment controls (preview, download, delete) */
 
-  &:is(lexxy-node-delete-button) {
+  &:is(lexxy-attachment-controls) {
     inset-block-start: 0;
     inset-inline-start: 100%;
     opacity: 0;
@@ -1853,7 +1867,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     outline: none;
   }
 
-  lexxy-node-delete-button {
+  lexxy-attachment-controls {
     inset-inline-start: 0;
     line-height: 1lh;
 
@@ -2060,6 +2074,18 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      to the padding box, so extend 1px extra on each side. */
   .attachment.block--selected::after {
     inset: -7px -7px -7px -8px;
+  }
+
+  /* When an attachment is wrapped inside a block-selected list item, the
+     list item already shows the highlight — suppress the inner card's
+     duplicated outline/tint so it doesn't read as a nested frame. */
+  li.block--selected > .attachment.block--selected,
+  li.block--selected > .attachment.block--selected.block--focused {
+    outline: none;
+    box-shadow: none;
+  }
+  li.block--selected > .attachment.block--selected::after {
+    display: none;
   }
 
   /* Wrapped block selector used across multiple rules below. */
@@ -2564,6 +2590,16 @@ lexxy-editor.lexxy-editor--keyboard-menu * {
   background: var(--lexxy-color-ink-lightest, #f3f4f6);
 }
 
+.lexxy-block-actions__item[disabled] {
+  color: var(--lexxy-color-text-subtle, #9ca3af);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.lexxy-block-actions__item[disabled]:hover {
+  background: transparent;
+}
+
 .lexxy-block-actions__icon {
   display: flex;
   align-items: center;
@@ -2799,7 +2835,27 @@ dialog.lexxy-preview-modal::backdrop {
   background: white;
 }
 
+.lexxy-preview-modal__text {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--lexxy-preview-header-border, #e5e7eb);
+  border-radius: 0.5rem;
+  background: white;
+  color: var(--lexxy-color-ink, #111827);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
 .lexxy-preview-modal__video {
+  width: 100%;
+  height: auto;
   max-width: 100%;
   max-height: 100%;
   border-radius: 0.5rem;

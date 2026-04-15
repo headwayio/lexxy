@@ -639,6 +639,13 @@
     opacity: 1;
   }
 
+  /* Hide the preview eye button by default; the show rule lives outside this
+     :where(.lexxy-content) scope because it targets <html> via :root, which
+     can't be a descendant of .lexxy-content. */
+  .attachment__action[aria-label="Open"] {
+    display: none;
+  }
+
   .attachment--file,
   .attachment--preview {
     position: relative;
@@ -656,12 +663,17 @@
   .attachment--ai,
   .attachment--eps,
   .attachment--indd,
-  .attachment--svg,
   .attachment--ppt,
   .attachment--pptx {
     --lexxy-attachment-icon-bg: white;
     --lexxy-attachment-icon-border: oklch(55% 0.2 27);
     --lexxy-attachment-icon-text: oklch(40% 0.15 27);
+  }
+
+  .attachment--svg {
+    --lexxy-attachment-icon-bg: oklch(72% 0.18 65);
+    --lexxy-attachment-icon-border: oklch(72% 0.18 65);
+    --lexxy-attachment-icon-text: white;
   }
 
   .attachment--css,
@@ -811,4 +823,11 @@
       margin: 0;
     }
   }
+}
+
+/* Reveal the preview eye button when lexxy-content-preview.js has loaded.
+   This rule lives outside :where(.lexxy-content) because it targets <html>
+   via :root, which is not a descendant of .lexxy-content. */
+:root.lexxy-content-preview-enabled .attachment__action[aria-label="Open"] {
+  display: inline-flex;
 }
