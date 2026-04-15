@@ -1,7 +1,7 @@
 import Lexxy from "../config/lexxy"
 import { $getEditor, $getNearestRootOrShadowRoot, DecoratorNode, HISTORY_MERGE_TAG } from "lexical"
 import { attachmentIconLabel, createAttachmentFigure, createElement, dispatch, isPreviewableImage } from "../helpers/html_helper"
-import { bytesToHumanSize, extractFileName } from "../helpers/storage_helper"
+import { bytesToHumanSize, extractFileName, representationToBlobUrl } from "../helpers/storage_helper"
 import { parseBoolean } from "../helpers/string_helper"
 
 
@@ -108,13 +108,20 @@ export class ActionTextAttachmentNode extends DecoratorNode {
 
     if (this.isAudio) {
       const previewView = createElement("div", { className: "attachment__preview-view" })
-      previewView.appendChild(this.#createDOMForFile())
-      previewView.appendChild(this.#createDOMForNotImage())
+      previewView.appendChild(this.#createIconLabel())
+      previewView.appendChild(this.#createFileCaption())
       previewView.appendChild(this.#createAudioPlayer())
       figure.appendChild(previewView)
 
       // Audio's card view is identical DOM to the preview-view header (icon + name),
       // so defer creation until it's actually needed (collapsed mode).
+      if (this.collapsed) figure.appendChild(this.#createCardView())
+    } else if (this.isVideo) {
+      const previewView = createElement("div", { className: "attachment__preview-view" })
+      previewView.appendChild(this.#createVideoPlayer())
+      previewView.appendChild(this.#createEditableCaption())
+      figure.appendChild(previewView)
+
       if (this.collapsed) figure.appendChild(this.#createCardView())
     } else if (this.isPreviewableAttachment) {
       const previewView = createElement("div", { className: "attachment__preview-view" })
@@ -127,8 +134,8 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       // attachments at once. updateDOM recreates it when `collapsed` flips.
       if (this.collapsed) figure.appendChild(this.#createCardView())
     } else {
-      figure.appendChild(this.#createDOMForFile())
-      figure.appendChild(this.#createDOMForNotImage())
+      figure.appendChild(this.#createIconLabel())
+      figure.appendChild(this.#createFileCaption())
     }
 
     if (this.collapsed) figure.classList.add("attachment--collapsed")
@@ -162,6 +169,10 @@ export class ActionTextAttachmentNode extends DecoratorNode {
 
     dom.classList.toggle("attachment--collapsed", this.collapsed)
     dom.classList.toggle("attachment--caption-hidden", this.captionHidden)
+
+    // Keep the figure's dataset.caption in sync so preview modal can read
+    // the authoritative caption regardless of the inline caption-hidden toggle.
+    dom.dataset.caption = this.caption || ""
 
     return false
   }
@@ -233,9 +244,10 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     figure.dataset.fileName = this.fileName || ""
     figure.dataset.fileSize = this.fileSize || ""
     figure.dataset.sgid = this.sgid || ""
+    figure.dataset.caption = this.caption || ""
     if (this.blobUrl) figure.dataset.blobUrl = this.blobUrl
 
-    const deleteButton = createElement("lexxy-node-delete-button")
+    const deleteButton = createElement("lexxy-attachment-controls")
     figure.appendChild(deleteButton)
 
     return figure
@@ -253,11 +265,35 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return this.contentType?.startsWith("audio/")
   }
 
+  get isVideo() {
+    return this.contentType?.startsWith("video/")
+  }
+
+  // For playable media, the stored url/src is often an Active Storage
+  // representation URL (a thumbnail image). Derive the actual blob URL so
+  // the inline player and modal receive the real file.
+  get playbackUrl() {
+    return this.blobUrl || representationToBlobUrl(this.src) || this.src
+  }
+
   #createDOMForImage(options = {}) {
     const img = createElement("img", { src: this.src, draggable: false, alt: this.altText, ...this.#imageDimensions, ...options })
 
     if (this.previewable && !this.isPreviewableImage) {
       img.onerror = () => this.#swapPreviewToFileDOM(img)
+    }
+
+    // ActiveStorage forces image/svg+xml downloads (security default — SVGs
+    // can embed <script>). Re-fetch and serve via an object URL with the
+    // correct MIME so <img> can render it. Object URLs sidestep the original
+    // Content-Disposition; <img> can't execute scripts from inline SVG either way.
+    if (this.contentType === "image/svg+xml") {
+      fetch(this.src)
+        .then((response) => response.blob())
+        .then((blob) => {
+          img.src = URL.createObjectURL(new Blob([blob], { type: "image/svg+xml" }))
+        })
+        .catch(() => this.#swapPreviewToFileDOM(img))
     }
 
     const container = createElement("div", { className: "attachment__container" })
@@ -277,8 +313,8 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const caption = figure.querySelector("figcaption")
     if (caption) caption.remove()
 
-    figure.appendChild(this.#createDOMForFile())
-    figure.appendChild(this.#createDOMForNotImage())
+    figure.appendChild(this.#createIconLabel())
+    figure.appendChild(this.#createFileCaption())
   }
 
   get #imageDimensions() {
@@ -303,20 +339,23 @@ export class ActionTextAttachmentNode extends DecoratorNode {
 
   #createAudioPlayer() {
     const audio = createElement("audio", { controls: true, preload: "metadata" })
-    const source = createElement("source", { src: this.blobUrl || this.src, type: this.contentType })
-    audio.appendChild(source)
+    audio.appendChild(createElement("source", { src: this.playbackUrl, type: this.contentType }))
     return audio
   }
 
-  #createDOMForFile() {
-    return this.#createIconLabel()
+  #createVideoPlayer() {
+    const video = createElement("video", { controls: true, preload: "metadata", className: "attachment__video" })
+    video.appendChild(createElement("source", { src: this.playbackUrl, type: this.contentType }))
+    return video
   }
 
-  #createDOMForNotImage() {
+  // <figcaption> with the rename-able name + size, used by file attachments
+  // (xls/csv/etc.) and by the audio preview's file-info row. The collapsed
+  // card view uses a similar but distinct layout (icon + name + subtitle
+  // wrapped in a .attachment__card-view div) — see #createCardView.
+  #createFileCaption() {
     const figcaption = createElement("figcaption", { className: "attachment__caption" })
-    const nameTag = this.#createNameTag({ title: "Click to rename" })
-    nameTag.addEventListener("click", (event) => this.#startEditingName(event, nameTag))
-    figcaption.appendChild(nameTag)
+    figcaption.appendChild(this.#createNameTag())
     if (this.fileSize) {
       figcaption.appendChild(createElement("span", { className: "attachment__size", textContent: bytesToHumanSize(this.fileSize) }))
     }
@@ -327,8 +366,17 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(this.#fileExtension) })
   }
 
-  #createNameTag(extraProps = {}) {
-    return createElement("strong", { className: "attachment__name", textContent: this.#displayName, ...extraProps })
+  // Renders the display name (caption or filename) with click-to-rename
+  // behaviour wired in. Used by every attachment layout — file card, audio
+  // preview, collapsed card view — so the rename UX is consistent everywhere.
+  #createNameTag() {
+    const nameTag = createElement("strong", {
+      className: "attachment__name",
+      textContent: this.#displayName,
+      title: "Click to rename"
+    })
+    nameTag.addEventListener("click", (event) => this.#startEditingName(event, nameTag))
+    return nameTag
   }
 
   get #fileExtension() {
@@ -468,11 +516,11 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   }
 
   #handlePreviewClick(event) {
-    if (event.target.closest("textarea, lexxy-node-delete-button, button")) return
+    if (event.target.closest("textarea, lexxy-attachment-controls, button")) return
 
     dispatch(event.currentTarget, "lexxy:preview-attachment", {
       src: this.src,
-      blobUrl: this.blobUrl,
+      blobUrl: this.playbackUrl,
       fileName: this.fileName,
       contentType: this.contentType,
       fileSize: this.fileSize,

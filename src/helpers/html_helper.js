@@ -37,7 +37,7 @@ const ICON_LABELS = {
   jpg: "IMG",
   jpeg: "IMG",
   webp: "IMG",
-  svg: "IMG",
+  svg: "SVG",
   bmp: "IMG",
   tiff: "IMG",
   tif: "IMG",
@@ -58,7 +58,7 @@ export function attachmentIconLabel(extension) {
 }
 
 export function isPreviewableImage(contentType) {
-  return contentType.startsWith("image/") && !contentType.includes("svg")
+  return contentType.startsWith("image/")
 }
 
 export function dispatchCustomEvent(element, name, detail) {
