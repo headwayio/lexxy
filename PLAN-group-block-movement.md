@@ -238,40 +238,50 @@ Lexxy ships `app/views/active_storage/blobs/_blob.html.erb` which provides out-o
 
 | Content type | Rendering |
 |-------------|-----------|
-| Video (mp4, webm, mov) | `<video controls>` with poster/thumbnail |
-| Audio (mp3, wav, ogg) | File card with inline `<audio controls>` player below |
-| GIF | `<img>` using direct blob URL (preserves animation, not a representation) |
-| Images (png, jpg, etc.) | `<img>` via Active Storage representation |
-| PDF | Image thumbnail representation |
+| Video (mp4, webm, mov, mkv, avi) | `<video controls>` |
+| Audio (mp3, wav, ogg, flac, m4a, aac) | File card with inline `<audio controls>` player below |
+| GIF, animated WebP/AVIF, SVG | `<img>` using direct blob URL (preserves animation/vector data — `blob.representation` would strip animation or rasterize SVG) |
+| Other images (png, jpg, etc.) | `<img>` via Active Storage representation (resize-to-limit) |
+| PDF | Image thumbnail representation (first-page preview) |
 | Other files | File card with icon + filename + size |
 
-All attachment types render with **preview** (eye icon) and **download** action buttons that appear on hover. Preview opens a full modal dialog; download triggers the browser's download flow.
+The `blob.video?` and `blob.audio?` checks match any `video/*` or `audio/*` content type, so unusual variants (mkv, flac, etc.) are handled automatically. The icon-label helper falls back to the uppercased extension for any type not in `ICON_LABELS`, so file cards always have a sensible label without needing a code change.
+
+All attachment types render with **Open** (eye icon) and **download** action buttons that appear on hover. Open dispatches `lexxy:preview-attachment` to the modal; download triggers the browser's download flow. The eye button is hidden by default and only shown after `lexxy-content-preview.js` adds `lexxy-content-preview-enabled` to `<html>` — apps that skip the import get a download-only action bar and can roll their own preview UI.
 
 ### Preview modal (`lexxy-content-preview.js`)
 
-Standalone script for show pages. Source lives at `src/preview/content_preview.js`; rollup emits the `app/assets/javascript/lexxy-content-preview.js` bundle alongside `lexxy.js`. Both the editor's `<lexxy-preview-modal>` custom element and this script share the DOM-building logic in `src/preview/dialog_builder.js`, so the two modals render identically.
+Standalone script for show pages. Source at `src/preview/content_preview.js`; rollup emits `app/assets/javascript/lexxy-content-preview.js` alongside `lexxy.js`. The editor's `<lexxy-preview-modal>` custom element and this script share **all** modal-building logic via `src/preview/dialog_builder.js` and `src/preview/playback_sync.js` — both modals render and behave identically.
 
 Provides:
 - Full-screen `<dialog>` modal with header (icon, caption, filename, file size) + content area
-- Content-type detection: image zoom, video player, audio player, PDF iframe, generic download
-- Playback time sync: opening modal from an inline player carries over `currentTime`; closing syncs it back
-- Pause-others: playing any media element pauses all other video/audio on the page
-- Custom caption display: reads `caption` attribute from `action-text-attachment`, shows as title with filename as subtitle
+- Content-type detection: image zoom, video player, audio player, PDF iframe, generic download fallback
+- Two-line header: shows custom caption as title with filename + size as subtitle (or filename as title with size below)
+- Playback time sync: opening modal from an inline player carries over `currentTime`; closing syncs it back. If the page media was playing, modal continues from the same spot.
+- Pause-others: playing any media element pauses all other video/audio on the page (`installPauseOthers()` from `playback_sync.js`)
 - Turbo-compatible via `turbo:load` listener
 
-**Host app integration** — only two things needed:
+**Host app integration** — minimal:
 
 ```ruby
 # config/importmap.rb
-pin "lexxy-content-preview", to: "lexxy-content-preview.js"
+pin "lexxy", to: "lexxy.js"
+pin "lexxy-content-preview", to: "lexxy-content-preview.js"  # only for show-page modal
 ```
 
 ```javascript
 // app/javascript/application.js
-import "lexxy-content-preview"
+import "lexxy"
+import "lexxy-content-preview"  // optional; opts into show-page modal & preview button
 ```
 
-If the app has a custom `app/views/active_storage/blobs/_blob.html.erb`, delete it to use Lexxy's.
+The `previewModal: true` flag for the editor modal is now the default — no `configure()` call needed. Apps that want to opt out can set `previewModal: false`.
+
+If the app has a custom `app/views/active_storage/blobs/_blob.html.erb`, delete it to use Lexxy's. The Lexxy gem ships:
+- `lib/lexxy/attachment_helper.rb` (caption-aware helpers: `lexxy_attachment_actions`, `lexxy_attachment_preview_caption`, `lexxy_attachment_file_caption`)
+- `lib/lexxy/attachment_icon_helper.rb` (`attachment_icon_label`)
+
+Both are auto-included into `ActionView::Base` by `Lexxy::Engine`, so the partial just calls them.
 
 ### Attachment state persistence
 
@@ -290,43 +300,70 @@ Two new data attributes on `action-text-attachment` elements persist editor stat
 5. `ActionText::ContentHelper.allowed_attributes` (so attributes survive render-time sanitization)
 6. CSS attribute selectors + JS on the show page apply the visual state
 
-### Editor attachment controls
+### Editor attachment controls (`<lexxy-attachment-controls>`)
 
-Floating controls appear on hover and selection with this button order:
+Custom element at `src/elements/attachment_controls.js` (formerly `node_delete_button.js` — renamed since it grew well beyond the delete button). Floating controls appear on hover and selection. All buttons have native browser tooltips via `title` plus matching `aria-label`. Button order:
 
-| Button | Preview attachments | File attachments |
-|--------|-------------------|-----------------|
-| Preview (eye) | Opens modal | Opens modal |
-| Collapse (chevron) | Toggles preview ↔ card | — (already a card) |
-| Edit (pencil) | Shows/focuses caption textarea | Click-to-edit inline filename |
-| Caption toggle (text lines) | Show/hide caption below media | Toggle between custom name and original filename |
-| Delete (trash) | Remove attachment | Remove attachment |
+| Button | Preview attachments | File attachments | Tooltip |
+|--------|-------------------|-----------------|---------|
+| Open (eye) | Opens modal | Opens modal | "Open" |
+| Collapse (chevron) | Toggles preview ↔ card | — (already a card) | "Collapse preview" / "Expand preview" |
+| Edit (pencil) | Focuses caption editor (textarea or click-to-rename name) | Click-to-edit inline filename | "Edit name" |
+| Caption toggle (text lines) | Show/hide caption below media | Toggle between custom name and original filename | "Hide caption" / "Show caption" |
+| Delete (trash) | Remove attachment | Remove attachment | "Remove" |
 
-**Audio preview in editor**: Audio attachments render as a file card with an inline `<audio>` player below. Collapse hides the player; expand shows it. The collapsed state persists to the show page.
+**Naming note**: We use **"Open"** for the eye icon to disambiguate from the inline "preview" (which the collapse button toggles). Internally the code/event names still use "preview" (`#openPreview`, `lexxy:preview-attachment`, `PreviewModal`, etc.) — only user-visible strings changed.
 
-**Inline name editing**: Click any file attachment's filename to edit it inline. Enter saves (auto-enables caption display). Escape clears and resets to original filename. The edited name is stored as the `caption` attribute.
+**Audio preview in editor**: Audio attachments render as a file card with an inline `<audio>` player below (the same `attachment--audio` layout as the show page). Collapse hides the player; expand shows it. The collapsed state persists to the show page.
+
+**Inline video preview in editor**: Video attachments render as a `<video controls>` player (using the derived blob URL via `representationToBlobUrl()` in `storage_helper.js`). Collapse switches to the file card.
+
+**PDF preview in editor**: PDFs render with their thumbnail image (representation URL). Collapse switches to the file card.
+
+**Inline name editing**: Click any file attachment's filename (`.attachment__name`) to edit it inline. Enter saves (auto-enables caption display). Escape clears and resets to original filename. The edited name is stored as the `caption` attribute. The click-to-edit listener lives on `#createNameTag()` itself, so every layout that renders a name (file cards, audio preview, collapsed card view) gets the behaviour for free.
 
 **Gallery ejection**: Collapsed images are automatically ejected from image galleries since `ImageGalleryNode.isValidChild()` excludes collapsed nodes. The gallery's `splitAroundInvalidChild` transform handles the ejection.
 
+### Shared building blocks (DRY composition)
+
+`ActionTextAttachmentNode#createDOM` composes a small set of reusable methods:
+
+| Method | Purpose |
+|--------|---------|
+| `#createIconLabel()` | Extension badge (MP4, PDF, XLS, etc.) |
+| `#createNameTag()` | Display name `<strong>` with click-to-rename wired in |
+| `#createFileCaption()` | `<figcaption>` with name + size — used by file cards and the audio preview's file-info row |
+| `#createEditableCaption()` | `<textarea>` caption for image/video previews |
+| `#createDOMForImage()` / `#createAudioPlayer()` / `#createVideoPlayer()` | The media element itself |
+| `#createCardView()` | Collapsed-state card (icon + name + subtitle) |
+
+The same `playbackUrl` getter resolves the right URL for inline players and the modal — `blobUrl` (if known), otherwise `representationToBlobUrl(src)`, otherwise `src`. The blob URL is stored on the figure's `data-caption` attribute (via `updateDOM`) so the preview button can read the authoritative caption regardless of caption-hidden state.
+
 ### Sanitization configuration (all in `engine.rb`)
 
-```ruby
-# Tags
-ActionText::ContentHelper.allowed_tags += %w[video audio source embed svg path table tbody tr th td]
+Three layers must agree for new attributes to survive the round-trip:
 
-# Attributes
+```ruby
+# 1. Render-time sanitization (server-side, every page render)
+ActionText::ContentHelper.allowed_tags += %w[video audio source embed svg path table tbody tr th td]
 ActionText::ContentHelper.allowed_attributes += %w[
   controls poster data-language style autoplay loop muted playsinline preload
-  viewBox xmlns d fill download target aria-label
+  viewBox xmlns d fill download target aria-label title
   data-collapsed data-caption-hidden
 ]
 
-# ActionText attachment re-serialization
+# 2. ActionText attachment re-serialization (server-side, on save)
 ActionText::Attachment::ATTRIBUTES.push("data-collapsed", "data-caption-hidden")
+```
 
-# Client-side (DOMPurify in dom_purify.js)
+```javascript
+// 3. Client-side DOMPurify (src/config/dom_purify.js)
+// Without this the editor's exported HTML loses these attributes before
+// reaching the server.
 ALLOWED_HTML_ATTRIBUTES includes: data-collapsed, data-caption-hidden
 ```
+
+If you add a new persisted attribute on `action-text-attachment`, update **all three** layers or it will silently disappear.
 
 ### Icon color system
 
