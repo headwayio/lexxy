@@ -27,7 +27,7 @@ import {
   UNDO_COMMAND
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
-import { $isCodeNode } from "@lexical/code"
+import { $createCodeNode, $isCodeNode } from "@lexical/code"
 import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
@@ -1255,9 +1255,24 @@ export class BlockSelectionExtension extends LexxyExtension {
             // Heading / paragraph / code — not meaningful for decorators.
             newSelectedKeys.add(node.getKey())
           }
+        } else if (isListCommand) {
+          // Non-list block → list: wrap in a new ListNode + ListItemNode,
+          // moving the node's children into the list item. Adjacent same-
+          // type lists merge during reconciliation, so consecutive converted
+          // items end up in one list.
+          const list = $createListNode(listType)
+          const listItem = $createListItemNode()
+          for (const child of [ ...node.getChildren?.() || [] ]) {
+            listItem.append(child)
+          }
+          list.append(listItem)
+          node.replace(list)
+          newSelectedKeys.add(listItem.getKey())
+          replacedKeys.add(key)
         } else {
-          // Non-list block: replace the node with a new block of the target
-          // type, moving children across. Doing this directly (instead of via
+          // Non-list block → non-list block (paragraph, heading, quote,
+          // code): replace the node with a new block of the target type,
+          // moving children across. Doing this directly (instead of via
           // editor.dispatchCommand → $setBlocksType inside our outer
           // editor.update) keeps each iteration independent — Lexical's
           // command pipeline running synchronously inside our update can
@@ -1358,6 +1373,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       case "setFormatHeadingMedium": return $createHeadingNode("h3")
       case "setFormatHeadingSmall": return $createHeadingNode("h4")
       case "insertQuoteBlock": return $createQuoteNode()
+      case "insertCodeBlock": return $createCodeNode("plain")
       default: return null
     }
   }

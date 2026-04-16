@@ -108,6 +108,29 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await assertBlockHtml(editor, "<h2>Make me a heading</h2>")
   })
 
+  test("turn-into Bullet list wraps multiple standalone non-list blocks into a single bullet list", async ({ editor, page }) => {
+    await editor.setValue("<h2>Charlie</h2><blockquote><p>Delta</p></blockquote><p>After</p>")
+    await editor.select("Charlie")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("Shift+ArrowDown")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    // Open Turn into submenu, navigate: Text, H2, H3, H4, Bullet list
+    await page.keyboard.press("ArrowRight")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    // Adjacent same-type lists merge during reconciliation, so both converted
+    // items end up in one list.
+    await assertBlockHtml(editor, "<ul><li>Charlie</li><li>Delta</li></ul><p>After</p>")
+  })
+
   test("turn-into Bullet list unwraps multiple wrapped blocks into plain bullets", async ({ editor, page }) => {
     await editor.setValue(
       "<ul><li><h2>Wrapped heading</h2></li><li><blockquote>Wrapped quote</blockquote></li></ul><p>After</p>"
