@@ -55,12 +55,14 @@ const COMMANDS = [
   "redo"
 ]
 
-// Block format commands that replace DOM elements and trigger Lexical's
-// scrollIntoViewIfNeeded, causing page jumps. These get scroll preservation.
+// Commands that replace DOM elements or restore a prior editor state,
+// both of which trigger Lexical's scrollIntoViewIfNeeded and cause the
+// page to jump. These get scroll preservation.
 const BLOCK_FORMAT_COMMANDS = new Set([
   "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall",
   "setFormatParagraph", "insertUnorderedList", "insertOrderedList",
-  "insertQuoteBlock", "insertCodeBlock"
+  "insertQuoteBlock", "insertCodeBlock",
+  "undo", "redo"
 ])
 
 export class CommandDispatcher {
