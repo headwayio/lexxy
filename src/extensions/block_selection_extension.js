@@ -1019,15 +1019,16 @@ export class BlockSelectionExtension extends LexxyExtension {
         )
         if (child) node = child
       }
+      // Wrapped versions of a content type get the same turn-into options as
+      // their unwrapped counterparts — the restriction reflects what's
+      // meaningful for the content (code loses formatting if converted to
+      // list/quote, tables lose cells, decorators have no text to convert).
       if ($isCodeNode(node)) {
-        // Wrapped code can unwrap to a plain list item so all text-block
-        // conversions stay meaningful; standalone code needs the stricter
-        // code-content restriction.
-        blockRestriction = inList ? null : "code"
+        blockRestriction = "code"
       } else if ($isWrappedTableNode(node)) {
         blockRestriction = "table"
       } else if ($isDecoratorNode(node)) {
-        blockRestriction = inList ? "decorator-wrapped" : "decorator"
+        blockRestriction = "decorator"
       }
     })
 

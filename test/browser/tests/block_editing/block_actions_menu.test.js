@@ -165,13 +165,34 @@ test.describe("Block actions menu (Cmd+/)", () => {
     expect(colorDisabled).toBe(true)
   })
 
-  test("menu restrictions: wrapped HR disables every turn-into option", async ({ editor, page }) => {
+  test("menu restrictions: wrapped HR gets the same rule as HR at root (lists + quote)", async ({ editor, page }) => {
     await editor.setValue("<p>Before</p><ul><li><hr></li></ul><p>After</p>")
     await editor.select("Before")
     await page.keyboard.press("Escape")
     await page.keyboard.press("ArrowDown") // focus wrapped HR
     const { items, colorDisabled } = await menuState(editor, page, modifier)
-    for (const { disabled } of items) expect(disabled).toBe(true)
+    const byCmd = Object.fromEntries(items.map(i => [ i.cmd, i.disabled ]))
+    expect(byCmd["setFormatParagraph"]).toBe(true)
+    expect(byCmd["setFormatHeadingLarge"]).toBe(true)
+    expect(byCmd["insertUnorderedList"]).toBe(false)
+    expect(byCmd["insertOrderedList"]).toBe(false)
+    expect(byCmd["insertQuoteBlock"]).toBe(false)
+    expect(byCmd["insertCodeBlock"]).toBe(true)
+    expect(colorDisabled).toBe(true)
+  })
+
+  test("menu restrictions: wrapped code gets the same rule as code at root (text + headings)", async ({ editor, page }) => {
+    await editor.setValue("<ul><li><pre data-language=\"plain\">code</pre></li></ul>")
+    await editor.select("code")
+    await page.keyboard.press("Escape")
+    const { items, colorDisabled } = await menuState(editor, page, modifier)
+    const byCmd = Object.fromEntries(items.map(i => [ i.cmd, i.disabled ]))
+    expect(byCmd["setFormatParagraph"]).toBe(false)
+    expect(byCmd["setFormatHeadingLarge"]).toBe(false)
+    expect(byCmd["insertUnorderedList"]).toBe(true)
+    expect(byCmd["insertOrderedList"]).toBe(true)
+    expect(byCmd["insertQuoteBlock"]).toBe(true)
+    expect(byCmd["insertCodeBlock"]).toBe(true)
     expect(colorDisabled).toBe(true)
   })
 

@@ -81,29 +81,28 @@ export class BlockActionsMenu extends HTMLElement {
     this.#addScrollResizeListeners()
   }
 
-  // Per-block-type turn-into and color restrictions.
+  // Per-content-type turn-into and color restrictions. The wrapped-in-a-list
+  // variant of each content type uses the same rule as its standalone
+  // counterpart — what's meaningful for the content doesn't change based on
+  // whether it currently lives inside a list item.
   //
-  //   code:              Text + Headings only, no color
-  //                      (standalone code block; lists/quote would lose
-  //                      code formatting)
-  //   table:             No turn-into (conversions wipe cell data), color allowed
-  //   decorator:         Bullet/Number/Quote only, no color
-  //                      (HR or attachment at root; can only be wrapped)
-  //   decorator-wrapped: No turn-into, no color
-  //                      (HR or attachment already inside a list item; further
-  //                      nesting has no user value, and other conversions can't
-  //                      be meaningfully applied to a decorator)
-  //   null:              everything enabled (regular text blocks and wrapped
-  //                      text blocks — paragraph, heading, quote, wrapped code)
+  //   code:      Text + Headings only, no color
+  //              (lists/quote would drop code formatting; color conflicts
+  //              with syntax highlighting)
+  //   table:     No turn-into (every conversion wipes cell data), color allowed
+  //   decorator: Bullet/Number/Quote only, no color
+  //              (HR or attachment — no text to convert to Text/Headings/Code;
+  //              color has nothing to apply to)
+  //   null:      everything enabled (paragraph, heading, quote, and their
+  //              wrapped-in-li counterparts)
   #applyBlockRestrictions(restriction) {
     const HEADINGS = [ "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall" ]
     const LISTS = [ "insertUnorderedList", "insertOrderedList" ]
 
     const rules = {
-      code:               { commands: new Set([ "setFormatParagraph", ...HEADINGS ]), color: false },
-      table:              { commands: new Set(), color: true },
-      decorator:          { commands: new Set([ ...LISTS, "insertQuoteBlock" ]), color: false },
-      "decorator-wrapped": { commands: new Set(), color: false },
+      code:      { commands: new Set([ "setFormatParagraph", ...HEADINGS ]), color: false },
+      table:     { commands: new Set(), color: true },
+      decorator: { commands: new Set([ ...LISTS, "insertQuoteBlock" ]), color: false },
     }
 
     const rule = restriction ? rules[restriction] : null
