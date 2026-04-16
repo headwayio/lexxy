@@ -56,7 +56,7 @@ export class BlockActionsMenu extends HTMLElement {
     this.#removeScrollResizeListeners()
   }
 
-  show({ anchorElement, anchorRect, editorElement, onAction, onClose, blockRestriction = null }) {
+  show({ anchorElement, anchorRect, editorElement, onAction, onClose, blockRestriction = null, canUnwrapFromQuote = false }) {
     this.#onAction = onAction
     this.#onClose = onClose
     this.#anchorElement = anchorElement || null
@@ -70,6 +70,12 @@ export class BlockActionsMenu extends HTMLElement {
     }
 
     this.#applyBlockRestrictions(blockRestriction)
+
+    // "Remove Quote" is a contextual top-level action — only visible when the
+    // focused block is a blockquote wrapping non-text content that can't be
+    // extracted by Turn into Text.
+    const removeQuoteBtn = this.querySelector("[data-action='remove-quote']")
+    if (removeQuoteBtn) removeQuoteBtn.hidden = !canUnwrapFromQuote
 
     const rect = anchorElement ? anchorElement.getBoundingClientRect() : anchorRect
     this.#position(rect)
@@ -152,6 +158,9 @@ export class BlockActionsMenu extends HTMLElement {
             <span class="lexxy-block-actions__icon">${PALETTE_ICON}</span>
             <span class="lexxy-block-actions__label">Color</span>
             <span class="lexxy-block-actions__chevron">›</span>
+          </button>
+          <button type="button" role="menuitem" data-action="remove-quote" class="lexxy-block-actions__item" hidden>
+            <span class="lexxy-block-actions__label">Remove Quote</span>
           </button>
         </div>
         <div class="lexxy-block-actions__divider"></div>
@@ -336,7 +345,9 @@ export class BlockActionsMenu extends HTMLElement {
 
   get #menuItems() {
     const panel = this.#activePanel
-    return panel ? [ ...panel.querySelectorAll("button[role='menuitem']") ] : []
+    // Exclude hidden items (e.g. contextual "Remove Quote") from keyboard
+    // navigation so ArrowDown lands on a visible item.
+    return panel ? [ ...panel.querySelectorAll("button[role='menuitem']") ].filter(b => !b.hidden) : []
   }
 
   #focusItem(index, { openSubmenu = false } = {}) {

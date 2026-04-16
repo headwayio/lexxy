@@ -2565,6 +2565,13 @@ lexxy-block-actions[hidden] {
   white-space: nowrap;
 }
 
+/* display: flex on the base rule overrides the browser's default
+   [hidden] { display: none }; restore it for contextual items like
+   Remove Quote that hide/show based on the focused block. */
+.lexxy-block-actions__item[hidden] {
+  display: none;
+}
+
 /* Block actions menu: pointer cursor on all items */
 lexxy-block-actions:not([hidden]),
 lexxy-block-actions:not([hidden]) * {

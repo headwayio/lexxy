@@ -318,6 +318,41 @@ test.describe("Block actions menu (Cmd+/)", () => {
     )
   })
 
+  test("Remove Quote menu item appears on a blockquote wrapping non-text and unwraps when clicked", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><blockquote><hr></blockquote><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown") // focus blockquote
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    const removeQuote = menu.locator("[data-action='remove-quote']")
+    await expect(removeQuote).toBeVisible()
+    await expect(removeQuote).toContainText("Remove Quote")
+
+    // Navigate to the Remove Quote item (Turn into, Color, Remove Quote).
+    await page.keyboard.press("ArrowDown") // Color
+    await page.keyboard.press("ArrowDown") // Remove Quote
+    await page.keyboard.press("Enter")
+
+    const html = await editor.value()
+    expect(html).toContain("<hr>")
+    expect(html).not.toContain("<blockquote>")
+  })
+
+  test("Remove Quote menu item is hidden when not inside a blockquote wrapping non-text", async ({ editor, page }) => {
+    await editor.setValue("<p>Plain paragraph</p>")
+    await editor.select("Plain paragraph")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+    await expect(menu.locator("[data-action='remove-quote']")).toHaveAttribute("hidden", /.*/)
+  })
+
   test("Turn into Quote on a blockquote wrapping non-text toggles the quote off", async ({ editor, page }) => {
     await editor.setValue("<p>Before</p><blockquote><hr></blockquote><p>After</p>")
     await editor.select("Before")

@@ -1004,6 +1004,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Determine per-block-type restrictions for the turn-into menu.
     // Each non-text block type has a distinct set of allowed conversions.
     let blockRestriction = null // null = no restrictions (regular text block)
+    let canUnwrapFromQuote = false
     this.editor.getEditorState().read(() => {
       let node = $getNodeByKey(this.#focusKey)
       if (!node) return
@@ -1013,7 +1014,15 @@ export class BlockSelectionExtension extends LexxyExtension {
       // the *content* being wrapped — not the container — so the user sees
       // the same options regardless of how many layers currently surround
       // the content.
+      //
+      // While drilling, note whether we passed through a QuoteNode. If the
+      // final content isn't text, we'll offer an explicit "Remove Quote"
+      // action — blockquotes wrapping decorators/HRs/code have no Turn
+      // into Text path out, so the user needs a discoverable way to remove
+      // just the quote wrapper.
+      let sawQuote = false
       while ($isListItemNode(node) || $isQuoteNode(node)) {
+        if ($isQuoteNode(node)) sawQuote = true
         const child = node.getChildren().find(c =>
           ($isElementNode(c) || $isDecoratorNode(c))
           && !$isListNode(c) && !$isParagraphNode(c)
@@ -1032,6 +1041,10 @@ export class BlockSelectionExtension extends LexxyExtension {
       } else if ($isDecoratorNode(node)) {
         blockRestriction = "decorator"
       }
+
+      // Offer "Remove Quote" when the focused chain included a blockquote
+      // wrapping non-text content (decorator, code, table, heading).
+      canUnwrapFromQuote = sawQuote && blockRestriction !== null
     })
 
     this.#blockActionsMenu.show({
@@ -1039,7 +1052,8 @@ export class BlockSelectionExtension extends LexxyExtension {
       editorElement: this.editorElement,
       onAction: (action) => this.#handleBlockAction(action),
       onClose: () => this.root?.focus(),
-      blockRestriction
+      blockRestriction,
+      canUnwrapFromQuote
     })
 
     this.#blockActionsMenu.focus()
@@ -1073,6 +1087,10 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       case "remove-color":
         this.#applyColorToSelectedBlocks(null, null)
+        break
+
+      case "remove-quote":
+        this.#removeQuoteWrapper()
         break
 
       case "duplicate":
@@ -4201,6 +4219,26 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#cleanupEmptyList(currentList)
       this.#updateKeyAfterUnwrap(nodeKey, extracted.getKey())
     }
+  }
+
+  // Menu-driven "Remove Quote" action. Looks up the focused block, finds
+  // the nearest enclosing QuoteNode (the block itself, or a list-item
+  // parent), and unwraps it.
+  #removeQuoteWrapper() {
+    this.pushSelectionHistory()
+    this.editor.update(() => {
+      const node = $getNodeByKey(this.#focusKey)
+      if (!node) return
+      let current = node
+      while (current) {
+        if ($isQuoteNode(current)) {
+          this.#unwrapQuoteIfWrappingNonText(current)
+          return
+        }
+        current = current.getParent()
+      }
+    }, { tag: HISTORY_PUSH_TAG })
+    this.#syncAndRefocus()
   }
 
   // Unwrap a blockquote that contains a single non-text block (decorator,
