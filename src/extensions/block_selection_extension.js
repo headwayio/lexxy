@@ -1458,7 +1458,8 @@ export class BlockSelectionExtension extends LexxyExtension {
 
         const children = node.getChildren()
         const isWrapped = children.some(c =>
-          $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+          ($isElementNode(c) || $isDecoratorNode(c))
+          && !$isListNode(c) && !$isParagraphNode(c)
         )
         const hasChildren = !!this.#getOwnStructuralWrapper(node)
 
