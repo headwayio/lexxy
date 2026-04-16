@@ -108,6 +108,32 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await assertBlockHtml(editor, "<h2>Make me a heading</h2>")
   })
 
+  test("turn-into Bullet list unwraps multiple wrapped blocks into plain bullets", async ({ editor, page }) => {
+    await editor.setValue(
+      "<ul><li><h2>Wrapped heading</h2></li><li><blockquote>Wrapped quote</blockquote></li></ul><p>After</p>"
+    )
+    await editor.select("Wrapped heading")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("Shift+ArrowDown")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    // Open Turn into submenu, then navigate: Text, H2, H3, H4, Bullet list
+    await page.keyboard.press("ArrowRight")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    await assertBlockHtml(
+      editor,
+      "<ul><li>Wrapped heading</li><li>Wrapped quote</li></ul><p>After</p>"
+    )
+  })
+
   test("Escape closes the block actions menu", async ({ editor, page }) => {
     await editor.setValue("<p>Test</p>")
     await editor.select("Test")
