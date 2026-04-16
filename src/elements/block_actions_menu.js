@@ -83,11 +83,18 @@ export class BlockActionsMenu extends HTMLElement {
 
   // Per-block-type turn-into and color restrictions.
   //
-  //   code:             Text + Headings only, no color
-  //   table:            No turn-into (conversions would wipe cell data), color allowed
-  //   decorator:        Bullet/Number/Quote only, no color
-  //   decorator-wrapped: Quote only, no color
-  //   null:             everything enabled (regular text block)
+  //   code:              Text + Headings only, no color
+  //                      (standalone code block; lists/quote would lose
+  //                      code formatting)
+  //   table:             No turn-into (conversions wipe cell data), color allowed
+  //   decorator:         Bullet/Number/Quote only, no color
+  //                      (HR or attachment at root; can only be wrapped)
+  //   decorator-wrapped: No turn-into, no color
+  //                      (HR or attachment already inside a list item; further
+  //                      nesting has no user value, and other conversions can't
+  //                      be meaningfully applied to a decorator)
+  //   null:              everything enabled (regular text blocks and wrapped
+  //                      text blocks — paragraph, heading, quote, wrapped code)
   #applyBlockRestrictions(restriction) {
     const HEADINGS = [ "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall" ]
     const LISTS = [ "insertUnorderedList", "insertOrderedList" ]
@@ -96,7 +103,7 @@ export class BlockActionsMenu extends HTMLElement {
       code:               { commands: new Set([ "setFormatParagraph", ...HEADINGS ]), color: false },
       table:              { commands: new Set(), color: true },
       decorator:          { commands: new Set([ ...LISTS, "insertQuoteBlock" ]), color: false },
-      "decorator-wrapped": { commands: new Set([ "insertQuoteBlock" ]), color: false },
+      "decorator-wrapped": { commands: new Set(), color: false },
     }
 
     const rule = restriction ? rules[restriction] : null

@@ -1008,13 +1008,21 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!node) return
       const inList = $isListItemNode(node)
       if (inList) {
+        // Drill into the wrapped content, including decorator children (HR,
+        // attachments). The previous $isElementNode-only check left wrapped
+        // decorators classified as plain list items → menu showed all
+        // turn-into options for something that can't meaningfully convert.
         const child = node.getChildren().find(c =>
-          $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+          ($isElementNode(c) || $isDecoratorNode(c))
+          && !$isListNode(c) && !$isParagraphNode(c)
         )
         if (child) node = child
       }
       if ($isCodeNode(node)) {
-        blockRestriction = "code"
+        // Wrapped code can unwrap to a plain list item so all text-block
+        // conversions stay meaningful; standalone code needs the stricter
+        // code-content restriction.
+        blockRestriction = inList ? null : "code"
       } else if ($isWrappedTableNode(node)) {
         blockRestriction = "table"
       } else if ($isDecoratorNode(node)) {

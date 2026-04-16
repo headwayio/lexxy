@@ -131,6 +131,76 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await assertBlockHtml(editor, "<ul><li>Charlie</li><li>Delta</li></ul><p>After</p>")
   })
 
+  // Helper: open block-actions menu on the focused block, then return
+  // [{cmd, disabled}] for each Turn-into submenu item plus Color's disabled state.
+  async function menuState(editor, page, modifier) {
+    await page.keyboard.press(`${modifier}+/`)
+    await expect(page.locator("lexxy-block-actions")).toBeVisible({ timeout: 2000 })
+    return await page.evaluate(() => {
+      const menu = document.querySelector("lexxy-block-actions")
+      const items = [ ...menu.querySelectorAll("[data-action='turn-into']") ].map(b => ({
+        cmd: b.dataset.command,
+        disabled: b.hasAttribute("disabled"),
+      }))
+      const color = menu.querySelector("[data-submenu='color']")
+      return { items, colorDisabled: color?.hasAttribute("disabled") }
+    })
+  }
+
+  test("menu restrictions: HR at root allows only lists + quote", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><hr><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown") // focus HR
+    const { items, colorDisabled } = await menuState(editor, page, modifier)
+    const byCmd = Object.fromEntries(items.map(i => [ i.cmd, i.disabled ]))
+    expect(byCmd["setFormatParagraph"]).toBe(true)
+    expect(byCmd["setFormatHeadingLarge"]).toBe(true)
+    expect(byCmd["setFormatHeadingMedium"]).toBe(true)
+    expect(byCmd["setFormatHeadingSmall"]).toBe(true)
+    expect(byCmd["insertUnorderedList"]).toBe(false)
+    expect(byCmd["insertOrderedList"]).toBe(false)
+    expect(byCmd["insertQuoteBlock"]).toBe(false)
+    expect(byCmd["insertCodeBlock"]).toBe(true)
+    expect(colorDisabled).toBe(true)
+  })
+
+  test("menu restrictions: wrapped HR disables every turn-into option", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><ul><li><hr></li></ul><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown") // focus wrapped HR
+    const { items, colorDisabled } = await menuState(editor, page, modifier)
+    for (const { disabled } of items) expect(disabled).toBe(true)
+    expect(colorDisabled).toBe(true)
+  })
+
+  test("menu restrictions: standalone code at root keeps Text + Headings only", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><pre data-language=\"plain\">code here</pre><p>After</p>")
+    await editor.select("code here")
+    await page.keyboard.press("Escape")
+    const { items, colorDisabled } = await menuState(editor, page, modifier)
+    const byCmd = Object.fromEntries(items.map(i => [ i.cmd, i.disabled ]))
+    expect(byCmd["setFormatParagraph"]).toBe(false)
+    expect(byCmd["setFormatHeadingLarge"]).toBe(false)
+    expect(byCmd["setFormatHeadingMedium"]).toBe(false)
+    expect(byCmd["setFormatHeadingSmall"]).toBe(false)
+    expect(byCmd["insertUnorderedList"]).toBe(true)
+    expect(byCmd["insertOrderedList"]).toBe(true)
+    expect(byCmd["insertQuoteBlock"]).toBe(true)
+    expect(byCmd["insertCodeBlock"]).toBe(true)
+    expect(colorDisabled).toBe(true)
+  })
+
+  test("menu restrictions: wrapped heading allows all turn-into options", async ({ editor, page }) => {
+    await editor.setValue("<ul><li><h2>Wrapped</h2></li></ul>")
+    await editor.select("Wrapped")
+    await page.keyboard.press("Escape")
+    const { items, colorDisabled } = await menuState(editor, page, modifier)
+    for (const { disabled } of items) expect(disabled).toBe(false)
+    expect(colorDisabled).toBe(false)
+  })
+
   test("block actions menu disables all turn-into options when focused on a table", async ({ editor, page }) => {
     await editor.setValue(
       "<figure class=\"lexxy-content__table-wrapper\"><table><tbody><tr><td><p>A</p></td><td><p>B</p></td></tr></tbody></table></figure><p>After</p>"
