@@ -56,7 +56,7 @@ export class BlockActionsMenu extends HTMLElement {
     this.#removeScrollResizeListeners()
   }
 
-  show({ anchorElement, anchorRect, editorElement, onAction, onClose, blockRestriction = null, canUnwrapFromQuote = false }) {
+  show({ anchorElement, anchorRect, editorElement, onAction, onClose, blockRestriction = null, canUnwrapFromQuote = false, unwrapListType = null }) {
     this.#onAction = onAction
     this.#onClose = onClose
     this.#anchorElement = anchorElement || null
@@ -71,11 +71,20 @@ export class BlockActionsMenu extends HTMLElement {
 
     this.#applyBlockRestrictions(blockRestriction)
 
-    // "Remove Quote" is a contextual top-level action — only visible when the
-    // focused block is a blockquote wrapping non-text content that can't be
-    // extracted by Turn into Text.
+    // Contextual top-level actions. Only visible when the focused block
+    // actually has a wrapper we can remove — a blockquote wrapping non-text
+    // content, or a list item wrapping non-text content. For decorators
+    // (images, HR, attachments) these are the only discoverable way to get
+    // the content out of its wrapper, since Turn into Text isn't available.
     const removeQuoteBtn = this.querySelector("[data-action='remove-quote']")
     if (removeQuoteBtn) removeQuoteBtn.hidden = !canUnwrapFromQuote
+
+    const removeListBtn = this.querySelector("[data-action='remove-list']")
+    if (removeListBtn) {
+      removeListBtn.hidden = unwrapListType === null
+      const label = removeListBtn.querySelector(".lexxy-block-actions__label")
+      if (label) label.textContent = unwrapListType === "number" ? "Remove Numbered" : "Remove Bullet"
+    }
 
     const rect = anchorElement ? anchorElement.getBoundingClientRect() : anchorRect
     this.#position(rect)
@@ -161,6 +170,9 @@ export class BlockActionsMenu extends HTMLElement {
           </button>
           <button type="button" role="menuitem" data-action="remove-quote" class="lexxy-block-actions__item" hidden>
             <span class="lexxy-block-actions__label">Remove Quote</span>
+          </button>
+          <button type="button" role="menuitem" data-action="remove-list" class="lexxy-block-actions__item" hidden>
+            <span class="lexxy-block-actions__label">Remove Bullet</span>
           </button>
         </div>
         <div class="lexxy-block-actions__divider"></div>

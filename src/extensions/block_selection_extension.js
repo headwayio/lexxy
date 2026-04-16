@@ -1005,6 +1005,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Each non-text block type has a distinct set of allowed conversions.
     let blockRestriction = null // null = no restrictions (regular text block)
     let canUnwrapFromQuote = false
+    let unwrapListType = null
     this.editor.getEditorState().read(() => {
       let node = $getNodeByKey(this.#focusKey)
       if (!node) return
@@ -1015,14 +1016,16 @@ export class BlockSelectionExtension extends LexxyExtension {
       // the same options regardless of how many layers currently surround
       // the content.
       //
-      // While drilling, note whether we passed through a QuoteNode. If the
-      // final content isn't text, we'll offer an explicit "Remove Quote"
-      // action — blockquotes wrapping decorators/HRs/code have no Turn
-      // into Text path out, so the user needs a discoverable way to remove
-      // just the quote wrapper.
+      // While drilling, note whether we passed through a QuoteNode or a
+      // ListItemNode. If the final content isn't text, we offer explicit
+      // "Remove Quote" / "Remove Bullet|Numbered" actions — these wrappers
+      // have no Turn into Text path out for decorators (HRs, attachments),
+      // so users need a discoverable way to extract just the wrapper.
       let sawQuote = false
+      let sawListItem = null // the ListItemNode we last saw
       while ($isListItemNode(node) || $isQuoteNode(node)) {
         if ($isQuoteNode(node)) sawQuote = true
+        if ($isListItemNode(node)) sawListItem = node
         const child = node.getChildren().find(c =>
           ($isElementNode(c) || $isDecoratorNode(c))
           && !$isListNode(c) && !$isParagraphNode(c)
@@ -1042,9 +1045,14 @@ export class BlockSelectionExtension extends LexxyExtension {
         blockRestriction = "decorator"
       }
 
-      // Offer "Remove Quote" when the focused chain included a blockquote
-      // wrapping non-text content (decorator, code, table, heading).
-      canUnwrapFromQuote = sawQuote && blockRestriction !== null
+      // Contextual actions for wrappers around non-text content.
+      if (blockRestriction !== null) {
+        canUnwrapFromQuote = sawQuote
+        if (sawListItem) {
+          const list = sawListItem.getParent()
+          if ($isListNode(list)) unwrapListType = list.getListType()
+        }
+      }
     })
 
     this.#blockActionsMenu.show({
@@ -1053,7 +1061,8 @@ export class BlockSelectionExtension extends LexxyExtension {
       onAction: (action) => this.#handleBlockAction(action),
       onClose: () => this.root?.focus(),
       blockRestriction,
-      canUnwrapFromQuote
+      canUnwrapFromQuote,
+      unwrapListType
     })
 
     this.#blockActionsMenu.focus()
@@ -1091,6 +1100,10 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       case "remove-quote":
         this.#removeQuoteWrapper()
+        break
+
+      case "remove-list":
+        this.#removeListWrapper()
         break
 
       case "duplicate":
@@ -4244,6 +4257,42 @@ export class BlockSelectionExtension extends LexxyExtension {
     // scrollIntoViewIfNeeded; restore the pre-update scroll position in a
     // microtask so the page doesn't jump to wherever the restored
     // selection lands.
+    queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
+  }
+
+  // Menu-driven "Remove Bullet" / "Remove Numbered" action. Finds the
+  // list item wrapping the focused content, outdents it through every
+  // nested list level until it sits in a root-level list, then extracts
+  // it in place — splitting the root-level list around it. End state:
+  // the wrapped content lives at root (out of any list), siblings that
+  // came before stay in the original list segment, siblings that came
+  // after form a new list below.
+  #removeListWrapper() {
+    const scrollY = window.scrollY
+    this.pushSelectionHistory()
+    this.editor.update(() => {
+      let node = $getNodeByKey(this.#focusKey)
+      if (!node) return
+
+      // Walk up to the enclosing list item.
+      while (node && !$isListItemNode(node)) node = node.getParent()
+      if (!node) return
+
+      // Outdent through nested lists until at root level. Each call either
+      // promotes node one level or returns false when already at root.
+      let guard = 50
+      while (guard-- > 0 && this.#outdentWrappedBlock(node)) {
+        const refreshed = $getNodeByKey(node.getKey())
+        if (!refreshed || !$isListItemNode(refreshed)) return
+        node = refreshed
+      }
+
+      // Now extract in place — splits the root-level list around the item
+      // and promotes the content to where the list was.
+      const wrapper = this.#getOwnStructuralWrapper(node)
+      this.#extractWrappedItemsInPlace([ { node, wrapper } ])
+    }, { tag: HISTORY_PUSH_TAG })
+    this.#syncAndRefocus()
     queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
   }
 

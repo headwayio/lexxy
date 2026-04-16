@@ -342,6 +342,67 @@ test.describe("Block actions menu (Cmd+/)", () => {
     expect(html).not.toContain("<blockquote>")
   })
 
+  test("Remove Bullet menu item appears on a wrapped block in a bullet list and unwraps to root", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><ul><li><hr></li></ul><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown") // focus the wrapped HR (li)
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    const removeList = menu.locator("[data-action='remove-list']")
+    await expect(removeList).toBeVisible()
+    await expect(removeList).toContainText("Remove Bullet")
+
+    // Main panel: Turn into, Color, Remove List, Duplicate, Delete.
+    // Focus starts on Turn into; ArrowDown×2 reaches Remove List.
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    const html = await editor.value()
+    expect(html).toContain("<hr>")
+    expect(html).not.toContain("<ul>")
+  })
+
+  test("Remove Numbered label appears for wrapped block in an ordered list", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><ol><li><hr></li></ol><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+    await expect(menu.locator("[data-action='remove-list']")).toContainText("Remove Numbered")
+  })
+
+  test("Remove Bullet on a nested wrapped block extracts it all the way to root", async ({ editor, page }) => {
+    await editor.setValue(
+      "<p>Before</p><ul><li>Alpha</li><li class=\"lexxy-nested-listitem\"><ul><li><hr></li></ul></li></ul><p>After</p>"
+    )
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    // Navigate to the nested HR: Before → Alpha → HR
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+    await expect(menu.locator("[data-action='remove-list']")).toBeVisible()
+
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    const html = await editor.value()
+    // The HR ends up at root level, after the Alpha list segment.
+    expect(html).toMatch(/<ul><li>Alpha<\/li><\/ul>\s*<hr>/)
+  })
+
   test("Remove Quote menu item is hidden when not inside a blockquote wrapping non-text", async ({ editor, page }) => {
     await editor.setValue("<p>Plain paragraph</p>")
     await editor.select("Plain paragraph")
