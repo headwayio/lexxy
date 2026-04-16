@@ -999,12 +999,26 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.editorElement.appendChild(this.#blockActionsMenu)
     }
 
-    // Attachments can only be wrapped in lists/quotes — color and text-style
-    // conversions don't apply. Flag the menu so it can disable those items.
-    let isDecoratorBlock = false
+    // Determine per-block-type restrictions for the turn-into menu.
+    // Each non-text block type has a distinct set of allowed conversions.
+    let blockRestriction = null // null = no restrictions (regular text block)
     this.editor.getEditorState().read(() => {
-      const node = $getNodeByKey(this.#focusKey)
-      isDecoratorBlock = node != null && $isDecoratorNode(node)
+      let node = $getNodeByKey(this.#focusKey)
+      if (!node) return
+      const inList = $isListItemNode(node)
+      if (inList) {
+        const child = node.getChildren().find(c =>
+          $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+        )
+        if (child) node = child
+      }
+      if ($isCodeNode(node)) {
+        blockRestriction = "code"
+      } else if (node.getType?.() === "wrapped-table") {
+        blockRestriction = "table"
+      } else if ($isDecoratorNode(node)) {
+        blockRestriction = inList ? "decorator-wrapped" : "decorator"
+      }
     })
 
     this.#blockActionsMenu.show({
@@ -1012,7 +1026,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       editorElement: this.editorElement,
       onAction: (action) => this.#handleBlockAction(action),
       onClose: () => this.root?.focus(),
-      isDecoratorBlock
+      blockRestriction
     })
 
     this.#blockActionsMenu.focus()

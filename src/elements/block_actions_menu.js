@@ -56,7 +56,7 @@ export class BlockActionsMenu extends HTMLElement {
     this.#removeScrollResizeListeners()
   }
 
-  show({ anchorElement, anchorRect, editorElement, onAction, onClose, isDecoratorBlock = false }) {
+  show({ anchorElement, anchorRect, editorElement, onAction, onClose, blockRestriction = null }) {
     this.#onAction = onAction
     this.#onClose = onClose
     this.#anchorElement = anchorElement || null
@@ -69,7 +69,7 @@ export class BlockActionsMenu extends HTMLElement {
       this.#buildColorSubmenu(colorConfig)
     }
 
-    this.#applyDecoratorRestrictions(isDecoratorBlock)
+    this.#applyBlockRestrictions(blockRestriction)
 
     const rect = anchorElement ? anchorElement.getBoundingClientRect() : anchorRect
     this.#position(rect)
@@ -81,27 +81,41 @@ export class BlockActionsMenu extends HTMLElement {
     this.#addScrollResizeListeners()
   }
 
-  // Attachments can only be wrapped in lists/quotes — disable color and
-  // non-wrapping turn-into options so the user can't pick a no-op.
-  #applyDecoratorRestrictions(isDecoratorBlock) {
-    const allowedForDecorator = new Set([
-      "insertUnorderedList", "insertOrderedList", "insertQuoteBlock"
-    ])
+  // Per-block-type turn-into and color restrictions.
+  //
+  //   code:             Text + Headings only, no color
+  //   table:            Text + Color only
+  //   decorator:        Bullet/Number/Quote only, no color
+  //   decorator-wrapped: Quote only, no color
+  //   null:             everything enabled (regular text block)
+  #applyBlockRestrictions(restriction) {
+    const HEADINGS = [ "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall" ]
+    const LISTS = [ "insertUnorderedList", "insertOrderedList" ]
 
-    for (const button of this.querySelectorAll('[data-action="turn-into"]')) {
-      const allowed = !isDecoratorBlock || allowedForDecorator.has(button.dataset.command)
-      button.toggleAttribute("disabled", !allowed)
-      button.setAttribute("aria-disabled", String(!allowed))
+    const rules = {
+      code:               { commands: new Set([ "setFormatParagraph", ...HEADINGS ]), color: false },
+      table:              { commands: new Set([ "setFormatParagraph" ]), color: true },
+      decorator:          { commands: new Set([ ...LISTS, "insertQuoteBlock" ]), color: false },
+      "decorator-wrapped": { commands: new Set([ "insertQuoteBlock" ]), color: false },
     }
 
-    for (const button of this.querySelectorAll('[data-submenu="color"]')) {
-      button.toggleAttribute("disabled", isDecoratorBlock)
-      button.setAttribute("aria-disabled", String(isDecoratorBlock))
+    const rule = restriction ? rules[restriction] : null
+
+    for (const button of this.querySelectorAll("[data-action=\"turn-into\"]")) {
+      const disable = rule ? !rule.commands.has(button.dataset.command) : false
+      button.toggleAttribute("disabled", disable)
+      button.setAttribute("aria-disabled", String(disable))
+    }
+
+    for (const button of this.querySelectorAll("[data-submenu=\"color\"]")) {
+      const disable = rule ? !rule.color : false
+      button.toggleAttribute("disabled", disable)
+      button.setAttribute("aria-disabled", String(disable))
     }
   }
 
   #focusFirstEnabledItem() {
-    const items = [...this.querySelectorAll('[role="menuitem"]')]
+    const items = [ ...this.querySelectorAll("[role=\"menuitem\"]") ]
     const idx = items.findIndex(b => !b.hasAttribute("disabled"))
     this.#focusItem(idx >= 0 ? idx : 0)
   }
