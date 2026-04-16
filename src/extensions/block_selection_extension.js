@@ -18,6 +18,7 @@ import {
   COMMAND_PRIORITY_LOW,
   FORMAT_TEXT_COMMAND,
   HISTORY_MERGE_TAG,
+  HISTORY_PUSH_TAG,
   INDENT_CONTENT_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
@@ -1326,7 +1327,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       // Ensure Lexical selection is null for block select mode
       $setSelection(null)
-    }, { tag: HISTORY_MERGE_TAG })
+    }, { tag: HISTORY_PUSH_TAG })
 
     this.#syncAndRefocus()
     queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))

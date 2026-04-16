@@ -5,6 +5,7 @@ import {
   $isRangeSelection,
   $isTextNode,
   $setSelection,
+  COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   FORMAT_TEXT_COMMAND,
@@ -321,6 +322,20 @@ export class CommandDispatcher {
 
     this.#registerCommandHandler(PASTE_COMMAND, COMMAND_PRIORITY_LOW, this.dispatchPaste.bind(this))
     this.#registerCommandHandler(SELECT_ALL_COMMAND, COMMAND_PRIORITY_NORMAL, this.#handleSelectAll.bind(this))
+
+    // Keyboard Cmd+Z / Cmd+Shift+Z bypass the COMMANDS string-dispatch and go
+    // straight to Lexical's UNDO_COMMAND / REDO_COMMAND. Register HIGH-priority
+    // handlers on those commands too so the scroll position is preserved
+    // regardless of whether undo was triggered from the toolbar button or the
+    // keyboard shortcut. Returning false lets Lexical's history plugin still
+    // run at normal priority.
+    for (const cmd of [ UNDO_COMMAND, REDO_COMMAND ]) {
+      this.#registerCommandHandler(cmd, COMMAND_PRIORITY_HIGH, () => {
+        const y = window.scrollY
+        queueMicrotask(() => window.scrollTo(window.scrollX, y))
+        return false
+      })
+    }
   }
 
   #registerCommandHandler(command, priority, handler) {
