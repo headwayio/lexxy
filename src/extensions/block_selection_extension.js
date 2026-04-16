@@ -2848,11 +2848,14 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Non-paragraph block child (heading, code, table, HR, etc.) — always extract.
     // Matches both ElementNodes (heading, code, table) and DecoratorNodes (HR, images).
+    // Pass preserveEmptyParent=true so Lexical's $removeNode doesn't cascade-
+    // remove the now-empty listItem (and its ancestor list) — callers still
+    // need those parent references to place the extracted content.
     if (children.length === 1
         && ($isElementNode(children[0]) || $isDecoratorNode(children[0]))
         && !$isListNode(children[0]) && !$isParagraphNode(children[0])) {
       const child = children[0]
-      child.remove()
+      child.remove(true)
       return child
     }
 
@@ -2863,7 +2866,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Check if there's still a ParagraphNode child
       for (const child of children) {
         if ($isParagraphNode(child)) {
-          child.remove()
+          child.remove(true)
           return child
         }
       }
@@ -4105,14 +4108,16 @@ export class BlockSelectionExtension extends LexxyExtension {
         ownWrapper.remove()
       }
 
-      // Extract the wrapped content back to its original block type
+      // Extract the wrapped content back to its original block type.
+      // #extractWrappedContent leaves the (now empty) listItem in place with
+      // preserveEmptyParent=true, so currentList still has its parent below.
       const extracted = this.#extractWrappedContent(node)
       if (!extracted) continue
 
-      const nodeKey = node.getKey()
-      node.remove()
-
-      // Place extracted content after the current list
+      // Place extracted content and any trailing items FIRST, while
+      // currentList still has its parent. Removing the empty listItem before
+      // these inserts can trigger Lexical's !canBeEmpty cleanup cascade on
+      // the ancestor list, detaching currentList (Lexical error #66).
       currentList.insertAfter(extracted)
       if (childrenList) extracted.insertAfter(childrenList)
 
@@ -4126,7 +4131,10 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
 
-      // Clean up current list if now empty
+      // Now remove the empty wrapper. #cleanupEmptyList tolerates a list that
+      // Lexical already auto-removed as part of the cascade.
+      const nodeKey = node.getKey()
+      node.remove()
       this.#cleanupEmptyList(currentList)
       this.#updateKeyAfterUnwrap(nodeKey, extracted.getKey())
     }
