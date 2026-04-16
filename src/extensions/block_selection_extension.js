@@ -1167,6 +1167,16 @@ export class BlockSelectionExtension extends LexxyExtension {
         const node = $getNodeByKey(key)
         if (!node) continue
 
+        // Tables lose data when converted — skip them in multi-block
+        // selections. In single-block mode, the menu already restricts
+        // to Text + Color only, which are handled by Lexical's standard
+        // dispatch (or no-op for non-text commands).
+        if (node.getType?.() === "wrapped-table"
+            || ($isListItemNode(node) && node.getChildren().some(c => c.getType?.() === "wrapped-table"))) {
+          newSelectedKeys.add(key)
+          continue
+        }
+
         if ($isListItemNode(node)) {
           if (isListCommand) {
             // List-to-list: change the item's list type AND unwrap if wrapped
@@ -1203,12 +1213,13 @@ export class BlockSelectionExtension extends LexxyExtension {
             this.#wrapListItemContent(node, command)
             newSelectedKeys.add(node.getKey())
           }
-        } else if ($isDecoratorNode(node)) {
-          // DecoratorNode (attachment, embed, etc.) — Lexical's command
+        } else if ($isDecoratorNode(node) || node.getType?.() === "wrapped-table") {
+          // Non-text blocks (attachment, table) — Lexical's command
           // handlers operate on RangeSelection of text content and silently
-          // no-op on a NodeSelection of a decorator. Wrap the node manually
-          // so list/quote commands work on attachments. Heading and
-          // paragraph conversions don't apply to decorators — skip.
+          // no-op on a NodeSelection. Wrap the node manually so list/quote
+          // commands work. Heading/paragraph/code conversions don't apply.
+          // (Code blocks are excluded here — they go through the standard
+          // dispatch path below since they DO have selectable text content.)
           if (isListCommand) {
             // Idempotent: if already inside a list item of the same type,
             // don't double-wrap. Just surface the existing list item as the
@@ -1245,22 +1256,24 @@ export class BlockSelectionExtension extends LexxyExtension {
             newSelectedKeys.add(node.getKey())
           }
         } else {
-          // Non-list block: use temporary selection + command dispatch.
-          // The command may replace the node (e.g., paragraph → heading),
-          // so find the block at the same position after dispatch.
-          const parent = node.getParent()
-          const index = node.getIndexWithinParent()
-
-          if (node.selectStart) node.selectStart()
-          else if (node.select) node.select()
-          this.editor.dispatchCommand(command)
-          $setSelection(null)
-
-          // Find the replacement node at the same position
-          const latestParent = $getNodeByKey(parent.getKey()) || $getRoot()
-          const children = latestParent.getChildren()
-          const replacement = children[Math.min(index, children.length - 1)]
-          if (replacement) newSelectedKeys.add(replacement.getKey())
+          // Non-list block: replace the node with a new block of the target
+          // type, moving children across. Doing this directly (instead of via
+          // editor.dispatchCommand → $setBlocksType inside our outer
+          // editor.update) keeps each iteration independent — Lexical's
+          // command pipeline running synchronously inside our update can
+          // produce surprising no-ops when chained per-iteration, which made
+          // multi-block turn-into only convert the first item.
+          const newBlock = this.#createBlockForCommand(command)
+          if (!newBlock) {
+            newSelectedKeys.add(node.getKey())
+            continue
+          }
+          for (const child of [ ...node.getChildren?.() || [] ]) {
+            newBlock.append(child)
+          }
+          node.replace(newBlock)
+          newSelectedKeys.add(newBlock.getKey())
+          replacedKeys.add(key)
         }
       }
 
