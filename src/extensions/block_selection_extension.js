@@ -4237,19 +4237,59 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Menu-driven "Remove Quote" action. Looks up the focused block, finds
   // the nearest enclosing QuoteNode (the block itself, or a list-item
   // parent), and unwraps it.
-  #removeQuoteWrapper() {
+  // Menu-driven "Remove Quote" and "Remove Bullet"/"Remove Numbered" actions
+  // both ultimately mean "get this content out of every wrapper it's in and
+  // leave it at root level." The two entry points show different labels for
+  // discoverability (the user who sees a blockquote bar expects a Remove
+  // Quote, the user who sees a bullet expects Remove Bullet), but both
+  // strip the full wrapper chain — any combination of blockquotes and list
+  // items — until the content lives at root.
+  #removeQuoteWrapper() { this.#extractContentToRoot() }
+  #removeListWrapper()  { this.#extractContentToRoot() }
+
+  #extractContentToRoot() {
     const scrollY = window.scrollY
     this.pushSelectionHistory()
     this.editor.update(() => {
-      const node = $getNodeByKey(this.#focusKey)
-      if (!node) return
-      let current = node
-      while (current) {
-        if ($isQuoteNode(current)) {
-          this.#unwrapQuoteIfWrappingNonText(current)
-          return
+      // Peel one wrapper layer at a time, top-down. Each iteration either
+      // (a) unwraps a blockquote whose content is non-text, or (b) extracts
+      // a list item out of its containing list. Tracking is via #focusKey
+      // which the unwrap/extract helpers update as keys change.
+      let guard = 20
+      while (guard-- > 0) {
+        const node = $getNodeByKey(this.#focusKey)
+        if (!node) return
+        const parent = node.getParent()
+        if (!parent) return
+
+        if ($isQuoteNode(node)) {
+          // Focused node itself is a blockquote wrapping a non-text block —
+          // typical standalone <blockquote><hr></blockquote> scenario.
+          const before = this.#focusKey
+          this.#unwrapQuoteIfWrappingNonText(node)
+          if (this.#focusKey === before) return // no-op guard
+          continue
         }
-        current = current.getParent()
+
+        if ($isListItemNode(node)) {
+          // Focused node is a list item. Outdent through nested lists to
+          // root, then extract in place (splits the root-level list around
+          // the item).
+          let nested = 50
+          while (nested-- > 0 && this.#outdentWrappedBlock(node)) {
+            const refreshed = $getNodeByKey(node.getKey())
+            if (!refreshed || !$isListItemNode(refreshed)) return
+            // eslint-disable-next-line no-param-reassign
+          }
+          const liNow = $getNodeByKey(this.#focusKey)
+          if (!liNow || !$isListItemNode(liNow)) continue
+          const wrapper = this.#getOwnStructuralWrapper(liNow)
+          this.#extractWrappedItemsInPlace([ { node: liNow, wrapper } ])
+          continue
+        }
+
+        // Node isn't a wrapper itself. Nothing more to peel.
+        return
       }
     }, { tag: HISTORY_PUSH_TAG })
     this.#syncAndRefocus()
@@ -4257,42 +4297,6 @@ export class BlockSelectionExtension extends LexxyExtension {
     // scrollIntoViewIfNeeded; restore the pre-update scroll position in a
     // microtask so the page doesn't jump to wherever the restored
     // selection lands.
-    queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
-  }
-
-  // Menu-driven "Remove Bullet" / "Remove Numbered" action. Finds the
-  // list item wrapping the focused content, outdents it through every
-  // nested list level until it sits in a root-level list, then extracts
-  // it in place — splitting the root-level list around it. End state:
-  // the wrapped content lives at root (out of any list), siblings that
-  // came before stay in the original list segment, siblings that came
-  // after form a new list below.
-  #removeListWrapper() {
-    const scrollY = window.scrollY
-    this.pushSelectionHistory()
-    this.editor.update(() => {
-      let node = $getNodeByKey(this.#focusKey)
-      if (!node) return
-
-      // Walk up to the enclosing list item.
-      while (node && !$isListItemNode(node)) node = node.getParent()
-      if (!node) return
-
-      // Outdent through nested lists until at root level. Each call either
-      // promotes node one level or returns false when already at root.
-      let guard = 50
-      while (guard-- > 0 && this.#outdentWrappedBlock(node)) {
-        const refreshed = $getNodeByKey(node.getKey())
-        if (!refreshed || !$isListItemNode(refreshed)) return
-        node = refreshed
-      }
-
-      // Now extract in place — splits the root-level list around the item
-      // and promotes the content to where the list was.
-      const wrapper = this.#getOwnStructuralWrapper(node)
-      this.#extractWrappedItemsInPlace([ { node, wrapper } ])
-    }, { tag: HISTORY_PUSH_TAG })
-    this.#syncAndRefocus()
     queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
   }
 

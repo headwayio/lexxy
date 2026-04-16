@@ -403,6 +403,49 @@ test.describe("Block actions menu (Cmd+/)", () => {
     expect(html).toMatch(/<ul><li>Alpha<\/li><\/ul>\s*<hr>/)
   })
 
+  test("Remove Bullet on a wrapped HR inside a blockquote inside a list extracts all the way to root", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><ul><li><blockquote><hr></blockquote></li></ul><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown") // focus the <li>
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    // Remove Bullet: Turn into, Color, Remove Quote, Remove Bullet (positions 0..3)
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    const html = await editor.value()
+    expect(html).toContain("<hr>")
+    expect(html).not.toContain("<ul>")
+    expect(html).not.toContain("<blockquote>")
+  })
+
+  test("Remove Quote on a wrapped HR inside a blockquote inside a list extracts all the way to root", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><ul><li><blockquote><hr></blockquote></li></ul><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    // Remove Quote: Turn into, Color, Remove Quote (position 2)
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    const html = await editor.value()
+    expect(html).toContain("<hr>")
+    expect(html).not.toContain("<ul>")
+    expect(html).not.toContain("<blockquote>")
+  })
+
   test("Remove Quote menu item is hidden when not inside a blockquote wrapping non-text", async ({ editor, page }) => {
     await editor.setValue("<p>Plain paragraph</p>")
     await editor.select("Plain paragraph")
