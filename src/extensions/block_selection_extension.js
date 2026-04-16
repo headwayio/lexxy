@@ -2145,10 +2145,18 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
     const listType = sourceList.getListType()
 
-    // Phase 1: Create cursor at landing zone
-    const cursor = $createParagraphNode()
-    if (isUp) outerList.insertBefore(cursor)
-    else outerList.insertAfter(cursor)
+    // Phase 1: Find or create cursor at landing zone. Reuse an adjacent
+    // empty paragraph if one exists (e.g. from a previous exit cycle) so
+    // repeated exit→enter→exit doesn't pile up stale paragraphs.
+    let cursor = null
+    const adjacent = isUp ? outerList.getPreviousSibling() : outerList.getNextSibling()
+    if (adjacent && $isParagraphNode(adjacent) && adjacent.getTextContentSize() === 0) {
+      cursor = adjacent
+    } else {
+      cursor = $createParagraphNode()
+      if (isUp) outerList.insertBefore(cursor)
+      else outerList.insertAfter(cursor)
+    }
 
     // Phase 2: Transform and place each item relative to the cursor.
     // Moving UP: insert before cursor → items stack above the list in order.
