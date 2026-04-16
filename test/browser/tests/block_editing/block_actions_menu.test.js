@@ -131,6 +131,25 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await assertBlockHtml(editor, "<ul><li>Charlie</li><li>Delta</li></ul><p>After</p>")
   })
 
+  test("block actions menu disables all turn-into options when focused on a table", async ({ editor, page }) => {
+    await editor.setValue(
+      "<figure class=\"lexxy-content__table-wrapper\"><table><tbody><tr><td><p>A</p></td><td><p>B</p></td></tr></tbody></table></figure><p>After</p>"
+    )
+    await editor.select("A")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    // Every turn-into option is disabled so the user can't pick a no-op.
+    const turnIntoItems = menu.locator("[data-action='turn-into']")
+    const count = await turnIntoItems.count()
+    for (let i = 0; i < count; i++) {
+      await expect(turnIntoItems.nth(i)).toHaveAttribute("disabled", /.*/)
+    }
+  })
+
   test("turn-into Bullet list skips tables in multi-block selections", async ({ editor, page }) => {
     // Selection includes a heading, a table, and a trailing paragraph (so
     // focus ends on the paragraph and the menu doesn't restrict to the
