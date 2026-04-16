@@ -131,6 +131,39 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await assertBlockHtml(editor, "<ul><li>Charlie</li><li>Delta</li></ul><p>After</p>")
   })
 
+  test("turn-into Bullet list skips tables in multi-block selections", async ({ editor, page }) => {
+    // Selection includes a heading, a table, and a trailing paragraph (so
+    // focus ends on the paragraph and the menu doesn't restrict to the
+    // single-block-on-table options). The table should be preserved while
+    // the other two convert into list items.
+    await editor.setValue(
+      "<h2>Heading</h2><figure class=\"lexxy-content__table-wrapper\"><table><tbody><tr><td><p>A</p></td><td><p>B</p></td></tr></tbody></table></figure><p>After</p>"
+    )
+    await editor.select("Heading")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("Shift+ArrowDown")
+    await page.keyboard.press("Shift+ArrowDown")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    await page.keyboard.press("ArrowRight")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    // The table's cells A and B must still be present.
+    const html = await editor.value()
+    expect(html).toContain("<table>")
+    expect(html).toMatch(/<td>[^<]*<p>A<\/p>[^<]*<\/td>/)
+    expect(html).toMatch(/<td>[^<]*<p>B<\/p>[^<]*<\/td>/)
+    expect(html).toContain("<li>Heading</li>")
+    expect(html).toContain("<li>After</li>")
+  })
+
   test("turn-into Bullet list unwraps multiple wrapped blocks into plain bullets", async ({ editor, page }) => {
     await editor.setValue(
       "<ul><li><h2>Wrapped heading</h2></li><li><blockquote>Wrapped quote</blockquote></li></ul><p>After</p>"

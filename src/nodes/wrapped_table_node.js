@@ -72,3 +72,7 @@ export function $getWrappedTableChild(listItem) {
   if (!$isListItemNode(listItem)) return null
   return listItem.getChildren().find(c => c instanceof WrappedTableNode) || null
 }
+
+export function $isWrappedTableNode(node) {
+  return node instanceof WrappedTableNode
+}

@@ -28,6 +28,7 @@ import {
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
+import { $isWrappedTableNode } from "../nodes/wrapped_table_node"
 import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
@@ -1014,7 +1015,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
       if ($isCodeNode(node)) {
         blockRestriction = "code"
-      } else if (node.getType?.() === "wrapped-table") {
+      } else if ($isWrappedTableNode(node)) {
         blockRestriction = "table"
       } else if ($isDecoratorNode(node)) {
         blockRestriction = inList ? "decorator-wrapped" : "decorator"
@@ -1171,8 +1172,8 @@ export class BlockSelectionExtension extends LexxyExtension {
         // selections. In single-block mode, the menu already restricts
         // to Text + Color only, which are handled by Lexical's standard
         // dispatch (or no-op for non-text commands).
-        if (node.getType?.() === "wrapped-table"
-            || ($isListItemNode(node) && node.getChildren().some(c => c.getType?.() === "wrapped-table"))) {
+        if ($isWrappedTableNode(node)
+            || ($isListItemNode(node) && node.getChildren().some($isWrappedTableNode))) {
           newSelectedKeys.add(key)
           continue
         }
@@ -1213,7 +1214,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             this.#wrapListItemContent(node, command)
             newSelectedKeys.add(node.getKey())
           }
-        } else if ($isDecoratorNode(node) || node.getType?.() === "wrapped-table") {
+        } else if ($isDecoratorNode(node) || $isWrappedTableNode(node)) {
           // Non-text blocks (attachment, table) — Lexical's command
           // handlers operate on RangeSelection of text content and silently
           // no-op on a NodeSelection. Wrap the node manually so list/quote
