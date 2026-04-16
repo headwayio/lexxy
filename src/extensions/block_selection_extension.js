@@ -4225,6 +4225,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // the nearest enclosing QuoteNode (the block itself, or a list-item
   // parent), and unwraps it.
   #removeQuoteWrapper() {
+    const scrollY = window.scrollY
     this.pushSelectionHistory()
     this.editor.update(() => {
       const node = $getNodeByKey(this.#focusKey)
@@ -4239,6 +4240,11 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }, { tag: HISTORY_PUSH_TAG })
     this.#syncAndRefocus()
+    // Lexical's selection restoration after the update calls
+    // scrollIntoViewIfNeeded; restore the pre-update scroll position in a
+    // microtask so the page doesn't jump to wherever the restored
+    // selection lands.
+    queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
   }
 
   // Unwrap a blockquote that contains a single non-text block (decorator,
