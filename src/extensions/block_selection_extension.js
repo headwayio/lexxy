@@ -1007,17 +1007,19 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.editor.getEditorState().read(() => {
       let node = $getNodeByKey(this.#focusKey)
       if (!node) return
-      const inList = $isListItemNode(node)
-      if (inList) {
-        // Drill into the wrapped content, including decorator children (HR,
-        // attachments). The previous $isElementNode-only check left wrapped
-        // decorators classified as plain list items → menu showed all
-        // turn-into options for something that can't meaningfully convert.
+      // Drill through any container that wraps a single non-text block
+      // (list item with a wrapped heading/quote/code/decorator, or
+      // blockquote wrapping a decorator/code). The restriction applies to
+      // the *content* being wrapped — not the container — so the user sees
+      // the same options regardless of how many layers currently surround
+      // the content.
+      while ($isListItemNode(node) || $isQuoteNode(node)) {
         const child = node.getChildren().find(c =>
           ($isElementNode(c) || $isDecoratorNode(c))
           && !$isListNode(c) && !$isParagraphNode(c)
         )
-        if (child) node = child
+        if (!child) break
+        node = child
       }
       // Wrapped versions of a content type get the same turn-into options as
       // their unwrapped counterparts — the restriction reflects what's

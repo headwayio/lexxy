@@ -181,6 +181,24 @@ test.describe("Block actions menu (Cmd+/)", () => {
     expect(colorDisabled).toBe(true)
   })
 
+  test("menu restrictions: HR wrapped in a blockquote gets the decorator rule", async ({ editor, page }) => {
+    // Container-drill: the HR is inside a blockquote (not a list item), but
+    // the restriction should still follow the HR's content type.
+    await editor.setValue("<p>Before</p><blockquote><hr></blockquote><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown") // focus blockquote
+    const { items, colorDisabled } = await menuState(editor, page, modifier)
+    const byCmd = Object.fromEntries(items.map(i => [ i.cmd, i.disabled ]))
+    expect(byCmd["setFormatParagraph"]).toBe(true)
+    expect(byCmd["setFormatHeadingLarge"]).toBe(true)
+    expect(byCmd["insertUnorderedList"]).toBe(false)
+    expect(byCmd["insertOrderedList"]).toBe(false)
+    expect(byCmd["insertQuoteBlock"]).toBe(false)
+    expect(byCmd["insertCodeBlock"]).toBe(true)
+    expect(colorDisabled).toBe(true)
+  })
+
   test("menu restrictions: wrapped code gets the same rule as code at root (text + headings)", async ({ editor, page }) => {
     await editor.setValue("<ul><li><pre data-language=\"plain\">code</pre></li></ul>")
     await editor.select("code")
