@@ -1616,6 +1616,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         this.#dragAndDrop?.repositionHandle()
         this.#syncBulletOffsets()
         this.#dragAndDrop?.unsuppressHover()
+        this.#scrollFocusedBlockIntoView()
       })
     })
   }
@@ -1710,6 +1711,19 @@ export class BlockSelectionExtension extends LexxyExtension {
     for (const key of this.#selectedBlockKeys) {
       const el = this.editor.getElementByKey(key)
       if (el) this.#dragAndDrop.syncBulletOffset(el)
+    }
+  }
+
+  #scrollFocusedBlockIntoView() {
+    if (!this.#focusKey) return
+    const el = this.editor.getElementByKey(this.#focusKey)
+    if (!el) return
+    const margin = 150
+    const rect = el.getBoundingClientRect()
+    if (rect.top < margin) {
+      window.scrollBy({ top: rect.top - margin, behavior: "smooth" })
+    } else if (rect.bottom > window.innerHeight - margin) {
+      window.scrollBy({ top: rect.bottom - window.innerHeight + margin, behavior: "smooth" })
     }
   }
 
