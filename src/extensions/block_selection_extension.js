@@ -45,7 +45,15 @@ export class BlockSelectionExtension extends LexxyExtension {
   #savedHighlightStyles = new Map() // nodeKey → original style string (before parent color was applied)
   #dragAndDrop = null
   #cleanupFns = []
-  #wrappedBlockKeys = new Set() // ListItemNode keys created by block movement
+  // ListItemNode keys that wrap a non-paragraph block. Split by origin
+  // because exit/unwrap semantics differ:
+  // - userWrappedKeys: user chose to wrap (Turn-into → Quote/Heading, or
+  //   the attachment-wrap branch in #convertBlockType). Preserve wrapping
+  //   through all arrow movement; only Shift+Tab outdent can unwrap.
+  // - movementWrappedKeys: non-list block drifted into a list via arrow
+  //   movement. Auto-unwrap when the block exits back to root level.
+  #userWrappedKeys = new Set()
+  #movementWrappedKeys = new Set()
   #blockActionsMenu = null
   #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
   #selectionUndoStack = [] // parallel stack for block selection state
@@ -1157,7 +1165,7 @@ export class BlockSelectionExtension extends LexxyExtension {
                 node.append(child)
               }
               wrappedChild.remove()
-              this.#wrappedBlockKeys.delete(node.getKey())
+              this.#untrackWrapped(node.getKey())
             }
             newSelectedKeys.add(node.getKey())
           } else if (command === "setFormatParagraph") {
@@ -1172,7 +1180,7 @@ export class BlockSelectionExtension extends LexxyExtension {
                 node.append(child)
               }
               wrappedChild.remove()
-              this.#wrappedBlockKeys.delete(node.getKey())
+              this.#untrackWrapped(node.getKey())
             }
             newSelectedKeys.add(node.getKey())
           } else {
@@ -1201,7 +1209,7 @@ export class BlockSelectionExtension extends LexxyExtension {
               list.append(listItem)
               node.replace(list)
               listItem.append(node)
-              this.#wrappedBlockKeys.add(listItem.getKey())
+              this.#trackUserWrapped(listItem.getKey())
               newSelectedKeys.add(listItem.getKey())
               replacedKeys.add(key)
             }
@@ -1307,8 +1315,9 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
-    // Track as a wrapped block
-    this.#wrappedBlockKeys.add(node.getKey())
+    // Track as a user-wrapped block (persists through arrow movement,
+    // only outdented via Shift+Tab).
+    this.#trackUserWrapped(node.getKey())
   }
 
   // Extract a list item from its parent list, convert it to the target
@@ -1616,27 +1625,40 @@ export class BlockSelectionExtension extends LexxyExtension {
     return rootKeys
   }
 
-  // Re-apply data-block-movement-wrapped DOM attribute after moves.
+  // Re-apply data-block-movement-wrapped DOM attribute after moves. The
+  // attribute's VALUE carries origin ("user" or "movement") so
+  // copy-on-write key changes can be recovered into the right origin set.
   #syncWrappedBlockAttributes() {
     const root = this.editor.getRootElement()
     if (!root) return
 
-    // First, apply attribute from known keys
-    for (const key of this.#wrappedBlockKeys) {
+    // Apply attribute from known keys, tagging with origin.
+    for (const key of this.#userWrappedKeys) {
       const el = this.editor.getElementByKey(key)
-      if (el) {
-        el.dataset.blockMovementWrapped = ""
-      } else {
-        this.#wrappedBlockKeys.delete(key)
-      }
+      if (el) el.dataset.blockMovementWrapped = "user"
+      else this.#userWrappedKeys.delete(key)
+    }
+    for (const key of this.#movementWrappedKeys) {
+      const el = this.editor.getElementByKey(key)
+      if (el) el.dataset.blockMovementWrapped = "movement"
+      else this.#movementWrappedKeys.delete(key)
     }
 
-    // Also scan DOM for any elements that have the attribute but whose
-    // keys aren't in the set (key changed due to copy-on-write)
+    // Also scan DOM for attribute-tagged elements whose keys aren't in
+    // either set (key changed due to copy-on-write). Recover into the
+    // origin set indicated by the attribute value.
     for (const el of root.querySelectorAll("[data-block-movement-wrapped]")) {
       const keyProp = Object.keys(el).find(k => k.startsWith("__lexicalKey_"))
-      if (keyProp) {
-        this.#wrappedBlockKeys.add(el[keyProp])
+      if (!keyProp) continue
+      const key = el[keyProp]
+      const origin = el.dataset.blockMovementWrapped
+      if (origin === "user") {
+        if (!this.#userWrappedKeys.has(key)) this.#trackUserWrapped(key)
+      } else {
+        // Legacy "" values and "movement" both recover as movement-wrapped.
+        if (!this.#userWrappedKeys.has(key) && !this.#movementWrappedKeys.has(key)) {
+          this.#trackMovementWrapped(key)
+        }
       }
     }
   }
@@ -2109,12 +2131,16 @@ export class BlockSelectionExtension extends LexxyExtension {
     for (const { node, wrapper } of group) {
       if (!node.getParent()) continue
 
-      if (this.#isWrappedBlock(node)) {
-        // Flush any batched regular items before inserting a wrapped block
+      // Origin-aware branching: user-wrapped items stay as wrapped list
+      // items in a new root-level list (preserving their structure and
+      // any nested children). Movement-wrapped items extract to standalone
+      // — they only became list items as a side-effect of being moved
+      // through a list, and the user wants them back at root level.
+      if (this.#isWrappedBlock(node) && !this.#isUserWrapped(node)) {
+        // Flush any batched regular items before inserting an extracted block
         flushBatch()
 
         let childrenList = null
-        // Extract children from wrapper before removing it
         if (wrapper) {
           const innerList = wrapper.getChildren().find(c => $isListNode(c))
           if (innerList) {
@@ -2141,7 +2167,9 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
         }
       } else {
-        // Regular list item: collect into a batch
+        // Regular list item OR user-wrapped list item: batch into a
+        // root-level list, keeping any structural wrapper with nested
+        // children attached so the subtree stays intact.
         if (!regularBatch) regularBatch = $createListNode(listType)
         if (wrapper) wrapper.remove()
         node.remove()
@@ -2279,7 +2307,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
 
         if (isWrapped) {
-          this.#wrappedBlockKeys.add(listItem.getKey())
+          this.#trackMovementWrapped(listItem.getKey())
           const newKey = listItem.getKey()
           if (this.#selectedBlockKeys.has(oldKey)) {
             this.#selectedBlockKeys.delete(oldKey)
@@ -2320,23 +2348,27 @@ export class BlockSelectionExtension extends LexxyExtension {
     const isRootLevel = !$isListItemNode(parentOfList)
 
     // If this is the only real item in a root-level list, check if it
-    // should unwrap (hidden-bullet block) or move the whole list
+    // should unwrap (hidden-bullet block) or move the whole list.
+    // User-wrapped items skip the unwrap path — the list moves as a unit
+    // so the item keeps its wrapping. Only Shift+Tab unwraps them.
     if (isRootLevel && this.#countRealItems(parent) === 1) {
-      const unwrapped = this.#unwrapIfNonListContent(node)
-      if (unwrapped) {
-        // Hidden-bullet block: unwrap back to standalone.
-        unwrapped.remove()
-        if (isDown) {
-          parent.insertAfter(unwrapped)
-        } else {
-          parent.insertBefore(unwrapped)
+      if (!this.#isUserWrapped(node)) {
+        const unwrapped = this.#unwrapIfNonListContent(node)
+        if (unwrapped) {
+          // Hidden-bullet block: unwrap back to standalone.
+          unwrapped.remove()
+          if (isDown) {
+            parent.insertAfter(unwrapped)
+          } else {
+            parent.insertBefore(unwrapped)
+          }
+          this.#updateKeyAfterUnwrap(node.getKey(), unwrapped.getKey())
+          node.remove()
+          this.#cleanupEmptyList(parent)
+          return
         }
-        this.#updateKeyAfterUnwrap(node.getKey(), unwrapped.getKey())
-        node.remove()
-        this.#cleanupEmptyList(parent)
-        return
       }
-      // Normal single list item: move the entire list as a block
+      // Normal single list item (or user-wrapped): move the entire list as a block
       this.#moveTopLevelBlock(parent, direction)
       return
     }
@@ -2587,11 +2619,13 @@ export class BlockSelectionExtension extends LexxyExtension {
     } else {
       // Root-level list boundary.
 
-      // Wrapped blocks (paragraphs, headings that entered via block movement):
-      // extract and place beside the list as standalone elements.
-      // Children (structural wrapper) maintain hierarchy and exit with the block.
-      // They CAN exit even at document start.
-      if (this.#isWrappedBlock(node)) {
+      // Movement-wrapped items only: extract content to standalone and
+      // place beside the list. These drifted in via arrow movement; the
+      // user wants them out as plain blocks.
+      // User-wrapped items fall through to the "regular list item" path
+      // below so they stay wrapped in a new sibling list — only Shift+Tab
+      // explicitly outdents them to standalone.
+      if (this.#isWrappedBlock(node) && !this.#isUserWrapped(node)) {
         // Carry children out with the block
         const ownWrapper = this.#getOwnStructuralWrapper(node)
         let childrenList = null
@@ -2621,8 +2655,8 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
 
-      // Regular list items: wrap in a new sibling list and move it.
-      // Can't break out upward if at document start.
+      // Regular list items and user-wrapped items: wrap in a new sibling
+      // list and move it. Can't break out upward if at document start.
       if (!isDown && !currentList.getPreviousSibling()) return
 
       // Carry the node's children (structural wrapper) along when promoting
@@ -2687,8 +2721,24 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Nest under the adjacent root-level sibling (skip root level).
       // #nestListItemUnderSibling handles atomic move and cleanup.
       this.#nestListItemUnderSibling(node, targetSibling, rootList, isDown)
+    } else if (this.#isUserWrapped(node)) {
+      // User-wrapped: exit to a NEW root-level list beside the source,
+      // carrying the structural wrapper (and its nested children) intact.
+      // The item stays a wrapped list item — only Shift+Tab unwraps.
+      const ownWrapper = this.#getOwnStructuralWrapper(node)
+      if (ownWrapper) ownWrapper.remove()
+      node.remove()
+
+      const newList = $createListNode(rootList.getListType())
+      newList.append(node)
+      if (ownWrapper) newList.append(ownWrapper)
+
+      if (isDown) rootList.insertAfter(newList)
+      else rootList.insertBefore(newList)
     } else {
-      // No more siblings: extract and exit the list, carrying children
+      // Movement-wrapped: extract content to standalone and drop beside
+      // the list. The user was just moving a non-list block through — get
+      // it out the other side unwrapped.
       const ownWrapper = this.#getOwnStructuralWrapper(node)
       let childrenList = null
       if (ownWrapper) {
@@ -2875,8 +2925,9 @@ export class BlockSelectionExtension extends LexxyExtension {
           sibling.append(listItem)
         }
 
-        // Track this as a block-movement-wrapped item
-        this.#wrappedBlockKeys.add(listItem.getKey())
+        // Track this as a movement-wrapped item — it drifted into a list
+        // via arrow movement, so it should auto-unwrap on the way out.
+        this.#trackMovementWrapped(listItem.getKey())
 
         // Update selection to track the wrapper ListItemNode
         const newKey = listItem.getKey()
@@ -2918,40 +2969,82 @@ export class BlockSelectionExtension extends LexxyExtension {
     return null
   }
 
-  // Re-sync the wrappedBlockKeys Set after moves. Selected nodes that
-  // are ListItemNodes inside a list should be checked against the Set —
-  // if they're not in it but WERE wrapped (the Set had their old key),
-  // add the new key.
+  // Re-sync the origin-tagged wrapped-key sets after moves. Copy-on-write
+  // can change keys during an update; we want to keep each key in the same
+  // origin set it started in.
   #resyncWrappedKeys() {
-    const newSet = new Set()
+    this.#userWrappedKeys = this.#rebuildOriginSet(this.#userWrappedKeys)
+    this.#movementWrappedKeys = this.#rebuildOriginSet(this.#movementWrappedKeys)
+  }
+
+  #rebuildOriginSet(originSet) {
+    const rebuilt = new Set()
+    for (const key of originSet) {
+      if ($getNodeByKey(key)) rebuilt.add(key)
+    }
+    // If a selected node's old key lived in this origin set, preserve the
+    // new key with the same origin.
     for (const key of this.#selectedBlockKeys) {
       const node = $getNodeByKey(key)
       if (!node) continue
-      // If this selected node is a ListItemNode, check if it should be wrapped
-      if ($isListItemNode(node)) {
-        if (this.#wrappedBlockKeys.has(key)) {
-          newSet.add(key)
-        }
+      if ($isListItemNode(node) && originSet.has(key)) {
+        rebuilt.add(key)
       }
-      // Also check parent (for nodes inside a wrapper)
       if (node.getParent && $isListItemNode(node.getParent())) {
         const parentKey = node.getParent().getKey()
-        if (this.#wrappedBlockKeys.has(parentKey)) {
-          newSet.add(parentKey)
-        }
+        if (originSet.has(parentKey)) rebuilt.add(parentKey)
       }
     }
-    // Merge: keep existing valid keys + add new ones
-    for (const key of this.#wrappedBlockKeys) {
-      if ($getNodeByKey(key)) newSet.add(key)
-    }
-    this.#wrappedBlockKeys = newSet
+    return rebuilt
   }
 
-  // Check if a ListItemNode is a block-movement wrapper.
+  // Back-compat union view of the two origin-tagged sets. Read-only — use
+  // #trackUserWrapped / #trackMovementWrapped for writes so origin is kept.
+  get #wrappedBlockKeys() {
+    const union = new Set(this.#userWrappedKeys)
+    for (const key of this.#movementWrappedKeys) union.add(key)
+    return union
+  }
+
+  #trackUserWrapped(key) {
+    this.#userWrappedKeys.add(key)
+    this.#movementWrappedKeys.delete(key)
+  }
+
+  #trackMovementWrapped(key) {
+    // Don't demote user-wrapped to movement-wrapped. If a user-wrapped item
+    // happens to travel through movement code paths, preserve its origin.
+    if (this.#userWrappedKeys.has(key)) return
+    this.#movementWrappedKeys.add(key)
+  }
+
+  #untrackWrapped(key) {
+    this.#userWrappedKeys.delete(key)
+    this.#movementWrappedKeys.delete(key)
+  }
+
+  #isUserWrapped(listItemNode) {
+    const key = listItemNode.getKey()
+    if (this.#userWrappedKeys.has(key)) return true
+    if (this.#matchesKeySet(listItemNode, this.#userWrappedKeys)) return true
+    if (this.#movementWrappedKeys.has(key)) return false
+    if (this.#matchesKeySet(listItemNode, this.#movementWrappedKeys)) return false
+    // Fallback: any wrapped block we can't classify is treated as user-wrapped.
+    // Reasoning: documents loaded from storage have no origin marker, but
+    // anything saved as a wrapped block was committed by the user (either via
+    // Turn-into or by saving a movement-wrapped item, which implicitly
+    // promotes it to user-wrapped). Movement-wrapped is a transient session
+    // state that lives only between consecutive movements within one session.
+    return this.#isWrappedBlock(listItemNode)
+  }
+
+  // Check if a ListItemNode wraps a non-paragraph block (either origin).
+  // Used for shared logic where origin doesn't matter (e.g. content-heuristic
+  // rendering). Origin-sensitive callers should use #isUserWrapped or
+  // check #movementWrappedKeys directly.
   #isWrappedBlock(listItemNode) {
     const key = listItemNode.getKey()
-    if (this.#wrappedBlockKeys.has(key)) return true
+    if (this.#userWrappedKeys.has(key) || this.#movementWrappedKeys.has(key)) return true
 
     // Content heuristic: a single block-level child (heading, code block, table,
     // HR, etc.) means this list item is wrapping a non-list block that entered
@@ -2971,22 +3064,26 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (el?.hasAttribute("data-block-movement-wrapped")) return true
     } catch (e) { /* ignore */ }
 
-    // Also check all wrappedBlockKeys to see if any resolve to this node
+    // Also check all tracked keys to see if any resolve to this node
     // (keys may have changed due to copy-on-write)
-    for (const wrappedKey of this.#wrappedBlockKeys) {
+    return this.#matchesKeySet(listItemNode, this.#userWrappedKeys)
+      || this.#matchesKeySet(listItemNode, this.#movementWrappedKeys)
+  }
+
+  #matchesKeySet(node, keySet) {
+    for (const key of keySet) {
       try {
-        const wrappedNode = $getNodeByKey(wrappedKey)
-        if (wrappedNode && wrappedNode.is(listItemNode)) return true
+        const tracked = $getNodeByKey(key)
+        if (tracked && tracked.is(node)) return true
       } catch (e) { /* ignore */ }
     }
-
     return false
   }
 
   // Update selection tracking when a wrapper ListItemNode is unwrapped
   // back to its standalone content node.
   #updateKeyAfterUnwrap(oldKey, newKey) {
-    this.#wrappedBlockKeys.delete(oldKey)
+    this.#untrackWrapped(oldKey)
     if (this.#selectedBlockKeys.has(oldKey)) {
       this.#selectedBlockKeys.delete(oldKey)
       this.#selectedBlockKeys.add(newKey)
