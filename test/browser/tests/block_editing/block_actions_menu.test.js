@@ -318,6 +318,26 @@ test.describe("Block actions menu (Cmd+/)", () => {
     )
   })
 
+  test("Turn into Quote on a blockquote wrapping non-text toggles the quote off", async ({ editor, page }) => {
+    await editor.setValue("<p>Before</p><blockquote><hr></blockquote><p>After</p>")
+    await editor.select("Before")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("ArrowDown") // focus the blockquote
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    // Open Turn into submenu, navigate to Quote (position 7: Text, H2, H3, H4, Bullet, Number, Quote)
+    await page.keyboard.press("ArrowRight")
+    for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    const html = await editor.value()
+    expect(html).toContain("<hr>")
+    expect(html).not.toContain("<blockquote>")
+  })
+
   test("Escape closes the block actions menu", async ({ editor, page }) => {
     await editor.setValue("<p>Test</p>")
     await editor.select("Test")

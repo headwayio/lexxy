@@ -1282,6 +1282,27 @@ export class BlockSelectionExtension extends LexxyExtension {
           node.replace(list)
           newSelectedKeys.add(listItem.getKey())
           replacedKeys.add(key)
+        } else if (command === "insertQuoteBlock" && $isQuoteNode(node)
+                   && node.getChildren().every(c =>
+                     ($isElementNode(c) || $isDecoratorNode(c))
+                     && !$isListNode(c) && !$isParagraphNode(c)
+                   )) {
+          // Toggle: Turn into Quote on a blockquote wrapping non-text
+          // content (decorator, HR, code, heading) removes the wrapper.
+          // Promotes each wrapped block to the quote's former position in
+          // order. Text-only blockquotes fall through to the replace path
+          // below since their TextNode children can't live at root without
+          // a paragraph wrapper.
+          const children = [ ...node.getChildren() ]
+          const first = children[0]
+          node.replace(first)
+          let ref = first
+          for (let i = 1; i < children.length; i++) {
+            ref.insertAfter(children[i])
+            ref = children[i]
+          }
+          newSelectedKeys.add(first.getKey())
+          replacedKeys.add(key)
         } else {
           // Non-list block → non-list block (paragraph, heading, quote,
           // code): replace the node with a new block of the target type,
@@ -1482,6 +1503,19 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.editor.update(() => {
       // Filter to root keys only (parents, not their auto-selected children)
       const rootKeys = this.#filterToRootKeys([ ...this.#selectedBlockKeys ])
+
+      // Shift+Tab on a blockquote that wraps a single non-text block
+      // (decorator, HR, attachment, code, table) unwraps the content out of
+      // the blockquote. No analogous "indent" shape exists for quotes, so
+      // this only runs on outdent.
+      if (outdent) {
+        for (const key of rootKeys) {
+          const node = $getNodeByKey(key)
+          if (!node || !$isQuoteNode(node)) continue
+          this.#unwrapQuoteIfWrappingNonText(node)
+        }
+      }
+
       const listItemKeys = rootKeys.filter(key => {
         const node = $getNodeByKey(key)
         return node && $isListItemNode(node)
@@ -4167,6 +4201,28 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#cleanupEmptyList(currentList)
       this.#updateKeyAfterUnwrap(nodeKey, extracted.getKey())
     }
+  }
+
+  // Unwrap a blockquote that contains a single non-text block (decorator,
+  // HR, attachment, code, table). Replaces the blockquote with its content,
+  // promoting the wrapped element to the blockquote's former position.
+  // Triggered by Shift+Tab in block-select mode on a quoted decorator —
+  // there's no "Turn into Text" path for decorators, so this is the only
+  // way to remove the quote wrapper without destroying the content.
+  #unwrapQuoteIfWrappingNonText(quote) {
+    const children = quote.getChildren()
+    if (children.length !== 1) return
+    const child = children[0]
+    const isNonTextBlock = ($isElementNode(child) || $isDecoratorNode(child))
+      && !$isListNode(child) && !$isParagraphNode(child)
+    if (!isNonTextBlock) return
+
+    const oldKey = quote.getKey()
+    // Detach the child, then replace the quote with it so the child lands
+    // at the quote's former root position.
+    child.remove(true)
+    quote.replace(child)
+    this.#updateKeyAfterUnwrap(oldKey, child.getKey())
   }
 
   // -- Click handling ---------------------------------------------------------
