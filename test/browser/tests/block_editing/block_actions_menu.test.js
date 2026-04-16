@@ -108,7 +108,7 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await assertBlockHtml(editor, "<h2>Make me a heading</h2>")
   })
 
-  test("turn-into Bullet list wraps multiple standalone non-list blocks into a single bullet list", async ({ editor, page }) => {
+  test("turn-into Bullet list wraps non-paragraph blocks (heading, blockquote) preserving their type", async ({ editor, page }) => {
     await editor.setValue("<h2>Charlie</h2><blockquote><p>Delta</p></blockquote><p>After</p>")
     await editor.select("Charlie")
     await page.keyboard.press("Escape")
@@ -126,9 +126,35 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await page.keyboard.press("ArrowDown")
     await page.keyboard.press("Enter")
 
-    // Adjacent same-type lists merge during reconciliation, so both converted
-    // items end up in one list.
-    await assertBlockHtml(editor, "<ul><li>Charlie</li><li>Delta</li></ul><p>After</p>")
+    // Non-paragraph blocks are wrapped (not converted) so they keep their
+    // type and can host nested children later. Adjacent same-type lists
+    // merge during reconciliation.
+    await assertBlockHtml(
+      editor,
+      "<ul><li><h2>Charlie</h2></li><li><blockquote><p>Delta</p></blockquote></li></ul><p>After</p>"
+    )
+  })
+
+  test("turn-into Bullet list converts paragraphs into plain bullets (not wrapped)", async ({ editor, page }) => {
+    await editor.setValue("<p>Para one</p><p>Para two</p><p>After</p>")
+    await editor.select("Para one")
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("Shift+ArrowDown")
+    await page.keyboard.press(`${modifier}+/`)
+
+    const menu = page.locator("lexxy-block-actions")
+    await expect(menu).toBeVisible({ timeout: 2000 })
+
+    await page.keyboard.press("ArrowRight")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+
+    // Paragraph text moves directly into the list item — <li><p>…</p></li>
+    // would collapse visually and provides no real wrapper benefit.
+    await assertBlockHtml(editor, "<ul><li>Para one</li><li>Para two</li></ul><p>After</p>")
   })
 
   // Helper: open block-actions menu on the focused block, then return
@@ -259,11 +285,10 @@ test.describe("Block actions menu (Cmd+/)", () => {
     }
   })
 
-  test("turn-into Bullet list skips tables in multi-block selections", async ({ editor, page }) => {
-    // Selection includes a heading, a table, and a trailing paragraph (so
-    // focus ends on the paragraph and the menu doesn't restrict to the
-    // single-block-on-table options). The table should be preserved while
-    // the other two convert into list items.
+  test("turn-into Bullet list on a mixed selection wraps the heading and table while the paragraph converts — all cells preserved", async ({ editor, page }) => {
+    // Mixed selection (heading + table + paragraph). Non-paragraph blocks
+    // get wrapped (type preserved). Paragraphs are converted to plain
+    // bullets. The critical contract: the table's cells must survive.
     await editor.setValue(
       "<h2>Heading</h2><figure class=\"lexxy-content__table-wrapper\"><table><tbody><tr><td><p>A</p></td><td><p>B</p></td></tr></tbody></table></figure><p>After</p>"
     )
@@ -283,12 +308,14 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await page.keyboard.press("ArrowDown")
     await page.keyboard.press("Enter")
 
-    // The table's cells A and B must still be present.
     const html = await editor.value()
+    // Table cells preserved.
     expect(html).toContain("<table>")
     expect(html).toMatch(/<td>[^<]*<p>A<\/p>[^<]*<\/td>/)
     expect(html).toMatch(/<td>[^<]*<p>B<\/p>[^<]*<\/td>/)
-    expect(html).toContain("<li>Heading</li>")
+    // Heading wrapped as wrapped list item (type preserved).
+    expect(html).toContain("<li><h2>Heading</h2></li>")
+    // Paragraph converted to plain bullet.
     expect(html).toContain("<li>After</li>")
   })
 

@@ -1211,12 +1211,16 @@ export class BlockSelectionExtension extends LexxyExtension {
         const node = $getNodeByKey(key)
         if (!node) continue
 
-        // Tables lose data when converted — skip them in multi-block
-        // selections. In single-block mode, the menu already restricts
-        // to Text + Color only, which are handled by Lexical's standard
-        // dispatch (or no-op for non-text commands).
-        if ($isWrappedTableNode(node)
-            || ($isListItemNode(node) && node.getChildren().some($isWrappedTableNode))) {
+        // Tables preserve cell data only when wrapped (list or quote). Skip
+        // text-conversion commands that would replace the table with a
+        // non-table node; allow list/quote commands through so the table
+        // gets wrapped in a list item or blockquote. The menu already
+        // restricts single-block selections to Text + Color only, so this
+        // guard primarily protects tables dragged into multi-block Turn
+        // intos alongside other blocks.
+        const isTable = $isWrappedTableNode(node)
+          || ($isListItemNode(node) && node.getChildren().some($isWrappedTableNode))
+        if (isTable && !isListCommand && command !== "insertQuoteBlock") {
           newSelectedKeys.add(key)
           continue
         }
@@ -1300,17 +1304,35 @@ export class BlockSelectionExtension extends LexxyExtension {
             newSelectedKeys.add(node.getKey())
           }
         } else if (isListCommand) {
-          // Non-list block → list: wrap in a new ListNode + ListItemNode,
-          // moving the node's children into the list item. Adjacent same-
-          // type lists merge during reconciliation, so consecutive converted
-          // items end up in one list.
+          // Non-list block → list: wrap in a new ListNode + ListItemNode.
+          //
+          // For paragraphs, the text nodes move directly into the list item
+          // (paragraphs don't survive as meaningful wrappers — `<li><p>`
+          // collapses to a plain bullet visually).
+          //
+          // For everything else (heading, blockquote, code, table, decorator
+          // handled in the earlier branch), the block itself becomes the
+          // wrapped child of the list item. This preserves the block's type
+          // AND — because wrapped list items can carry nested children via
+          // structural wrappers — makes the block a valid nest target.
+          // Clicking Turn into Bullet a second time unwraps the block
+          // (existing $isListItemNode branch handles that).
+          //
+          // Adjacent same-type lists merge during reconciliation, so
+          // consecutive converted items end up in one list.
           const list = $createListNode(listType)
           const listItem = $createListItemNode()
-          for (const child of [ ...node.getChildren?.() || [] ]) {
-            listItem.append(child)
-          }
           list.append(listItem)
-          node.replace(list)
+          if ($isParagraphNode(node)) {
+            for (const child of [ ...node.getChildren() ]) {
+              listItem.append(child)
+            }
+            node.replace(list)
+          } else {
+            node.replace(list)
+            listItem.append(node)
+            this.#trackUserWrapped(listItem.getKey())
+          }
           newSelectedKeys.add(listItem.getKey())
           replacedKeys.add(key)
         } else if (command === "insertQuoteBlock" && $isQuoteNode(node)
