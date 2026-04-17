@@ -49,8 +49,8 @@ npx playwright test --config test/browser/playwright.config.js --project=chromiu
 
 ### P0 — ship blockers
 - [x] P0-1: CSS class `lexxy-editor__block--*` rename
-- [ ] P0-2: split `block_selection_extension.js` into `src/editor/block_selection/*`
-- [ ] P0-3: split `block_drag_and_drop.js` into `src/editor/block_selection/drag_and_drop/*`
+- [~] P0-2: `block_selection_extension.js` — PARTIAL. Extracted pure highlight CSS helpers to `src/extensions/block_selection/highlight_css.js`. Coordinator still 4481 LOC. Remaining extractions blocked on private-field access across module boundaries — requires state-holder pattern or public-field conversion.
+- [~] P0-3: `block_drag_and_drop.js` — PARTIAL. Extracted 4 modules to `src/editor/block_drag_and_drop/`: `ghost.js`, `autoscroll.js`, `drop_indicator.js`, `geometry.js`. Coordinator: 2279 → 1982 LOC. Remaining work (handle DOM, drag state machine, drop target resolution, reparenting) is state-machine-intensive and requires deeper restructuring to extract cleanly.
 - [x] P0-4: engine.rb — register helpers via `ActionController::Base.helper`
 - [x] P0-5: delete `Lexxy::AttachmentIconHelper` (derive label from extension or blob)
 - [x] P0-6: move SVG path constants out of `AttachmentHelper`
