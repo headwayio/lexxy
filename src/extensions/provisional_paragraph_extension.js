@@ -56,7 +56,10 @@ function $removeUnneededProvisionalParagraphs(rootNode) {
 
 function $markAllProvisionalParagraphsDirty() {
   // Selection-driven visibility updates must not become standalone undo steps.
+  // Otherwise block-select operations like Turn into take two Cmd+Z presses to
+  // revert — the first undoes this invisible mark-dirty commit.
   $addUpdateTag(HISTORY_MERGE_TAG)
+
 
   for (const provisionalParagraph of $getAllProvisionalParagraphs()) {
     provisionalParagraph.markDirty()
