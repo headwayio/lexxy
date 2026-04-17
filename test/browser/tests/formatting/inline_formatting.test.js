@@ -184,7 +184,7 @@ test.describe("Inline formatting", () => {
     await editor.send("Line three")
 
     await editor.selectAll()
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
 
     await assertEditorHtml(
       editor,
@@ -200,7 +200,7 @@ test.describe("Inline formatting", () => {
     await editor.send("Line three")
 
     await editor.selectAll()
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
 
     await assertEditorHtml(
       editor,
@@ -208,7 +208,7 @@ test.describe("Inline formatting", () => {
     )
 
     await editor.selectAll()
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
 
     await assertEditorHtml(
       editor,
@@ -219,7 +219,7 @@ test.describe("Inline formatting", () => {
   test("toggling code block on a blockquote with multiple paragraphs preserves all lines", async ({ page, editor }) => {
     await editor.setValue("<blockquote><p>Line one</p><p>Line two</p></blockquote>")
     await editor.selectAll()
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
 
     await assertEditorHtml(
       editor,
