@@ -5,6 +5,23 @@ import { attachmentIconLabel, createAttachmentFigure, createElement, dispatch, i
 import { bytesToHumanSize, extractFileName, representationToBlobUrl } from "../helpers/storage_helper"
 import { parseBoolean } from "../helpers/string_helper"
 
+// Per-src cache of SVG object URLs. ActiveStorage forces image/svg+xml blobs
+// to download; we re-fetch once per src, re-MIME as svg+xml, and reuse the
+// resulting object URL across every node that points at the same blob.
+// Without the cache every createDOM() would leak a new object URL.
+const SVG_OBJECT_URL_BY_SRC = new Map()
+
+function cachedSvgObjectUrl(src) {
+  const cached = SVG_OBJECT_URL_BY_SRC.get(src)
+  if (cached) return cached
+
+  const promise = fetch(src)
+    .then(response => response.blob())
+    .then(blob => URL.createObjectURL(new Blob([ blob ], { type: "image/svg+xml" })))
+
+  SVG_OBJECT_URL_BY_SRC.set(src, promise)
+  return promise
+}
 
 export class ActionTextAttachmentNode extends DecoratorNode {
   static getType() {
@@ -312,12 +329,11 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     // can embed <script>). Re-fetch and serve via an object URL with the
     // correct MIME so <img> can render it. Object URLs sidestep the original
     // Content-Disposition; <img> can't execute scripts from inline SVG either way.
+    // Cached per src so repeated renders (and sibling nodes at the same URL)
+    // share one fetch + one object URL instead of leaking one per createDOM().
     if (this.contentType === "image/svg+xml") {
-      fetch(this.src)
-        .then((response) => response.blob())
-        .then((blob) => {
-          img.src = URL.createObjectURL(new Blob([ blob ], { type: "image/svg+xml" }))
-        })
+      cachedSvgObjectUrl(this.src)
+        .then(objectUrl => { if (img.isConnected) img.src = objectUrl })
         .catch(() => this.#swapPreviewToFileDOM(img))
     }
 
@@ -390,7 +406,6 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       if (!this.editor.read(() => this.isAttached())) return
 
       const img = new Image()
-      const cacheBustedSrc = `${this.src}${this.src.includes("?") ? "&" : "?"}_=${Date.now()}`
 
       img.onload = () => {
         if (!this.editor.read(() => this.isAttached())) return
@@ -398,13 +413,13 @@ export class ActionTextAttachmentNode extends DecoratorNode {
         // The placeholder is a file-type icon SVG (86×100). A real thumbnail
         // generated from PDF/video content is significantly larger.
         if (img.naturalWidth > 150 && img.naturalHeight > 150) {
-          this.#swapToPreviewDOM(figure, cacheBustedSrc)
+          this.#swapToPreviewDOM(figure, this.src)
         } else {
           retry()
         }
       }
       img.onerror = () => retry()
-      img.src = cacheBustedSrc
+      img.src = this.src
     }
 
     const retry = () => {
