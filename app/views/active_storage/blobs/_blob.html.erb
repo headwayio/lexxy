@@ -1,5 +1,5 @@
 <% extension = blob.filename.extension.downcase %>
-<% icon_label = attachment_icon_label(extension) %>
+<% icon_label = extension.upcase %>
 <% actions = lexxy_attachment_actions(blob) %>
 
 <% if blob.video? %>
