@@ -59,6 +59,13 @@ export class BlockDragAndDrop {
   #lastPointerY = 0
   #showHandles = true
   #hoverSuppressed = false
+  // Per-drag caches: snap-point pixel positions for list containers and the
+  // root's effective left edge. The DOM doesn't move during a drag, so these
+  // values are invariant — populated lazily in #getDropSnapPoints on first
+  // hit and cleared in #endDrag. Avoids ~N getBoundingClientRect reads per
+  // RAF on docs with deeply nested lists.
+  #rootSnapLeft = null
+  #listLeftCache = new WeakMap()
 
   constructor(editor, editorElement, blockSelectionExtension) {
     this.#editor = editor
@@ -1140,10 +1147,15 @@ export class BlockDragAndDrop {
       points.push({ depth, pixelLeft })
     }
 
-    // Depth 0: top-level — only valid for non-list content
-    const rootRect = root.getBoundingClientRect()
-    const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || 0
-    addPoint(0, rootRect.left + rootPadding)
+    // Depth 0: root-level snap. Cached per drag — the root's position doesn't
+    // move while the user holds the pointer, so we read it once at the first
+    // #getDropSnapPoints call and reuse on every subsequent RAF.
+    if (this.#rootSnapLeft === null) {
+      const rootRect = root.getBoundingClientRect()
+      const rootPadding = parseFloat(getComputedStyle(root).paddingInlineStart) || 0
+      this.#rootSnapLeft = rootRect.left + rootPadding
+    }
+    addPoint(0, this.#rootSnapLeft)
 
     // Collect actual UL/OL ancestors to get real indent positions per depth
     const listAncestors = []
@@ -1158,7 +1170,14 @@ export class BlockDragAndDrop {
     for (let i = 0; i < listAncestors.length; i++) {
       // Use the list container's left edge — this is where the bullet/marker
       // sits, not the text content start (which is further right).
-      addPoint(i + 1, listAncestors[i].getBoundingClientRect().left)
+      // Cache per list element across frames; positions are stable during a drag.
+      const listEl = listAncestors[i]
+      let left = this.#listLeftCache.get(listEl)
+      if (left === undefined) {
+        left = listEl.getBoundingClientRect().left
+        this.#listLeftCache.set(listEl, left)
+      }
+      addPoint(i + 1, left)
     }
 
     return points.sort((a, b) => a.depth - b.depth)
@@ -2261,6 +2280,10 @@ export class BlockDragAndDrop {
     this.#draggedNodeKey = null
     this.#pendingNodeKey = null
     this.#dropTarget = null
+    // Reset per-drag caches — positions may have changed while dragging moved
+    // the DOM around (list insertion/removal during hover).
+    this.#rootSnapLeft = null
+    this.#listLeftCache = new WeakMap()
 
     if (this.#rafId) {
       cancelAnimationFrame(this.#rafId)
