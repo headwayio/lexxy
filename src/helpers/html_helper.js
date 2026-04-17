@@ -61,14 +61,6 @@ export function isPreviewableImage(contentType) {
   return contentType.startsWith("image/")
 }
 
-export function dispatchCustomEvent(element, name, detail) {
-  const event = new CustomEvent(name, {
-    detail: detail,
-    bubbles: true,
-  })
-  element.dispatchEvent(event)
-}
-
 export function dispatch(element, eventName, detail = null, cancelable = false) {
   return element.dispatchEvent(new CustomEvent(eventName, { bubbles: true, detail, cancelable }))
 }
