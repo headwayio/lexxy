@@ -12,6 +12,13 @@ export default class Extensions {
     return this.enabledExtensions.map(ext => ext.lexicalExtension).filter(Boolean)
   }
 
+  // Look up an enabled extension instance by its class. Returns null if not
+  // enabled. Lets elements dispatch to an extension without re-running an
+  // instanceof filter at every call site.
+  get(klass) {
+    return this.enabledExtensions.find(ext => ext instanceof klass) ?? null
+  }
+
   initializeEditors() {
     this.enabledExtensions.forEach(ext => ext.initializeEditor?.())
   }

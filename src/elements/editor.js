@@ -156,8 +156,7 @@ export class LexicalEditorElement extends HTMLElement {
     if (!this.isConnected) return
 
     const show = newValue !== "false"
-    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
-    ext?.setShowHandles(show)
+    this.extensions?.get(BlockSelectionExtension)?.setShowHandles(show)
   }
 
   formResetCallback() {
@@ -203,14 +202,12 @@ export class LexicalEditorElement extends HTMLElement {
 
   /** True when one or more blocks are selected via drag-handle click or Cmd+click. */
   get hasBlockSelection() {
-    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
-    return ext?.hasBlockSelection ?? false
+    return this.extensions?.get(BlockSelectionExtension)?.hasBlockSelection ?? false
   }
 
   /** Enter block select mode with all blocks selected. */
   selectAllBlocks() {
-    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
-    ext?.selectAll()
+    this.extensions?.get(BlockSelectionExtension)?.selectAll()
   }
 
   get toolbarElement() {
