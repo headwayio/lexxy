@@ -69,7 +69,7 @@ module Lexxy
         # to download, so the show-page partial embeds the raw SVG markup instead
         # of using an <img src="...">. Sanitizer still scrubs <script> children.
         ActionText::ContentHelper.allowed_tags = default_allowed_tags + %w[
-          video audio source embed table tbody tr th td
+          video audio source table tbody tr th td
           svg path circle ellipse line polyline polygon rect g defs use text tspan title desc
           linearGradient radialGradient stop clipPath mask pattern symbol marker
         ]
@@ -77,7 +77,7 @@ module Lexxy
         default_allowed_attributes = Class.new.include(ActionText::ContentHelper).new.sanitizer_allowed_attributes
         ActionText::ContentHelper.allowed_attributes = default_allowed_attributes + %w[
           controls poster data-language style value autoplay loop muted playsinline preload
-          viewBox xmlns d fill download target aria-label
+          viewBox xmlns d fill aria-label
           cx cy r rx ry x y x1 y1 x2 y2 points transform stroke stroke-width stroke-linecap stroke-linejoin
           stroke-dasharray stroke-dashoffset stroke-opacity fill-opacity opacity offset stop-color stop-opacity
           gradientUnits gradientTransform spreadMethod patternUnits patternTransform clip-path mask
@@ -85,6 +85,12 @@ module Lexxy
           data-collapsed data-caption-hidden
         ]
 
+        # var() is needed so serialized `color: var(--highlight-N)` survives
+        # re-render (the editor's default highlight palette is var-referenced).
+        # Narrow risk surface: host apps that never use the default palette
+        # can remove this line. Caveat: var() arguments (e.g. url() fallbacks)
+        # are not deep-scrubbed by Loofah — rely on DOMPurify's property-level
+        # allowlist (color + background-color only) upstream of persistence.
         Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
       end
     end
