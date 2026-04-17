@@ -29,45 +29,36 @@ import { $normalizeBlockContainerSelection, getListType } from "../helpers/lexic
 import { HorizontalDividerNode } from "../nodes/horizontal_divider_node"
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "../extensions/highlight_extension"
 
-const COMMANDS = [
-  "bold",
-  "italic",
-  "strikethrough",
-  "underline",
-  "link",
-  "unlink",
-  "toggleHighlight",
-  "removeHighlight",
-  "setFormatHeadingLarge",
-  "setFormatHeadingMedium",
-  "setFormatHeadingSmall",
-  "setFormatParagraph",
-  "applyHeadingFormat",
-  "clearFormatting",
-  "insertUnorderedList",
-  "insertOrderedList",
-  "insertQuoteBlock",
-  "insertCodeBlock",
-  "setCodeLanguage",
-  "insertHorizontalDivider",
-  "uploadImage",
-  "uploadFile",
-
-  "insertTable",
-
-  "undo",
-  "redo"
-]
-
-// Commands that replace DOM elements or restore a prior editor state,
-// both of which trigger Lexical's scrollIntoViewIfNeeded and cause the
-// page to jump. These get scroll preservation.
-const BLOCK_FORMAT_COMMANDS = new Set([
-  "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall",
-  "setFormatParagraph", "insertUnorderedList", "insertOrderedList",
-  "insertQuoteBlock", "insertCodeBlock",
-  "undo", "redo"
-])
+// Command registry. `preserveScroll` flags commands that replace DOM
+// elements or restore a prior editor state — both trigger Lexical's
+// scrollIntoViewIfNeeded and cause the page to jump without preservation.
+const COMMANDS = {
+  bold: {},
+  italic: {},
+  strikethrough: {},
+  underline: {},
+  link: {},
+  unlink: {},
+  toggleHighlight: {},
+  removeHighlight: {},
+  setFormatHeadingLarge: { preserveScroll: true },
+  setFormatHeadingMedium: { preserveScroll: true },
+  setFormatHeadingSmall: { preserveScroll: true },
+  setFormatParagraph: { preserveScroll: true },
+  applyHeadingFormat: {},
+  clearFormatting: {},
+  insertUnorderedList: { preserveScroll: true },
+  insertOrderedList: { preserveScroll: true },
+  insertQuoteBlock: { preserveScroll: true },
+  insertCodeBlock: { preserveScroll: true },
+  setCodeLanguage: {},
+  insertHorizontalDivider: {},
+  uploadImage: {},
+  uploadFile: {},
+  insertTable: {},
+  undo: { preserveScroll: true },
+  redo: { preserveScroll: true }
+}
 
 export class CommandDispatcher {
   #selectionBeforeDrag = null
@@ -318,11 +309,11 @@ export class CommandDispatcher {
   }
 
   #registerCommands() {
-    for (const command of COMMANDS) {
+    for (const [ command, options ] of Object.entries(COMMANDS)) {
       const methodName = `dispatch${capitalize(command)}`
       let handler = this[methodName].bind(this)
 
-      if (BLOCK_FORMAT_COMMANDS.has(command)) {
+      if (options.preserveScroll) {
         handler = withPreservedScroll(handler)
       }
 
