@@ -1,6 +1,10 @@
-import DOMPurify from "dompurify"
-import { buildConfig } from "../config/dom_purify"
+import { DOMPurify, buildConfig } from "../config/dom_purify"
+
+export function setSanitizerConfig(allowedTags) {
+  DOMPurify.clearConfig()
+  DOMPurify.setConfig(buildConfig(allowedTags))
+}
 
 export function sanitize(html) {
-  return DOMPurify.sanitize(html, buildConfig())
+  return DOMPurify.sanitize(html)
 }

@@ -1,4 +1,4 @@
-import { $addUpdateTag, $createParagraphNode, $getRoot, $getSelection, $isElementNode, $isLineBreakNode, $isRangeSelection, $isTextNode, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, SKIP_DOM_SELECTION_TAG, TextNode, mergeRegister } from "lexical"
+import { $addUpdateTag, $createParagraphNode, $getRoot, $getSelection, $isElementNode, $isLineBreakNode, $isRangeSelection, $isTextNode, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, SKIP_DOM_SELECTION_TAG, TextNode } from "lexical"
 import { buildEditorFromExtensions } from "@lexical/extension"
 import { ListItemNode, ListNode, registerList } from "@lexical/list"
 import { AutoLinkNode, LinkNode } from "@lexical/link"
@@ -8,6 +8,7 @@ import { HeadingNode, QuoteNode, registerRichText } from "@lexical/rich-text"
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html"
 import { CodeHighlightNode, CodeNode, registerCodeHighlighting } from "@lexical/code"
 import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
+import { HORIZONTAL_DIVIDER } from "../editor/markdown/horizontal_divider_transformer"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
 import { registerListBlockShortcuts } from "../editor/markdown/list_heading_shortcut"
 import { createEmptyHistoryState, registerHistory } from "@lexical/history"
@@ -18,7 +19,8 @@ import { CommandDispatcher } from "../editor/command_dispatcher"
 import Selection from "../editor/selection"
 import { createElement, dispatch, generateDomId, parseHtml } from "../helpers/html_helper"
 import { isAttachmentSpacerTextNode } from "../helpers/lexical_helper"
-import { sanitize } from "../helpers/sanitization_helper"
+import { sanitize, setSanitizerConfig } from "../helpers/sanitization_helper"
+import { ListenerBin, registerEventListener } from "../helpers/listener_helper"
 import LexicalToolbar from "./toolbar"
 import Configuration from "../editor/configuration"
 import Contents from "../editor/contents"
@@ -36,6 +38,7 @@ import { TablesExtension } from "../extensions/tables_extension"
 import { AttachmentsExtension } from "../extensions/attachments_extension.js"
 import { FormatEscapeExtension } from "../extensions/format_escape_extension.js"
 import { BlockSelectionExtension } from "../extensions/block_selection_extension.js"
+import { LinkOpenerExtension } from "../extensions/link_opener_extension.js"
 
 
 export class LexicalEditorElement extends HTMLElement {
@@ -48,6 +51,7 @@ export class LexicalEditorElement extends HTMLElement {
   #initialValue = ""
   #validationTextArea = document.createElement("textarea")
   #editorInitializedRafId = null
+  #listeners = new ListenerBin()
   #disposables = []
 
   constructor() {
@@ -63,6 +67,7 @@ export class LexicalEditorElement extends HTMLElement {
 
     this.editor = this.#createEditor()
     this.#disposables.push(this.editor)
+    this.#disposables.push(this.#listeners)
 
     this.contents = new Contents(this)
     this.#disposables.push(this.contents)
@@ -159,7 +164,8 @@ export class LexicalEditorElement extends HTMLElement {
       TablesExtension,
       AttachmentsExtension,
       FormatEscapeExtension,
-      BlockSelectionExtension
+      BlockSelectionExtension,
+      LinkOpenerExtension
     ]
   }
 
@@ -309,6 +315,7 @@ export class LexicalEditorElement extends HTMLElement {
     for (const ext of this.extensions.enabledExtensions) {
       if (typeof ext.dispose === "function") this.#disposables.push(ext)
     }
+    this.#configureSanitizer()
     this.#loadInitialValue()
     this.#resetBeforeTurboCaches()
   }
@@ -323,7 +330,7 @@ export class LexicalEditorElement extends HTMLElement {
       theme: theme,
       nodes: this.#lexicalNodes,
       html: {
-        export: new Map([ [ TextNode, exportTextNodeDOM ] ])
+        export: new Map([ [ TextNode, exportTextNodeDOM ], [ CodeHighlightNode, exportTextNodeDOM ] ])
       }
     },
       ...this.extensions.lexicalExtensions
@@ -407,7 +414,9 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #resetBeforeTurboCaches() {
-    document.addEventListener("turbo:before-cache", this.#handleTurboBeforeCache)
+    this.#listeners.track(
+      registerEventListener(document, "turbo:before-cache", this.#handleTurboBeforeCache)
+    )
   }
 
   #handleTurboBeforeCache = (event) => {
@@ -415,7 +424,7 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #synchronizeWithChanges() {
-    this.#addUnregisterHandler(this.editor.registerUpdateListener(({ editorState }) => {
+    this.#listeners.track(this.editor.registerUpdateListener(({ editorState }) => {
       this.#clearCachedValues()
       this.#internalFormValue = this.value
       this.#toggleEmptyStatus()
@@ -429,18 +438,6 @@ export class LexicalEditorElement extends HTMLElement {
     this.cachedStringValue = null
   }
 
-  #addUnregisterHandler(handler) {
-    this.unregisterHandlers = this.unregisterHandlers || []
-    this.unregisterHandlers.push(handler)
-  }
-
-  #unregisterHandlers() {
-    this.unregisterHandlers?.forEach((handler) => {
-      handler()
-    })
-    this.unregisterHandlers = null
-  }
-
   #registerComponents() {
     const registered = []
 
@@ -452,10 +449,11 @@ export class LexicalEditorElement extends HTMLElement {
       this.#registerTableComponents()
       this.#registerCodeHiglightingComponents()
       if (this.supportsMarkdown) {
-          registered.push(
-            registerMarkdownShortcuts(this.editor, TRANSFORMERS),
-            registerMarkdownLeadingTagHandler(this.editor, TRANSFORMERS),
-            registerListBlockShortcuts(this.editor)
+        const transformers = [ ...TRANSFORMERS, HORIZONTAL_DIVIDER ]
+        registered.push(
+          registerMarkdownShortcuts(this.editor, transformers),
+          registerMarkdownLeadingTagHandler(this.editor, transformers),
+          registerListBlockShortcuts(this.editor)
         )
       }
     } else {
@@ -464,7 +462,7 @@ export class LexicalEditorElement extends HTMLElement {
     this.historyState = createEmptyHistoryState()
     registered.push(registerHistory(this.editor, this.historyState, 20))
 
-    this.#addUnregisterHandler(mergeRegister(...registered))
+    this.#listeners.track(...registered)
   }
 
   #registerTableComponents() {
@@ -484,7 +482,7 @@ export class LexicalEditorElement extends HTMLElement {
 
   #handleEnter() {
     // We can't prevent these externally using regular keydown because Lexical handles it first.
-    this.#addUnregisterHandler(this.editor.registerCommand(
+    this.#listeners.track(this.editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event) => {
         // Prevent CTRL+ENTER
@@ -506,13 +504,10 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #registerFocusEvents() {
-    this.addEventListener("focusin", this.#handleFocusIn)
-    this.addEventListener("focusout", this.#handleFocusOut)
-
-    this.#addUnregisterHandler(() => {
-      this.removeEventListener("focusin", this.#handleFocusIn)
-      this.removeEventListener("focusout", this.#handleFocusOut)
-    })
+    this.#listeners.track(
+      registerEventListener(this, "focusin", this.#handleFocusIn),
+      registerEventListener(this, "focusout", this.#handleFocusOut)
+    )
   }
 
   #handleFocusIn(event) {
@@ -552,7 +547,7 @@ export class LexicalEditorElement extends HTMLElement {
   #attachDebugHooks() {
     if (!LexicalEditorElement.debug) return
 
-    this.#addUnregisterHandler(this.editor.registerUpdateListener(({ editorState }) => {
+    this.#listeners.track(this.editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
         console.debug("HTML: ", this.value, "String:", this.toString())
         console.debug("empty", this.isEmpty, "blank", this.isBlank)
@@ -610,6 +605,19 @@ export class LexicalEditorElement extends HTMLElement {
     } else {
       this.internals.setValidity(this.#validationTextArea.validity, this.#validationTextArea.validationMessage, this.editorContentElement)
     }
+  }
+
+  #configureSanitizer() {
+    setSanitizerConfig(this.#allowedElements)
+  }
+
+  get #allowedElements() {
+    return this.#importableTags.concat(this.extensions.allowedElements)
+  }
+
+  get #importableTags() {
+    const tags = Array.from(this.editor._htmlConversions.keys())
+    return tags.filter(tag => !tag.startsWith("#"))
   }
 
   #dispatchAttributesChange() {
@@ -728,10 +736,6 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #dispose() {
-    this.#unregisterHandlers()
-    this.adapter = null
-    document.removeEventListener("turbo:before-cache", this.#handleTurboBeforeCache)
-
     while (this.#disposables.length) {
       this.#disposables.pop().dispose()
     }

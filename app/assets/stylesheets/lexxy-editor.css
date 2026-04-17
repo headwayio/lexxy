@@ -1212,6 +1212,9 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
   lexxy-link-dropdown {
     font-size: var(--lexxy-text-small);
     min-inline-size: 320px;
+    gap: var(--lexxy-toolbar-spacing);
+    inset-inline-start: var(--lexxy-toolbar-spacing);
+    inset-inline-end: var(--lexxy-toolbar-spacing);
 
     form {
       display: flex;
@@ -1219,6 +1222,15 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
       gap: 6px;
       align-items: stretch;
     }
+
+    [overflowing] [open] & {
+      display: block;
+
+      .lexxy-editor__toolbar-dropdown-actions {
+        margin-block-start: var(--lexxy-toolbar-spacing);
+      }
+    }
+
 
     .lexxy-editor__toolbar-dropdown-actions {
       display: flex;
@@ -1253,7 +1265,7 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
       white-space: nowrap;
     }
 
-    button[type="submit"] {
+    button[value="link"] {
       background-color: var(--lexxy-color-accent-dark);
       color: var(--lexxy-color-ink-inverted);
 
@@ -1669,6 +1681,11 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
   visibility: hidden;
   z-index: var(--lexxy-z-popup);
 
+  &[data-clipped-at-right] {
+    inset-inline-start: unset;
+    inset-inline-end: 1ch;
+    max-inline-size: calc(100% - 1ch);
+  }
 }
 
 /* Override browser default ul padding-inline-start: 40px which beats :where() specificity */

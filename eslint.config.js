@@ -50,7 +50,8 @@ export default [
         queueMicrotask: "readonly",
         requestIdleCallback: "readonly",
         cancelIdleCallback: "readonly",
-        performance: "readonly"
+        performance: "readonly",
+        Image: "readonly"
       }
     },
     rules: {

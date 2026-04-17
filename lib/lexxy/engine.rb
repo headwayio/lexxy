@@ -1,7 +1,3 @@
-require_relative "rich_text_area_tag"
-require_relative "form_helper"
-require_relative "form_builder"
-require_relative "action_text_tag"
 require_relative "attachable"
 require_relative "attachment_icon_helper"
 require_relative "attachment_helper"
@@ -13,20 +9,40 @@ module Lexxy
     isolate_namespace Lexxy
 
     config.lexxy = ActiveSupport::OrderedOptions.new
-    config.lexxy.override_action_text_defaults = true
 
-    initializer "lexxy.initialize" do |app|
+    if Lexxy.supports_editor_adapter?
+      require_relative "../action_text/editor/lexxy_editor"
+
+      initializer "lexxy.action_text_editor", before: "action_text.editors" do |app|
+        app.config.action_text.editors[:lexxy] = {}
+        app.config.action_text.editor = :lexxy
+      end
+    else
+      # Rails 8.0/8.1 fallback: monkey-patch Action Text helpers
+      require_relative "rich_text_area_tag"
+      require_relative "form_helper"
+      require_relative "form_builder"
+      require_relative "action_text_tag"
+
+      config.lexxy.override_action_text_defaults = true
+
+      initializer "lexxy.initialize" do |app|
+        app.config.to_prepare do
+          ActionText::TagHelper.prepend(Lexxy::TagHelper)
+          ActionView::Helpers::FormHelper.prepend(Lexxy::FormHelper)
+          ActionView::Helpers::FormBuilder.prepend(Lexxy::FormBuilder)
+          ActionView::Helpers::Tags::ActionText.prepend(Lexxy::ActionTextTag)
+
+          Lexxy.override_action_text_defaults if app.config.lexxy.override_action_text_defaults
+        end
+      end
+    end
+
+    initializer "lexxy.attachable" do |app|
       app.config.to_prepare do
-        # TODO: We need to move these extensions to Action Text
-        ActionText::TagHelper.prepend(Lexxy::TagHelper)
-        ActionView::Helpers::FormHelper.prepend(Lexxy::FormHelper)
-        ActionView::Helpers::FormBuilder.prepend(Lexxy::FormBuilder)
-        ActionView::Helpers::Tags::ActionText.prepend(Lexxy::ActionTextTag)
         ActionText::Attachable.singleton_class.prepend(Lexxy::Attachable)
         ActionView::Base.include(Lexxy::AttachmentIconHelper)
         ActionView::Base.include(Lexxy::AttachmentHelper)
-
-        Lexxy.override_action_text_defaults if app.config.lexxy.override_action_text_defaults
       end
     end
 
@@ -65,7 +81,7 @@ module Lexxy
           data-collapsed data-caption-hidden
         ]
 
-        Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var" # Allow CSS variables
+        Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
       end
     end
 

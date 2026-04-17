@@ -1,7 +1,8 @@
-import { $isRootOrShadowRoot, SKIP_DOM_SELECTION_TAG } from "lexical"
+import { $getSelection, $isRangeSelection, $isRootOrShadowRoot, SKIP_DOM_SELECTION_TAG } from "lexical"
 import Lexxy from "../config/lexxy"
 import { SILENT_UPDATE_TAGS } from "../helpers/lexical_helper"
 import { ActionTextAttachmentNode } from "./action_text_attachment_node"
+import { $isProvisionalParagraphNode } from "./provisional_paragraph_node"
 import { attachmentIconLabel, createElement, dispatch } from "../helpers/html_helper"
 import { loadFileIntoImage } from "../helpers/upload_helper"
 import { bytesToHumanSize } from "../helpers/storage_helper"
@@ -38,7 +39,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   }
 
   createDOM() {
-    if (this.uploadError) return this.#createDOMForError()
+    if (this.uploadError) return this.createDOMForError()
 
     // This side-effect is trigged on DOM load to fire only once and avoid multiple
     // uploads through cloning. The upload is guarded from restarting in case the
@@ -96,13 +97,6 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
 
   get #uploadStarted() {
     return this.progress !== null
-  }
-
-  #createDOMForError() {
-    const figure = this.createAttachmentFigure()
-    figure.classList.add("attachment--error")
-    figure.appendChild(createElement("div", { innerText: `Error uploading ${this.file?.name ?? "file"}` }))
-    return figure
   }
 
   #createDOMForImage() {
@@ -214,10 +208,13 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   }
 
   showUploadedAttachment(blob) {
-    const replacementNode = this.#toActionTextAttachmentNodeWith(blob)
+    const previewSrc = this.isPreviewableImage && this.file ? URL.createObjectURL(this.file) : null
+
+    const replacementNode = this.#toActionTextAttachmentNodeWith(blob, previewSrc)
+    const shouldSelectAfterReplacement = this.#selectionIncludesUploadNode
     this.replace(replacementNode)
 
-    if ($isRootOrShadowRoot(replacementNode.getParent())) {
+    if (shouldSelectAfterReplacement && $isRootOrShadowRoot(replacementNode.getParent())) {
       replacementNode.selectNext()
     }
 
@@ -241,8 +238,22 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
     return rootElement !== null && rootElement.contains(document.activeElement)
   }
 
-  #toActionTextAttachmentNodeWith(blob) {
-    const conversion = new AttachmentNodeConversion(this, blob)
+  get #selectionIncludesUploadNode() {
+    const selection = $getSelection()
+    if (selection === null) return false
+
+    if (selection.getNodes().some((node) => node.is(this))) return true
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
+
+    const anchorNode = selection.anchor.getNode()
+    if (!$isProvisionalParagraphNode(anchorNode) || !anchorNode.isEmpty()) return false
+
+    const previousSibling = anchorNode.getPreviousSibling()
+    return previousSibling !== null && previousSibling.is(this)
+  }
+
+  #toActionTextAttachmentNodeWith(blob, previewSrc) {
+    const conversion = new AttachmentNodeConversion(this, blob, previewSrc)
     return conversion.toAttachmentNode()
   }
 
@@ -253,9 +264,10 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
 }
 
 class AttachmentNodeConversion {
-  constructor(uploadNode, blob) {
+  constructor(uploadNode, blob, previewSrc) {
     this.uploadNode = uploadNode
     this.blob = blob
+    this.previewSrc = previewSrc
   }
 
   toAttachmentNode() {
@@ -263,7 +275,9 @@ class AttachmentNodeConversion {
       ...this.uploadNode,
       ...this.#propertiesFromBlob,
       src: this.#src,
-      blobUrl: this.#blobSrc
+      blobUrl: this.#blobSrc,
+      previewSrc: this.previewSrc,
+      pendingPreview: this.blob.previewable && !this.uploadNode.isPreviewableImage
     })
   }
 

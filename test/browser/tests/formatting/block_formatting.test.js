@@ -214,6 +214,51 @@ test.describe("Block formatting", () => {
     )
   })
 
+  test("bullet list only the selected line from soft line breaks", async ({
+    page,
+    editor,
+  }) => {
+    await editor.setValue("<p>First line<br>Second line<br>Third line</p>")
+    await editor.select("Second line")
+
+    await page.getByRole("button", { name: "Bullet list" }).click()
+
+    await assertEditorHtml(
+      editor,
+      "<p>First line</p><ul><li>Second line</li></ul><p>Third line</p>",
+    )
+  })
+
+  test("numbered list only the selected line from soft line breaks", async ({
+    page,
+    editor,
+  }) => {
+    await editor.setValue("<p>First line<br>Second line<br>Third line</p>")
+    await editor.select("Second line")
+
+    await page.getByRole("button", { name: "Numbered list" }).click()
+
+    await assertEditorHtml(
+      editor,
+      "<p>First line</p><ol><li>Second line</li></ol><p>Third line</p>",
+    )
+  })
+
+  test("shift+enter inside a list item creates a line break, not a new item", async ({
+    editor,
+  }) => {
+    await editor.setValue("<ul><li>First item</li></ul>")
+    await editor.select("First item")
+    await editor.send("End")
+    await editor.send("Shift+Enter")
+    await editor.send("continuation")
+
+    await assertEditorHtml(
+      editor,
+      "<ul><li>First item<br>continuation</li></ul>",
+    )
+  })
+
   test("links", async ({ page, editor }) => {
     await editor.setValue(HELLO_EVERYONE)
     await editor.select("everyone")
@@ -241,5 +286,87 @@ test.describe("Block formatting", () => {
       editor,
       '<p>Hello <a href="https://37signals.com">everyone</a></p>',
     )
+  })
+
+  test("pressing Enter in link URL input links selection without submitting form", async ({
+    page,
+    editor,
+  }) => {
+    await page.evaluate(() => {
+      window.__submitCount = 0
+      document.querySelector("form").addEventListener("submit", (event) => {
+        event.preventDefault()
+        window.__submitCount += 1
+      })
+    })
+
+    await editor.setValue(HELLO_EVERYONE)
+    await editor.select("everyone")
+    await editor.flush()
+
+    await page.evaluate(() => {
+      const details = document.querySelector(
+        "details:has(summary[name='link'])",
+      )
+      details.open = true
+      details.dispatchEvent(new Event("toggle"))
+    })
+
+    const input = page.locator("lexxy-link-dropdown input[type='url']").first()
+    await expect(input).toBeVisible({ timeout: 2_000 })
+    await input.fill("https://37signals.com")
+    await input.press("Enter")
+
+    await assertEditorHtml(
+      editor,
+      '<p>Hello <a href="https://37signals.com">everyone</a></p>',
+    )
+
+    const submitCount = await page.evaluate(() => window.__submitCount)
+    expect(submitCount).toBe(0)
+  })
+
+  test("link dialog shows existing URL when link is selected", async ({
+    page,
+    editor,
+  }) => {
+    await editor.setValue(
+      '<p>Hello <a href="https://37signals.com">everyone</a></p>',
+    )
+    await editor.select("everyone")
+    await editor.flush()
+
+    await page.evaluate(() => {
+      const details = document.querySelector(
+        "details:has(summary[name='link'])",
+      )
+      details.open = true
+      details.dispatchEvent(new Event("toggle"))
+    })
+
+    const input = page.locator("lexxy-link-dropdown input[type='url']").first()
+    await expect(input).toBeVisible({ timeout: 2_000 })
+    await expect(input).toHaveValue("https://37signals.com")
+  })
+
+  test("link dialog shows empty input when no link is selected", async ({
+    page,
+    editor,
+  }) => {
+    await editor.setValue(HELLO_EVERYONE)
+    await editor.select("everyone")
+    await editor.flush()
+
+    await page.evaluate(() => {
+      const details = document.querySelector(
+        "details:has(summary[name='link'])",
+      )
+      details.open = true
+      details.dispatchEvent(new Event("toggle"))
+    })
+
+    const input = page.locator("lexxy-link-dropdown input[type='url']").first()
+    await expect(input).toBeVisible({ timeout: 2_000 })
+    await expect(input).toHaveValue("")
   })
 })

@@ -2,6 +2,7 @@ import Lexxy from "../config/lexxy"
 import { $createTextNode, DecoratorNode } from "lexical"
 
 import { createElement, extractPlainTextFromHtml } from "../helpers/html_helper"
+import { sanitize } from "../helpers/sanitization_helper"
 import { parseAttachmentContent } from "../helpers/storage_helper"
 
 export class CustomActionTextAttachmentNode extends DecoratorNode {
@@ -74,7 +75,7 @@ export class CustomActionTextAttachmentNode extends DecoratorNode {
   createDOM() {
     const figure = createElement(this.tagName, { "content-type": this.contentType, "data-lexxy-decorator": true })
 
-    figure.insertAdjacentHTML("beforeend", this.innerHtml)
+    figure.insertAdjacentHTML("beforeend", sanitize(this.innerHtml))
 
     const deleteButton = createElement("lexxy-attachment-controls")
     figure.appendChild(deleteButton)

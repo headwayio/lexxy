@@ -1,6 +1,9 @@
 import { nextFrame } from "../helpers/timing_helpers"
+import { ListenerBin, registerEventListener } from "../helpers/listener_helper"
 
 export class ToolbarDropdown extends HTMLElement {
+  #listeners = new ListenerBin()
+
   connectedCallback() {
     // Defer to next microtask — when dynamically created editors build the
     // toolbar via createElement + innerHTML (#createDefaultToolbar in editor.js),
@@ -13,16 +16,17 @@ export class ToolbarDropdown extends HTMLElement {
       this.container = this.closest("details")
       if (!this.container) return
 
-      this.container.addEventListener("toggle", this.#handleToggle.bind(this))
-      this.container.addEventListener("keydown", this.#handleKeyDown.bind(this))
+      this.#listeners.track(
+        registerEventListener(this.container, "toggle", this.#handleToggle),
+        registerEventListener(this.container, "keydown", this.#handleKeyDown)
+      )
 
       this.#onToolbarEditor(this.initialize.bind(this))
     })
   }
 
   disconnectedCallback() {
-    this.container?.removeEventListener("toggle", this.#handleToggle)
-    this.container?.removeEventListener("keydown", this.#handleKeyDown)
+    this.#listeners.dispose()
   }
 
   get toolbar() {
@@ -35,6 +39,10 @@ export class ToolbarDropdown extends HTMLElement {
 
   get editor() {
     return this.toolbar.editor
+  }
+
+  track(...listeners) {
+    this.#listeners.track(...listeners)
   }
 
   initialize() {
