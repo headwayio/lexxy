@@ -1,5 +1,5 @@
-import { createElement } from "../../helpers/html_helper"
-import { BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, NESTED_LISTITEM_CLASS } from "../block_helpers"
+import { createElement } from "../../../helpers/html_helper"
+import { BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, NESTED_LISTITEM_CLASS } from "../../block_helpers"
 
 // Floating preview element that follows the cursor during a block drag.
 // Built once at drag start by cloning the source block (and its nested-list
