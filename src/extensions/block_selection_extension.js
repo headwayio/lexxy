@@ -3227,11 +3227,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
 
     // If this node is the one we're actively moving (selected/focused),
-    // check the DOM attribute from the previous render
+    // check the DOM attribute from the previous render. Lexical can throw
+    // on stale keys mid-mutation; fall through to key-set matching below.
     try {
       const el = this.editor.getElementByKey(key)
       if (el?.hasAttribute("data-block-movement-wrapped")) return true
-    } catch (e) { /* ignore */ }
+    } catch { /* stale key — fall through */ }
 
     // Also check all tracked keys to see if any resolve to this node
     // (keys may have changed due to copy-on-write)
@@ -3240,11 +3241,13 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #matchesKeySet(node, keySet) {
+    // Keys can go stale via copy-on-write — $getNodeByKey throws in that
+    // case. Skip missing keys silently; the caller tolerates false negatives.
     for (const key of keySet) {
       try {
         const tracked = $getNodeByKey(key)
         if (tracked && tracked.is(node)) return true
-      } catch (e) { /* ignore */ }
+      } catch { /* stale key */ }
     }
     return false
   }

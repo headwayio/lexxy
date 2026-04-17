@@ -9,19 +9,20 @@ import { attachPlaybackSync, installPauseOthers } from "./preview/playback_sync"
 // the shared builder (src/preview/dialog_builder.js).
 export class PreviewModal extends HTMLElement {
   #close = null
+  #handlePreviewEvent = null
 
   connectedCallback() {
     if (!Lexxy.global.get("previewModal")) return
 
-    this.handlePreviewEvent = (event) => this.#onPreviewRequest(event)
-    document.addEventListener("lexxy:preview-attachment", this.handlePreviewEvent)
+    this.#handlePreviewEvent = (event) => this.#onPreviewRequest(event)
+    document.addEventListener("lexxy:preview-attachment", this.#handlePreviewEvent)
 
     installPauseOthers()
   }
 
   disconnectedCallback() {
-    if (this.handlePreviewEvent) {
-      document.removeEventListener("lexxy:preview-attachment", this.handlePreviewEvent)
+    if (this.#handlePreviewEvent) {
+      document.removeEventListener("lexxy:preview-attachment", this.#handlePreviewEvent)
     }
     this.#close?.()
   }
