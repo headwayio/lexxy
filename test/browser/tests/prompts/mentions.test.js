@@ -85,6 +85,12 @@ test.describe("Mentions", () => {
   test("popover stays within viewport when triggered near right edge", async ({ page, editor }) => {
     await page.setViewportSize({ width: 400, height: 600 })
     await editor.locator.evaluate((el) => {
+      // Disable block-handles so the editor uses the 1ch content padding this
+      // test was designed around. With block-handles on (our branch's default)
+      // the 62px left/right gutter leaves only ~26px of content in a 150px-wide
+      // editor, which breaks the popover-positioning math on strict-layout
+      // engines (webkit/Linux in CI).
+      el.setAttribute("block-handles", "false")
       el.style.width = "150px"
       el.style.marginLeft = "auto"
     })
