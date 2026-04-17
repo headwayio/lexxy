@@ -43,7 +43,7 @@ test.describe("Tables as wrappable blocks", () => {
 
     await openMenuAndTurnIntoIndex(page, 4) // Bullet list
 
-    const html = await editor.value()
+    const html = stripDynamicAttrs(await editor.value())
     // Table cells are preserved inside the wrapped list item.
     expect(html).toContain("<table>")
     expect(html).toMatch(/<td>[^<]*<p>A<\/p>[^<]*<\/td>/)
