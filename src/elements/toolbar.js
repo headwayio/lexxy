@@ -118,7 +118,10 @@ export class LexicalToolbarElement extends HTMLElement {
       this.editor.dispatchCommand(command, payload)
     }, { tag: isKeyboard ? SKIP_DOM_SELECTION_TAG : undefined })
 
-    if (!isKeyboard) this.editor.focus()
+    // Skip editor.focus() in block-select mode — the root is already focused
+    // and Lexical's focus() would create a selection at root.selectEnd(),
+    // triggering scrollIntoViewIfNeeded and jumping the page.
+    if (!isKeyboard && !this.editorElement.hasBlockSelection) this.editor.focus()
   }
 
   #bindHotkeys() {
@@ -204,7 +207,12 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #updateButtonStates() {
     const selection = $getSelection()
-    if (!$isRangeSelection(selection)) return
+    // In block select mode, the selection is an internal implementation detail
+    // (used temporarily for commands like color/highlight). Don't reflect it.
+    if (!$isRangeSelection(selection) || this.editor.getRootElement()?.classList.contains("block-selection-active")) {
+      this.#clearAllPressedStates()
+      return
+    }
 
     const anchorNode = selection.anchor.getNode()
     if (!anchorNode.getParent()) { return }
@@ -309,9 +317,17 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #closeDropdowns() {
    this.#dropdowns.forEach((details) => {
-     details.open = false
+     if (!details.hasAttribute("data-pinned")) {
+       details.open = false
+     }
    })
  }
+
+  #clearAllPressedStates() {
+    for (const button of this.querySelectorAll("[aria-pressed='true']")) {
+      button.setAttribute("aria-pressed", "false")
+    }
+  }
 
   get #dropdowns() {
     return this.querySelectorAll("details")
@@ -337,7 +353,21 @@ export class LexicalToolbarElement extends HTMLElement {
     return Array.from(this.querySelectorAll(":scope > *:not(.lexxy-editor__toolbar-overflow)"))
   }
 
-  static get defaultTemplate() {
+  // Parsing the default template string into DOM is one of the biggest fixed
+  // per-editor costs (14+ buttons, nested dropdowns, inline SVG icons). Cache
+  // a <template> element so additional editors clone the parsed fragment
+  // instead of re-parsing the HTML.
+  static #templateNode = null
+
+  static cloneDefaultTemplate() {
+    if (!this.#templateNode) {
+      this.#templateNode = document.createElement("template")
+      this.#templateNode.innerHTML = this.#defaultTemplate
+    }
+    return this.#templateNode.content.cloneNode(true)
+  }
+
+  static get #defaultTemplate() {
     return `
       <button class="lexxy-editor__toolbar-button" type="button" name="image" data-command="uploadImage" data-prevent-overflow="true" title="Add images and video">
         ${ToolbarIcons.image}
