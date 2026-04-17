@@ -1,6 +1,5 @@
-import { $getSelection, $isRangeSelection, $isRootOrShadowRoot, SKIP_DOM_SELECTION_TAG } from "lexical"
+import { $getSelection, $isRangeSelection, $isRootOrShadowRoot } from "lexical"
 import Lexxy from "../config/lexxy"
-import { SILENT_UPDATE_TAGS } from "../helpers/lexical_helper"
 import { ActionTextAttachmentNode } from "./action_text_attachment_node"
 import { $isProvisionalParagraphNode } from "./provisional_paragraph_node"
 import { attachmentIconLabel, createElement, dispatch } from "../helpers/html_helper"
@@ -135,7 +134,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
       const writable = this.getWritable()
       writable.width = width
       writable.height = height
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
   }
 
   get #hasDimensions() {
@@ -163,7 +162,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
         this.#dispatchEvent("lexxy:upload-end", { file: this.file, error: null })
         this.editor.update(() => {
           this.showUploadedAttachment(blob)
-        }, { tag: this.#backgroundUpdateTags })
+        }, { tag: this.backgroundUpdateTags })
       }
     })
   }
@@ -197,14 +196,14 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   #setProgress(progress) {
     this.editor.update(() => {
       this.getWritable().progress = progress
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
   }
 
   #handleUploadError(error) {
     console.warn(`Upload error for ${this.file?.name ?? "file"}: ${error}`)
     this.editor.update(() => {
       this.getWritable().uploadError = true
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
   }
 
   showUploadedAttachment(blob) {
@@ -219,23 +218,6 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
     }
 
     return replacementNode.getKey()
-  }
-
-  // Upload lifecycle methods (progress, completion, errors) run asynchronously and may
-  // fire while the user is focused on another element (e.g., a title field). Without
-  // SKIP_DOM_SELECTION_TAG, Lexical's reconciler would move the DOM selection back into
-  // the editor, stealing focus from wherever the user is currently typing.
-  get #backgroundUpdateTags() {
-    if (this.#editorHasFocus) {
-      return SILENT_UPDATE_TAGS
-    } else {
-      return [ ...SILENT_UPDATE_TAGS, SKIP_DOM_SELECTION_TAG ]
-    }
-  }
-
-  get #editorHasFocus() {
-    const rootElement = this.editor.getRootElement()
-    return rootElement !== null && rootElement.contains(document.activeElement)
   }
 
   get #selectionIncludesUploadNode() {

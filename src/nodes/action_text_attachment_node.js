@@ -359,7 +359,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     img.src = this.src
     this.editor.update(() => {
       if (this.isAttached()) this.getWritable().previewSrc = null
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
     this.#revokePreviewSrc(previewSrc)
   }
 
@@ -369,11 +369,15 @@ export class ActionTextAttachmentNode extends DecoratorNode {
         this.getWritable().previewSrc = null
         this.getWritable().uploadError = true
       }
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
     this.#revokePreviewSrc(previewSrc)
   }
 
-  get #backgroundUpdateTags() {
+  // Lifecycle methods (preview swap, upload progress/completion) run async
+  // and may fire while the user is focused on another element (e.g., a title
+  // field). Without SKIP_DOM_SELECTION_TAG, Lexical's reconciler would move
+  // the DOM selection back into the editor, stealing focus.
+  get backgroundUpdateTags() {
     const rootElement = this.editor.getRootElement()
     const editorHasFocus = rootElement !== null && rootElement.contains(document.activeElement)
 
@@ -446,7 +450,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
 
     this.editor.update(() => {
       if (this.isAttached()) this.getWritable().pendingPreview = false
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
   }
 
   #swapFigureContent(figure, fromClass, toClass, renderContent) {
