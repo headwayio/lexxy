@@ -499,15 +499,16 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
   }
 
-  #getNextBlockKey(currentKey) {
-    const allKeys = this.#getNavigableBlockKeys()
+  // Navigation helpers take an optional precomputed navigable-keys list so
+  // callers in a hot path (ArrowUp/Down handlers) can compute it once and
+  // reuse across multiple calls. Falls back to computing on demand.
+  #getNextBlockKey(currentKey, allKeys = this.#getNavigableBlockKeys()) {
     const index = allKeys.indexOf(currentKey)
     if (index === -1 || index >= allKeys.length - 1) return null
     return allKeys[index + 1]
   }
 
-  #getPreviousBlockKey(currentKey) {
-    const allKeys = this.#getNavigableBlockKeys()
+  #getPreviousBlockKey(currentKey, allKeys = this.#getNavigableBlockKeys()) {
     const index = allKeys.indexOf(currentKey)
     if (index <= 0) return null
     return allKeys[index - 1]
@@ -723,7 +724,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (this.#isBlockActionsMenuOpen()) return
 
     switch (event.key) {
-      case "ArrowUp":
+      case "ArrowUp": {
         event.preventDefault()
         event.stopPropagation()
         if ((event.metaKey || event.ctrlKey) && event.shiftKey) {
@@ -734,7 +735,8 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (key) this.#selectBlock(key)
           this.#deleteNeighbors = null
         } else {
-          let prevKey = this.#getPreviousBlockKey(this.#focusKey)
+          const navKeys = this.#getNavigableBlockKeys()
+          let prevKey = this.#getPreviousBlockKey(this.#focusKey, navKeys)
           // When contracting upward through a parent+children group that
           // was selected as a unit (via shift+down), skip the entire group
           // so it deselects atomically — not one child at a time.
@@ -743,7 +745,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             const parentOfPrev = this.#getTopmostSelectedParentKey(prevKey)
             if (parentOfPrev) {
               // Jump to the item before the parent to deselect the whole group
-              const beforeParent = this.#getPreviousBlockKey(parentOfPrev)
+              const beforeParent = this.#getPreviousBlockKey(parentOfPrev, navKeys)
               if (beforeParent) prevKey = beforeParent
             }
           }
@@ -753,8 +755,9 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
         }
         break
+      }
 
-      case "ArrowDown":
+      case "ArrowDown": {
         event.preventDefault()
         event.stopPropagation()
         if ((event.metaKey || event.ctrlKey) && event.shiftKey) {
@@ -765,7 +768,8 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (key) this.#selectBlock(key)
           this.#deleteNeighbors = null
         } else {
-          let nextKey = this.#getNextBlockKey(this.#focusKey)
+          const navKeys = this.#getNavigableBlockKeys()
+          let nextKey = this.#getNextBlockKey(this.#focusKey, navKeys)
           // When extending selection downward (Shift+Arrow):
           // 1. Skip past already-selected items (e.g., children of a parent
           //    that was selected non-shift).
@@ -775,7 +779,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (nextKey && event.shiftKey && this.#isExtendingAway("down")) {
             // Skip past already-selected items to find the first unselected one
             while (nextKey && this.#selectedBlockKeys.has(nextKey)) {
-              const after = this.#getNextBlockKey(nextKey)
+              const after = this.#getNextBlockKey(nextKey, navKeys)
               if (!after) break
               nextKey = after
             }
@@ -792,6 +796,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
         }
         break
+      }
 
       case "Enter":
         event.preventDefault()
