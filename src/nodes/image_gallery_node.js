@@ -41,7 +41,7 @@ export class ImageGalleryNode extends ElementNode {
   }
 
   static isValidChild(node) {
-    return $isActionTextAttachmentNode(node) && node.isPreviewableImage
+    return $isActionTextAttachmentNode(node) && node.isPreviewableImage && !node.collapsed
   }
 
   static #isGalleryElement(element) {
@@ -139,7 +139,6 @@ export class ImageGalleryNode extends ElementNode {
       const poppedNode = $makeSafeForRoot(child)
       const [ topGallery, secondGallery ] = this.splitAtIndex(poppedNode.getIndexWithinParent())
       topGallery.insertAfter(poppedNode)
-      poppedNode.selectEnd()
 
       // remove an empty gallery rather than let it unwrap to a paragraph
       if (secondGallery.isEmpty()) secondGallery.remove()

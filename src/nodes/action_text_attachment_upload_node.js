@@ -1,6 +1,7 @@
 import Lexxy from "../config/lexxy"
 import { ActionTextAttachmentNode } from "./action_text_attachment_node"
-import { createElement, dispatch } from "../helpers/html_helper"
+import { $isProvisionalParagraphNode } from "./provisional_paragraph_node"
+import { attachmentIconLabel, createElement, dispatch } from "../helpers/html_helper"
 import { loadFileIntoImage } from "../helpers/upload_helper"
 import { bytesToHumanSize } from "../helpers/storage_helper"
 
@@ -105,7 +106,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
 
   #createDOMForFile() {
     const extension = this.#getFileExtension()
-    const span = createElement("span", { className: "attachment__icon", textContent: extension })
+    const span = createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
     return span
   }
 
@@ -256,6 +257,7 @@ class AttachmentNodeConversion {
       ...this.uploadNode,
       ...this.#propertiesFromBlob,
       src: this.#src,
+      blobUrl: this.#blobSrc,
       previewSrc: this.previewSrc,
       pendingPreview: this.blob.previewable && !this.uploadNode.isPreviewableImage
     })
@@ -279,6 +281,8 @@ class AttachmentNodeConversion {
   }
 
   get #blobSrc() {
+    if (!this.uploadNode.blobUrlTemplate) return null
+
     return this.uploadNode.blobUrlTemplate
       .replace(":signed_id", this.blob.signed_id)
       .replace(":filename", encodeURIComponent(this.blob.filename))
