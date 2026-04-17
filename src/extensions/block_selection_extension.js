@@ -23,9 +23,7 @@ import {
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
-  OUTDENT_CONTENT_COMMAND,
-  REDO_COMMAND,
-  UNDO_COMMAND
+  OUTDENT_CONTENT_COMMAND
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
@@ -37,6 +35,7 @@ import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_selection/drag_and_drop"
 import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS } from "../editor/block_helpers"
 import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS } from "../editor/block_selection/highlight_css"
+import { SelectionHistory } from "../editor/block_selection/selection_history"
 
 export class BlockSelectionExtension extends LexxyExtension {
   #mode = "edit"
@@ -58,8 +57,10 @@ export class BlockSelectionExtension extends LexxyExtension {
   #movementWrappedKeys = new Set()
   #blockActionsMenu = null
   #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
-  #selectionUndoStack = [] // parallel stack for block selection state
-  #selectionRedoStack = []
+  #selectionHistory = new SelectionHistory({
+    snapshot: () => this.#snapshotSelectionState(),
+    restore: (state) => this.#restoreSelectionState(state)
+  })
   #interactionHandlersRegistered = false
   // Elements currently carrying transient selection-group decorations, tracked
   // so cleanup can iterate the set instead of querySelectorAll-ing the root
@@ -138,7 +139,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#registerHighlightPropagation()
     this.#registerBlockSelectFormatHandler()
     this.#registerBulletOffsetSyncListener()
-    this.#registerSelectionHistoryHandlers()
+    this.#cleanupFns.push(...this.#selectionHistory.register(this.editor))
   }
 
   setShowHandles(show) {
@@ -1576,7 +1577,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #handleIndentOutdent(outdent) {
-    this.pushSelectionHistory()
+    this.#selectionHistory.push()
     this.editor.update(() => {
       // Filter to root keys only (parents, not their auto-selected children)
       const rootKeys = this.#filterToRootKeys([ ...this.#selectedBlockKeys ])
@@ -1717,7 +1718,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     const keyIdx = new Map(allKeys.map((k, i) => [ k, i ]))
     rootKeys.sort((a, b) => keyIdx.get(a) - keyIdx.get(b))
 
-    this.pushSelectionHistory()
+    this.#selectionHistory.push()
     this.editor.update(() => {
       if (rootKeys.length === 1) {
         // Single root key: use existing single-item logic
@@ -1983,38 +1984,6 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#exitBlockSelectMode()
     }
   }
-
-  // Save current block selection state before an undoable operation.
-  // Call this before editor.update() in indent/outdent and block moves.
-  pushSelectionHistory() {
-    this.#selectionUndoStack.push(this.#snapshotSelectionState())
-    this.#selectionRedoStack = []
-  }
-
-  #registerSelectionHistoryHandlers() {
-    // Run at LOW priority so Lexical's history plugin has already performed
-    // the undo/redo before we restore block selection.
-    this.#cleanupFns.push(
-      this.editor.registerCommand(UNDO_COMMAND, () => {
-        if (this.#selectionUndoStack.length > 0) {
-          this.#selectionRedoStack.push(this.#snapshotSelectionState())
-          const state = this.#selectionUndoStack.pop()
-          requestAnimationFrame(() => this.#restoreSelectionState(state))
-        }
-        return false // don't prevent Lexical's undo
-      }, COMMAND_PRIORITY_LOW),
-
-      this.editor.registerCommand(REDO_COMMAND, () => {
-        if (this.#selectionRedoStack.length > 0) {
-          this.#selectionUndoStack.push(this.#snapshotSelectionState())
-          const state = this.#selectionRedoStack.pop()
-          requestAnimationFrame(() => this.#restoreSelectionState(state))
-        }
-        return false // don't prevent Lexical's redo
-      }, COMMAND_PRIORITY_LOW)
-    )
-  }
-
 
   // Move a group of items as a single atomic unit. Detaches all items,
   // finds the target position, and re-inserts them together. This prevents
@@ -4254,7 +4223,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   #extractContentToRoot() {
     const scrollY = window.scrollY
-    this.pushSelectionHistory()
+    this.#selectionHistory.push()
     this.editor.update(() => {
       // Peel one wrapper layer at a time, top-down. Each iteration either
       // (a) unwraps a blockquote whose content is non-text, or (b) extracts
