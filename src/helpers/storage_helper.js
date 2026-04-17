@@ -10,6 +10,13 @@ export function extractFileName(string) {
   return string.split("/").pop()
 }
 
+// Lowercase file extension (no leading dot). Returns "" for names without a
+// dot; the caller decides whether to fall back to "unknown" or similar.
+export function extractFileExtension(fileName) {
+  if (!fileName || !fileName.includes(".")) return ""
+  return fileName.split(".").pop().toLowerCase()
+}
+
 // The content attribute is raw HTML (matching Trix/ActionText). Older Lexxy
 // versions JSON-encoded it, so try JSON.parse first for backward compatibility.
 export function parseAttachmentContent(content) {
