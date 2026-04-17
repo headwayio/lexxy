@@ -1,0 +1,9 @@
+<% extension = blob.filename.extension.downcase %>
+
+<figure class="attachment attachment--preview attachment--<%= extension %>">
+  <div class="attachment__media">
+    <%= image_tag blob.representation(resize_to_limit: local_assigns[:in_gallery] ? [800, 600] : [1024, 768]) %>
+  </div>
+  <%= lexxy_attachment_preview_caption(blob, extension.upcase) %>
+  <%= lexxy_attachment_actions(blob) %>
+</figure>
