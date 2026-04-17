@@ -34,7 +34,6 @@ import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/ric
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
-import { $createNodeSelectionWith } from "../helpers/lexical_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
 import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS } from "../editor/block_helpers"
 
@@ -3167,14 +3166,6 @@ export class BlockSelectionExtension extends LexxyExtension {
     return rebuilt
   }
 
-  // Back-compat union view of the two origin-tagged sets. Read-only — use
-  // #trackUserWrapped / #trackMovementWrapped for writes so origin is kept.
-  get #wrappedBlockKeys() {
-    const union = new Set(this.#userWrappedKeys)
-    for (const key of this.#movementWrappedKeys) union.add(key)
-    return union
-  }
-
   #trackUserWrapped(key) {
     this.#userWrappedKeys.add(key)
     this.#movementWrappedKeys.delete(key)
@@ -4267,7 +4258,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // strip the full wrapper chain — any combination of blockquotes and list
   // items — until the content lives at root.
   #removeQuoteWrapper() { this.#extractContentToRoot() }
-  #removeListWrapper()  { this.#extractContentToRoot() }
+  #removeListWrapper() { this.#extractContentToRoot() }
 
   #extractContentToRoot() {
     const scrollY = window.scrollY
@@ -4301,7 +4292,6 @@ export class BlockSelectionExtension extends LexxyExtension {
           while (nested-- > 0 && this.#outdentWrappedBlock(node)) {
             const refreshed = $getNodeByKey(node.getKey())
             if (!refreshed || !$isListItemNode(refreshed)) return
-            // eslint-disable-next-line no-param-reassign
           }
           const liNow = $getNodeByKey(this.#focusKey)
           if (!liNow || !$isListItemNode(liNow)) continue
