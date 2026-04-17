@@ -25,7 +25,7 @@ import {
   KEY_TAB_COMMAND,
   OUTDENT_CONTENT_COMMAND
 } from "lexical"
-import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode } from "@lexical/list"
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { $createCodeNode, $isCodeNode } from "@lexical/code"
 import { $isWrappedTableNode } from "../nodes/wrapped_table_node"
 import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
@@ -37,6 +37,7 @@ import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_
 import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS } from "../editor/block_selection/highlight_css"
 import { SelectionHistory } from "../editor/block_selection/selection_history"
 import { WrappedOriginTracker } from "../editor/block_selection/wrapped_origin"
+import { registerBulletMarkerColorSync } from "../editor/block_selection/bullet_color_sync"
 
 export class BlockSelectionExtension extends LexxyExtension {
   #mode = "edit"
@@ -87,7 +88,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Node transforms must be active before initial content load so that
     // bullet marker colors sync when HTML with highlighted list items is set.
-    this.#registerBulletMarkerColorSync()
+    this.#cleanupFns.push(registerBulletMarkerColorSync(this.editor))
 
     // All other handlers respond to user-dispatched commands (key presses,
     // clicks, toolbar actions). Deferring them to first interaction keeps
@@ -3587,48 +3588,6 @@ export class BlockSelectionExtension extends LexxyExtension {
         textNode.setStyle(getCSSFromStyleObject(existing))
       }
     })
-  }
-
-  // Sync the <li> element's color from its text content so that bullet markers
-  // (which use currentColor via ::before) match the text color. Runs as a
-  // node transform on every dirty ListItemNode, covering all highlight paths:
-  // direct toggle, indent inheritance, paste, undo, etc.
-  #registerBulletMarkerColorSync() {
-    this.#cleanupFns.push(
-      this.editor.registerNodeTransform(ListItemNode, (node) => {
-        if ($isStructuralWrapper(node)) return
-
-        const textNodes = []
-        node.getChildren().forEach(c => {
-          if (!$isListNode(c)) this.#collectTextNodes(c, textNodes)
-        })
-
-        const highlight = textNodes.length > 0
-          ? extractHighlightFromCSS(textNodes[0].getStyle())
-          : null
-
-        const liHighlight = extractHighlightFromCSS(node.getStyle())
-
-        // For empty items, fall back to textStyle (controls what color new
-        // text will be typed in — set by inheritance or Enter retention).
-        const effectiveHighlight = highlight
-          || extractHighlightFromCSS(node.getTextStyle())
-
-        if (effectiveHighlight?.color) {
-          // Text (or pending text) is colored → set <li> color for bullet marker
-          const allSameColor = !highlight || textNodes.every(t => {
-            const h = extractHighlightFromCSS(t.getStyle())
-            return h && (h.color || "") === (effectiveHighlight.color || "")
-          })
-          if (allSameColor && (liHighlight?.color || "") !== effectiveHighlight.color) {
-            node.setStyle(mergeHighlightIntoCSS(node.getStyle(), { color: effectiveHighlight.color }))
-          }
-        } else if (liHighlight?.color) {
-          // No text or pending highlight → clear <li> color
-          node.setStyle(removeHighlightFromCSS(node.getStyle()) ?? "")
-        }
-      })
-    )
   }
 
   // Collect all text nodes for a block item, including any children carried
