@@ -6,12 +6,12 @@ import {
   $isParagraphNode
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
-import { createElement } from "../helpers/html_helper"
-import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "./block_helpers"
-import { DragGhost } from "./block_drag_and_drop/ghost"
-import { AutoScroll } from "./block_drag_and_drop/autoscroll"
-import { DropIndicator } from "./block_drag_and_drop/drop_indicator"
-import { findNearestSnapPoint, getElementNestingDepth, nextContentSibling, previousContentSibling } from "./block_drag_and_drop/geometry"
+import { createElement } from "../../../helpers/html_helper"
+import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "../../block_helpers"
+import { DragGhost } from "./ghost"
+import { AutoScroll } from "./autoscroll"
+import { DropIndicator } from "./drop_indicator"
+import { findNearestSnapPoint, getElementNestingDepth, nextContentSibling, previousContentSibling } from "./geometry"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>

@@ -34,9 +34,9 @@ import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/ric
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
-import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
+import { BlockDragAndDrop } from "../editor/block_selection/drag_and_drop"
 import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS } from "../editor/block_helpers"
-import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS } from "./block_selection/highlight_css"
+import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS } from "../editor/block_selection/highlight_css"
 
 export class BlockSelectionExtension extends LexxyExtension {
   #mode = "edit"

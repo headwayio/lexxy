@@ -1,4 +1,4 @@
-import { createElement } from "../../helpers/html_helper"
+import { createElement } from "../../../helpers/html_helper"
 
 // DOM lifecycle for the drop-indicator element (a horizontal line with a
 // circle on its left end, positioned between blocks during a drag to show
