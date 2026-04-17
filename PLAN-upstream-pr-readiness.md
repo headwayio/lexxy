@@ -77,14 +77,14 @@ npx playwright test --config test/browser/playwright.config.js --project=chromiu
 ★ milestone — run Playwright
 
 ### P2 — polish
-- [ ] P2-1: `block_drag_and_drop.js` → `ListenerBin` (defer; pair with P0-3 split)
+- [~] P2-1: `block_drag_and_drop.js` → `ListenerBin` — DEFERRED. The file has three listener lifetimes (lifecycle, pending-drag, active-drag), each with raw addEventListener/removeEventListener pairs. ListenerBin fits lifecycle-scoped listeners, not transient state-machine listeners. Cleanest path is to split the drag state machine first (P0-3) then rewire only the lifecycle listeners. Raw pattern is correct for transients.
 - [x] P2-2: delete dead code (`dispatchCustomEvent`, `#ensureElementsCreated`; `ListItemNode` is actually used)
 - [x] P2-3: extract `#wrapInPreviewView` helper in attachment_node.js
 - [x] P2-4: drop duplicated `#backgroundUpdateTags` from upload node (inherits)
 - [x] P2-5: consolidate `extractFileExtension` helper
 - [x] P2-6: narrow empty catch blocks (explained + caller tolerates false negatives)
 - [~] P2-7: DEFERRED — pair with P0-2/P0-3 split
-- [ ] P2-8: simplify `#selectionUndoStack` or move to history command handlers
+- [~] P2-8: simplify `#selectionUndoStack` — DEFERRED. Audit overcounted call sites: only 2 explicit `pushSelectionHistory()` callers (movement + group-atomic-move). Invariant-breaking risk is low at this density. A deeper refactor that represents block-selection as a Lexical NodeSelection so the core history plugin restores it automatically is a multi-file architectural change; defer until the P0-2 split creates a natural home in `block_selection/selection_state.js`.
 - [x] P2-9: unify `COMMANDS` + `BLOCK_FORMAT_COMMANDS` to one map with flags
 - [x] P2-10: rename `PreviewModal.handlePreviewEvent` → `#handlePreviewEvent`
 
