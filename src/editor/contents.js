@@ -9,7 +9,7 @@ import {
 import { $generateNodesFromDOM } from "@lexical/html"
 import { $createCodeNode, $isCodeNode, CodeNode } from "@lexical/code"
 import { $createHeadingNode, $createQuoteNode, $isQuoteNode, QuoteNode } from "@lexical/rich-text"
-import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
+import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
 import { dispatch, parseHtml } from "../helpers/html_helper"
@@ -65,6 +65,23 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    // When inside a wrapped block in a list item, unwrap back to regular content
+    const anchorNode = selection.anchor.getNode()
+    const listItem = this.#findParentListItem(anchorNode)
+    if (listItem) {
+      const children = listItem.getChildren()
+      const wrappedChild = children.find(c =>
+        $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+      )
+      if (wrappedChild) {
+        for (const child of [ ...wrappedChild.getChildren() ]) {
+          listItem.append(child)
+        }
+        wrappedChild.remove()
+        return
+      }
+    }
+
     $setBlocksType(selection, () => $createParagraphNode())
   }
 
@@ -72,7 +89,53 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    // When the cursor is inside a list item, wrap the content in a heading
+    // node (creating a wrapped block) instead of replacing the LI container.
+    const anchorNode = selection.anchor.getNode()
+    const listItem = this.#findParentListItem(anchorNode)
+    if (listItem) {
+      this.#wrapListItemInBlock(listItem, $createHeadingNode(tag))
+      return
+    }
+
     $setBlocksType(selection, () => $createHeadingNode(tag))
+  }
+
+  #findParentListItem(node) {
+    let current = node
+    while (current) {
+      if ($isListItemNode(current)) return current
+      current = current.getParent()
+    }
+    return null
+  }
+
+  // Wrap a list item's inline content in a block element (heading, quote, code).
+  // If the item already contains a wrapped block, swaps the block type.
+  #wrapListItemInBlock(listItem, block) {
+    const children = listItem.getChildren()
+
+    const existingWrapped = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (existingWrapped) {
+      for (const child of [ ...existingWrapped.getChildren() ]) {
+        block.append(child)
+      }
+      existingWrapped.replace(block)
+    } else {
+      for (const child of [ ...children ]) {
+        if ($isListNode(child)) continue
+        block.append(child)
+      }
+      const firstChild = listItem.getFirstChild()
+      if (firstChild) {
+        firstChild.insertBefore(block)
+      } else {
+        listItem.append(block)
+      }
+    }
+    block.selectEnd()
   }
 
   applyUnorderedListFormat() {
@@ -105,6 +168,14 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    // Inside a list item → wrap as a code block
+    const anchorNode = selection.anchor.getNode()
+    const listItem = this.#findParentListItem(anchorNode)
+    if (listItem) {
+      this.#wrapListItemInBlock(listItem, $createCodeNode("plain"))
+      return
+    }
+
     if (this.#insertNodeIfRoot($createCodeNode("plain"))) return
 
     const blockElements = this.#blockLevelElementsInSelection(selection)
@@ -123,6 +194,14 @@ export default class Contents {
   toggleBlockquote() {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
+
+    // Inside a list item → wrap as a blockquote
+    const anchorNode = selection.anchor.getNode()
+    const listItem = this.#findParentListItem(anchorNode)
+    if (listItem) {
+      this.#wrapListItemInBlock(listItem, $createQuoteNode())
+      return
+    }
 
     if (this.#insertNodeIfRoot($createQuoteNode())) return
 
