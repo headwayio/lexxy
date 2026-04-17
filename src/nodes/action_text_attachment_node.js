@@ -1,6 +1,5 @@
 import Lexxy from "../config/lexxy"
-import { $getEditor, $getNearestRootOrShadowRoot, DecoratorNode, HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG } from "lexical"
-import { SILENT_UPDATE_TAGS } from "../helpers/lexical_helper"
+import { $getEditor, $getNearestRootOrShadowRoot, DecoratorNode, HISTORY_MERGE_TAG } from "lexical"
 import { attachmentIconLabel, createAttachmentFigure, createElement, dispatch, isPreviewableImage } from "../helpers/html_helper"
 import { bytesToHumanSize, extractFileName, representationToBlobUrl } from "../helpers/storage_helper"
 import { parseBoolean } from "../helpers/string_helper"
