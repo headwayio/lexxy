@@ -1,34 +1,7 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
-
-import { normalizeHtml } from "../../helpers/html.js"
-
-function stripDynamicAttrs(html) {
-  return html
-    .replace(/\s*data-bullet-depth="[^"]*"/g, "")
-    .replace(/\s*data-list-item-type="[^"]*"/g, "")
-}
-
-async function dragBlock(page, sourceLocator, targetLocator, { position = "after" } = {}) {
-  const sourceBox = await sourceLocator.boundingBox()
-  const targetBox = await targetLocator.boundingBox()
-  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
-  await page.waitForTimeout(150)
-  const handle = page.locator("lexxy-editor .lexxy-block-handle--visible")
-  await expect(handle).toBeVisible({ timeout: 2000 })
-  const handleBox = await handle.boundingBox()
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(handleBox.x, handleBox.y + 10, { steps: 3 })
-  let targetY
-  if (position === "before") targetY = targetBox.y + 2
-  else if (position === "inside") targetY = targetBox.y + targetBox.height / 2
-  else targetY = targetBox.y + targetBox.height - 2
-  await page.mouse.move(targetBox.x + targetBox.width / 2, targetY, { steps: 5 })
-  await page.waitForTimeout(50)
-  await page.mouse.up()
-  await page.waitForTimeout(200)
-}
+import { stripDynamicAttrs } from "../../helpers/assertions.js"
+import { dragBlock } from "../../helpers/drag.js"
 
 test.describe("Drop freeze", () => {
   test.skip(({ browserName }) => browserName === "webkit",

@@ -1,24 +1,7 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
 import { normalizeHtml } from "../../helpers/html.js"
-
-function stripDynamicAttrs(html) {
-  return html
-    .replace(/\s*data-bullet-depth="[^"]*"/g, "")
-    .replace(/\s*data-list-item-type="[^"]*"/g, "")
-}
-
-async function assertBlockHtml(editor, expected) {
-  await expect
-    .poll(
-      async () => {
-        await editor.flush()
-        return stripDynamicAttrs(normalizeHtml(await editor.value()))
-      },
-      { timeout: 5_000 },
-    )
-    .toBe(stripDynamicAttrs(normalizeHtml(expected)))
-}
+import { stripDynamicAttrs } from "../../helpers/assertions.js"
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control"
 
