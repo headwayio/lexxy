@@ -7,7 +7,7 @@ import {
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { createElement } from "../../../helpers/html_helper"
-import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "../../block_helpers"
+import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS, getNodeKeyFromElement } from "../../block_helpers"
 import { DragGhost } from "./ghost"
 import { AutoScroll } from "./autoscroll"
 import { DropIndicator } from "./drop_indicator"
@@ -112,9 +112,8 @@ export class BlockDragAndDrop {
   // element by node key since Lexical may have recreated the element.
   repositionHandle() {
     if (!this.#currentHoveredBlock) return
-    const key = Object.keys(this.#currentHoveredBlock).find(k => k.startsWith("__lexicalKey_"))
-    if (key) {
-      const nodeKey = this.#currentHoveredBlock[key]
+    const nodeKey = getNodeKeyFromElement(this.#currentHoveredBlock)
+    if (nodeKey) {
       const freshEl = this.#editor.getElementByKey(nodeKey)
       if (freshEl && freshEl !== this.#currentHoveredBlock) {
         this.#currentHoveredBlock.classList.remove("lexxy-block-hovered")
@@ -157,7 +156,7 @@ export class BlockDragAndDrop {
 
     if (!this.#currentHoveredBlock) return
 
-    const nodeKey = this.#getNodeKeyFromElement(this.#currentHoveredBlock)
+    const nodeKey = getNodeKeyFromElement(this.#currentHoveredBlock)
     if (!nodeKey) return
 
     this.#editor.update(() => {
@@ -644,7 +643,7 @@ export class BlockDragAndDrop {
 
     if (!this.#currentHoveredBlock) return
 
-    const nodeKey = this.#getNodeKeyFromElement(this.#currentHoveredBlock)
+    const nodeKey = getNodeKeyFromElement(this.#currentHoveredBlock)
     if (!nodeKey) return
 
     // Don't start dragging immediately — wait for movement threshold
@@ -877,14 +876,14 @@ export class BlockDragAndDrop {
         if (event.clientY < firstRect.top) {
           // Cursor is above ALL content → root-level "before"
           const edgeBlock = this.#findNearestBlockElement(firstChild, root, event.clientY) || firstChild
-          const edgeKey = this.#getNodeKeyFromElement(edgeBlock)
+          const edgeKey = getNodeKeyFromElement(edgeBlock)
           if (edgeKey && edgeKey !== this.#draggedNodeKey) {
             return { element: edgeBlock, nodeKey: edgeKey, position: "before", depth: 0, bulletLeft: contentLeft, contentLeft }
           }
         } else if (event.clientY > lastRect.bottom) {
           // Cursor is below ALL content → root-level "after"
           const edgeBlock = this.#findNearestBlockElement(lastChild, root, event.clientY) || lastChild
-          const edgeKey = this.#getNodeKeyFromElement(edgeBlock)
+          const edgeKey = getNodeKeyFromElement(edgeBlock)
           if (edgeKey && edgeKey !== this.#draggedNodeKey) {
             return { element: edgeBlock, nodeKey: edgeKey, position: "after", depth: 0, bulletLeft: contentLeft, contentLeft }
           }
@@ -912,7 +911,7 @@ export class BlockDragAndDrop {
     if (!blockElement) return null
 
     const resolvedBlock = blockElement
-    const nodeKey = this.#getNodeKeyFromElement(resolvedBlock)
+    const nodeKey = getNodeKeyFromElement(resolvedBlock)
     if (!nodeKey) return null
 
     // Self-targeting: allow the dragged item as its own drop target for
@@ -1933,12 +1932,6 @@ export class BlockDragAndDrop {
   }
 
   // -- Utilities --------------------------------------------------------------
-
-  #getNodeKeyFromElement(element) {
-    const keyProp = Object.keys(element).find(k => k.startsWith("__lexicalKey_"))
-    if (keyProp) return element[keyProp]
-    return element.dataset?.lexicalNodeKey || null
-  }
 
   #cleanup() {
     this.#autoScroll.stop()

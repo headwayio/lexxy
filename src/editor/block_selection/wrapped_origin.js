@@ -1,5 +1,6 @@
 import { $getNodeByKey, $isDecoratorNode, $isElementNode, $isParagraphNode } from "lexical"
 import { $isListItemNode, $isListNode } from "@lexical/list"
+import { getNodeKeyFromElement } from "../block_helpers"
 
 // Tracks which list-item keys are "wrapped blocks" — ListItemNodes that
 // wrap a non-paragraph block (heading, quote, code, table, HR, attachment)
@@ -122,9 +123,8 @@ export class WrappedOriginTracker {
     // either set (key changed due to copy-on-write). Recover into the
     // origin set indicated by the attribute value.
     for (const el of root.querySelectorAll("[data-block-movement-wrapped]")) {
-      const keyProp = Object.keys(el).find(k => k.startsWith("__lexicalKey_"))
-      if (!keyProp) continue
-      const key = el[keyProp]
+      const key = getNodeKeyFromElement(el)
+      if (!key) continue
       const origin = el.dataset.blockMovementWrapped
       if (origin === "user") {
         if (!this.#userKeys.has(key)) this.trackUser(key)

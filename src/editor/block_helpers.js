@@ -24,3 +24,15 @@ export function $isStructuralWrapper(node) {
   const children = node.getChildren()
   return children.length > 0 && children.every(c => $isListNode(c))
 }
+
+// Read the Lexical node key from a DOM element without requiring an
+// editor.read() transaction. Lexical stamps each managed element with a
+// non-enumerable __lexicalKey_<editorId> property; we find it by prefix.
+// Falls back to the dataset.lexicalNodeKey attribute that attachment
+// figures set explicitly. Used from mouse/pointer handlers that run
+// outside a Lexical update cycle.
+export function getNodeKeyFromElement(element) {
+  const keyProp = Object.keys(element).find(k => k.startsWith("__lexicalKey_"))
+  if (keyProp) return element[keyProp]
+  return element.dataset?.lexicalNodeKey || null
+}
