@@ -25,7 +25,8 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
-      globals: globals.browser
+      // Prism is a third-party global, not part of globals.browser.
+      globals: { ...globals.browser, Prism: "readonly" }
     },
     rules: {
       "compat/compat": ["error"],

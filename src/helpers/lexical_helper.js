@@ -1,5 +1,6 @@
 import { $caretFromPoint, $createNodeSelection, $createParagraphNode, $findMatchingParent, $getCaretInDirection, $getCaretRange, $getChildCaret, $getCommonAncestor, $getRoot, $getSelection, $getSiblingCaret, $isChildCaret, $isDecoratorNode, $isElementNode, $isExtendableTextPointCaret, $isLineBreakNode, $isParagraphNode, $isRangeSelection, $isRootNode, $isRootOrShadowRoot, $isSiblingCaret, $isTextNode, $isTextPointCaret, $normalizeCaret, $normalizeSelection__EXPERIMENTAL as $normalizeSelection, $rewindSiblingCaret, $setSelectionFromCaretRange, $splitAtPointCaretNext, TextNode } from "lexical"
-import { ListNode } from "@lexical/list"
+import { HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG } from "lexical"
+import { ListItemNode, ListNode } from "@lexical/list"
 import { $getNearestNodeOfType, $lastToFirstIterator } from "@lexical/utils"
 import { $wrapNodeInElement } from "@lexical/utils"
 import { $ensureForwardRangeSelection, $isAtNodeEnd } from "@lexical/selection"
@@ -49,6 +50,10 @@ export function getListType(node) {
 export function isEditorFocused(editor) {
   const rootElement = editor.getRootElement()
   return rootElement !== null && rootElement.contains(document.activeElement)
+}
+
+export function getListItemNode(node) {
+  return $getNearestNodeOfType(node, ListItemNode)
 }
 
 export function $isAtNodeEdge(point, atStart = null) {

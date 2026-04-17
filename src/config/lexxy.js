@@ -5,12 +5,16 @@ const global = new Configuration({
   attachmentTagName: "action-text-attachment",
   attachmentContentTypeNamespace: "actiontext",
   authenticatedUploads: false,
-  extensions: []
+  extensions: [],
+  previewModal: true
 })
 
 const presets = new Configuration({
   default: {
     attachments: true,
+    code: {
+      tabSize: 2
+    },
     markdown: true,
     multiLine: true,
     permittedAttachmentTypes: null,
