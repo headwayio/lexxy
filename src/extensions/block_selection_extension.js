@@ -39,6 +39,24 @@ import { SelectionHistory } from "../editor/block_selection/selection_history"
 import { WrappedOriginTracker } from "../editor/block_selection/wrapped_origin"
 import { registerBulletMarkerColorSync } from "../editor/block_selection/bullet_color_sync"
 
+// Block selection extension — gives the editor a second, block-level
+// selection mode that sits above Lexical's range selection. The extension
+// owns the mode machine, keyboard dispatch, block movement, and the glue
+// to the block-actions menu and drag-and-drop subsystem.
+//
+// Helper modules live under src/editor/block_selection/:
+//
+//   drag_and_drop/         — mouse-driven block drag, ghost, drop targets
+//   highlight_css.js       — pure CSS-string helpers for highlight colors
+//   selection_history.js   — parallel undo/redo stack for block selection
+//   wrapped_origin.js      — user-vs-movement wrapped-key origin tracking
+//   bullet_color_sync.js   — node transform syncing <li> color to content
+//
+// This file keeps the cohesive state machine (selectedBlockKeys, anchor,
+// focus, mode, and the ~100 methods that read/write them) in one class
+// because their interdependencies can't be cleanly cut along file lines
+// without widening the private surface. Navigate by the section markers
+// below (// -- Foo --).
 export class BlockSelectionExtension extends LexxyExtension {
   #mode = "edit"
   #selectedBlockKeys = new Set()
@@ -1921,7 +1939,11 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   }
 
-  // -- Block selection undo/redo history --------------------------------------
+  // -- Selection state snapshot/restore ---------------------------------------
+  // Called by the SelectionHistory module (src/editor/block_selection/
+  // selection_history.js) via its snapshot/restore callbacks. Kept here
+  // because they mutate extension-private state (selectedBlockKeys, anchor,
+  // focus, mode) that can't cleanly cross the module boundary.
 
   #snapshotSelectionState() {
     return {
@@ -3233,6 +3255,8 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (!wrapper.getParent()) return // already removed
     wrapper.remove()
   }
+
+  // -- Format/highlight command interception ----------------------------------
 
   // Intercept FORMAT_TEXT_COMMAND in block-select mode — toolbar buttons
   // dispatch this directly but there's no Lexical selection to apply to.
