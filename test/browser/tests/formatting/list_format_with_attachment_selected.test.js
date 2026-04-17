@@ -15,7 +15,7 @@ test.describe("List formatting with attachment selected", () => {
     await editor.setValue(`<p>Hello</p>${ATTACHMENT_HTML}`)
 
     // Click the figure to select the attachment (creating a NodeSelection)
-    await editor.content.locator("figure.attachment").click()
+    await editor.content.locator("figure.attachment img").click()
     await editor.flush()
     await expect(editor.content.locator("figure.node--selected")).toHaveCount(1)
 
@@ -39,7 +39,7 @@ test.describe("List formatting with attachment selected", () => {
     await editor.setValue(`<p>Hello</p>${ATTACHMENT_HTML}`)
 
     // Click the figure to select the attachment (creating a NodeSelection)
-    await editor.content.locator("figure.attachment").click()
+    await editor.content.locator("figure.attachment img").click()
     await editor.flush()
     await expect(editor.content.locator("figure.node--selected")).toHaveCount(1)
 
