@@ -5,7 +5,8 @@ import {
   $isElementNode,
   $isParagraphNode
 } from "lexical"
-import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
+import { $createListItemNode, $createListNode, $getListDepth, $isListItemNode, $isListNode, ListNode } from "@lexical/list"
+import { $getNearestNodeOfType } from "@lexical/utils"
 import { createElement } from "../../../helpers/html_helper"
 import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS, getNodeKeyFromElement } from "../../block_helpers"
 import { DragGhost } from "./ghost"
@@ -1765,15 +1766,12 @@ export class BlockDragAndDrop {
     return current
   }
 
-  // Get the nesting depth of a Lexical node (number of ListNode ancestors)
+  // Get the nesting depth of a Lexical node (number of ListNode ancestors).
+  // Delegates to Lexical's \$getListDepth after finding the containing list;
+  // returns 0 for nodes at root level (no list ancestor).
   #getNodeDepth(node) {
-    let depth = 0
-    let current = node.getParent()
-    while (current) {
-      if ($isListNode(current)) depth++
-      current = current.getParent()
-    }
-    return depth
+    const list = $getNearestNodeOfType(node, ListNode)
+    return list ? $getListDepth(list) : 0
   }
 
   // Nest a node as the first child of the target's sub-list.
