@@ -753,7 +753,7 @@
 }
 
 /* Suppress code block hover controls during block selection and drag */
-.block-selection-active ~ lexxy-code-language-picker,
+.lexxy-editor--block-selection-active ~ lexxy-code-language-picker,
 :where(lexxy-editor).lexxy-block-dragging lexxy-code-language-picker {
   opacity: 0 !important;
   pointer-events: none !important;
@@ -1903,7 +1903,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
 /* Block selection mode -------------------------------------------------------- */
 
-:where(.lexxy-editor__content).block-selection-active {
+:where(.lexxy-editor__content).lexxy-editor--block-selection-active {
   caret-color: transparent;
   user-select: none;
 }
@@ -1915,8 +1915,8 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      prevents visual stacking when nested elements overlap.
      Border-radius: only round the top of the first and bottom of the last
      in a contiguous group so adjacent selections form a unified band. */
-  .block--selected,
-  .block--selected.block--focused {
+  .lexxy-editor__block--selected,
+  .lexxy-editor__block--selected.lexxy-editor__block--focused {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     --block-select-pad: 6px;
     position: relative;
@@ -1924,9 +1924,9 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   }
 
   /* Ensure list containers don't clip the selection pseudo-elements */
-  ul:has(.block--selected),
-  ol:has(.block--selected),
-  li:has(.block--selected) {
+  ul:has(.lexxy-editor__block--selected),
+  ol:has(.lexxy-editor__block--selected),
+  li:has(.lexxy-editor__block--selected) {
     overflow: visible;
   }
 
@@ -1934,7 +1934,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      Non-list items: 7px left/6px top+bottom+right.
      List items: 15px left of bullet (bullet is ~11px left of text, so
      15px from bullet = 26px from content = inset-left: -26px). */
-  .block--selected::after {
+  .lexxy-editor__block--selected::after {
     content: "";
     position: absolute;
     inset: -6px -6px -6px -7px;
@@ -1948,59 +1948,59 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* List item highlights: extend 2px on each side for the base (28px on 24px items).
      First/last extend 6px outward for rounded corners (32px). Standalone = 36px.
      Flat-list margin of 6px produces 2px visible gaps between highlights. */
-  li.block--selected::after {
+  li.lexxy-editor__block--selected::after {
     min-height: auto;
     top: -2px;
     bottom: -2px;
     left: calc(-2em - 7px);
   }
 
-  li:first-child.block--selected::after {
+  li:first-child.lexxy-editor__block--selected::after {
     top: -6px;
   }
 
   /* Last item in a flat list: 32px (top=-2 + 24 + bottom=6) */
-  li:last-child:not(.lexxy-nested-listitem).block--selected::after,
-  li.block--selected:has(+ li.lexxy-nested-listitem:last-child)::after {
+  li:last-child:not(.lexxy-nested-listitem).lexxy-editor__block--selected::after,
+  li.lexxy-editor__block--selected:has(+ li.lexxy-nested-listitem:last-child)::after {
     bottom: -6px;
   }
 
   /* Parent group following an unparented selected child: flush top
      so there's a 2px gap (child extends 4px + 0px top + 6px margin = 2px gap). */
-  li.block--flush-top.block--selected::after {
+  li.lexxy-editor__block--flush-top.lexxy-editor__block--selected::after {
     top: 0px;
   }
 
   /* Nested last item (inside a structural wrapper): 30px */
-  li.lexxy-nested-listitem li:last-child:not(.lexxy-nested-listitem).block--selected::after {
+  li.lexxy-nested-listitem li:last-child:not(.lexxy-nested-listitem).lexxy-editor__block--selected::after {
     bottom: -4px;
   }
 
 
-  li:only-child.block--selected::after {
+  li:only-child.lexxy-editor__block--selected::after {
     top: -6px;
     bottom: -6px;
   }
 
   /* Nested only-child: regular sizing, not standalone. A single item
      inside a structural wrapper is a child, not a standalone bullet. */
-  li.lexxy-nested-listitem li:only-child.block--selected::after {
+  li.lexxy-nested-listitem li:only-child.lexxy-editor__block--selected::after {
     top: -2px;
     bottom: -2px;
   }
 
   /* Contiguous selection groups (list items only — root blocks always have
      margins so they keep full radius). JS marks adjacent selected LIs with
-     block--select-mid, and first/last at group boundaries.
+     lexxy-editor__block--select-mid, and first/last at group boundaries.
      Radius applied to the ::after pseudo-element. */
-  .block--select-mid:not(.block--select-first):not(.block--select-last)::after {
+  .lexxy-editor__block--select-mid:not(.lexxy-editor__block--select-first):not(.lexxy-editor__block--select-last)::after {
     border-radius: 0;
   }
-  .block--select-mid.block--select-first:not(.block--select-last)::after {
+  .lexxy-editor__block--select-mid.lexxy-editor__block--select-first:not(.lexxy-editor__block--select-last)::after {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .block--select-mid.block--select-last:not(.block--select-first)::after {
+  .lexxy-editor__block--select-mid.lexxy-editor__block--select-last:not(.lexxy-editor__block--select-first)::after {
     border-top-left-radius: 0;
     border-top-right-radius: 0;
   }
@@ -2009,7 +2009,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      is selected — this means the parent item is part of the selection, so
      all children should be too. Prevents ancestor wrappers from lighting
      up when only a deeply nested item is selected. */
-  .block--selected + li.lexxy-nested-listitem:has(.block--selected) {
+  .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     position: relative;
     z-index: 0; /* stacking context so ::after z-index: -1 stays visible */
@@ -2019,7 +2019,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* Structural wrapper ::after is suppressed — the parent's ::after covers
      the entire parent+children area via the --parent-selection-height variable.
      Keeping the rule for wrappers whose parent isn't selected (edge cases). */
-  .block--selected + li.lexxy-nested-listitem:has(.block--selected)::after {
+  .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected)::after {
     display: none;
   }
 
@@ -2028,25 +2028,25 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
   /* Children inside a highlighted wrapper: suppress their own highlight
      so the wrapper provides a single continuous highlight surface. */
-  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected,
-  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected.block--focused {
+  .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) .lexxy-editor__block--selected,
+  .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) .lexxy-editor__block--selected.lexxy-editor__block--focused {
     box-shadow: none;
   }
-  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected::after {
+  .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) .lexxy-editor__block--selected::after {
     display: none;
   }
 
   /* Inner structural wrappers: suppress their ::after when already inside
      a highlighted outer wrapper. Without this, each nesting level draws its
      own rectangle at a stepped x-position instead of one solid rectangle. */
-  .block--selected + li.lexxy-nested-listitem:has(.block--selected) li.lexxy-nested-listitem::after {
+  .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) li.lexxy-nested-listitem::after {
     display: none;
   }
 
   /* Parent with selected children: size ::after to cover the entire
      parent+children area using a JS-set CSS variable. The parent's
      ::after alone provides the highlight — no wrapper stitching needed. */
-  li.block--selected:has(+ li.lexxy-nested-listitem .block--selected)::after {
+  li.lexxy-editor__block--selected:has(+ li.lexxy-nested-listitem .lexxy-editor__block--selected)::after {
     height: var(--parent-selection-height, auto);
     bottom: auto;
     border-bottom-left-radius: var(--block-select-radius);
@@ -2055,7 +2055,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
   /* The parent item above the wrapper should also use the uniform shade
      when its children are selected (not the darker focused shade). */
-  .block--focused:has(+ li.lexxy-nested-listitem .block--selected) {
+  .lexxy-editor__block--focused:has(+ li.lexxy-nested-listitem .lexxy-editor__block--selected) {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
   }
 
@@ -2067,10 +2067,10 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      opaque background in the parent context. A 6px solid outline in the
      selection fill color provides the rounded selection border.
      The box-shadow adds a subtle tint to the code bg. */
-  pre.block--selected,
-  code[data-language].block--selected,
-  pre.block--selected.block--focused,
-  code[data-language].block--selected.block--focused {
+  pre.lexxy-editor__block--selected,
+  code[data-language].lexxy-editor__block--selected,
+  pre.lexxy-editor__block--selected.lexxy-editor__block--focused,
+  code[data-language].lexxy-editor__block--selected.lexxy-editor__block--focused {
     z-index: auto;
     box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 7%, transparent);
     outline: 6px solid var(--block-select-bg);
@@ -2081,27 +2081,27 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      selections. An inset box-shadow tints the card interior (the card's
      opaque background covers the ::after within its bounds). The outline
      provides the blue focus ring on the card itself. */
-  .attachment.block--selected,
-  .attachment.block--selected.block--focused {
+  .attachment.lexxy-editor__block--selected,
+  .attachment.lexxy-editor__block--selected.lexxy-editor__block--focused {
     outline: var(--lexxy-focus-ring-size) solid var(--lexxy-focus-ring-color);
     outline-offset: var(--lexxy-focus-ring-offset);
     box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, transparent);
   }
   /* Compensate for the card's 1px border — ::after is positioned relative
      to the padding box, so extend 1px extra on each side. */
-  .attachment.block--selected::after {
+  .attachment.lexxy-editor__block--selected::after {
     inset: -7px -7px -7px -8px;
   }
 
   /* When an attachment is wrapped inside a block-selected list item, the
      list item already shows the highlight — suppress the inner card's
      duplicated outline/tint so it doesn't read as a nested frame. */
-  li.block--selected > .attachment.block--selected,
-  li.block--selected > .attachment.block--selected.block--focused {
+  li.lexxy-editor__block--selected > .attachment.lexxy-editor__block--selected,
+  li.lexxy-editor__block--selected > .attachment.lexxy-editor__block--selected.lexxy-editor__block--focused {
     outline: none;
     box-shadow: none;
   }
-  li.block--selected > .attachment.block--selected::after {
+  li.lexxy-editor__block--selected > .attachment.lexxy-editor__block--selected::after {
     display: none;
   }
 
@@ -2127,18 +2127,18 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
   /* All items in mixed lists: fixed -4px selection inset.
      The nested variant bumps specificity to beat position-sensitive li rules. */
-  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--selected::after,
-  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--focused::after,
-  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--selected::after,
-  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--focused::after {
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).lexxy-editor__block--selected::after,
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).lexxy-editor__block--focused::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).lexxy-editor__block--selected::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).lexxy-editor__block--focused::after {
     inset: -4px -4px -4px -39px;
   }
 
   /* Last child in nested mixed lists: -6px bottom bridges the 12px gap
      at nesting boundaries (12 - 6 - 2 = 4px visual gap). Must beat the
      mixed-list inset rule above, so uses the same context selector. */
-  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.block--selected, .block--focused)::after,
-  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.block--selected, .block--focused)::after {
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.lexxy-editor__block--selected, .lexxy-editor__block--focused)::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.lexxy-editor__block--selected, .lexxy-editor__block--focused)::after {
     bottom: -6px;
   }
 
@@ -2148,23 +2148,23 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      Nested variant with :not(.lexxy-nested-listitem) bumps specificity to
      (0,4,3), matching the highest position-sensitive li rules so the fixed
      inset values win at any nesting depth. */
-  li.block--selected:has(> code[data-language])::after,
-  li.block--selected:has(> pre)::after,
-  li.block--focused:has(> code[data-language])::after,
-  li.block--focused:has(> pre)::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> code[data-language])::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> pre)::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> code[data-language])::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> pre)::after {
+  li.lexxy-editor__block--selected:has(> code[data-language])::after,
+  li.lexxy-editor__block--selected:has(> pre)::after,
+  li.lexxy-editor__block--focused:has(> code[data-language])::after,
+  li.lexxy-editor__block--focused:has(> pre)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).lexxy-editor__block--selected:has(> code[data-language])::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).lexxy-editor__block--selected:has(> pre)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).lexxy-editor__block--focused:has(> code[data-language])::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).lexxy-editor__block--focused:has(> pre)::after {
     border-radius: var(--lexxy-code-block-radius);
     inset: -4px -4px -4px -39px;
   }
 
   /* Wrapped code blocks: apply the same tint as top-level */
-  li.block--selected > code[data-language],
-  li.block--selected > pre,
-  li.block--focused > code[data-language],
-  li.block--focused > pre {
+  li.lexxy-editor__block--selected > code[data-language],
+  li.lexxy-editor__block--selected > pre,
+  li.lexxy-editor__block--focused > code[data-language],
+  li.lexxy-editor__block--focused > pre {
     box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 7%, transparent);
   }
 
@@ -2179,21 +2179,21 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* Tables: suppress the ::after (cells' opaque backgrounds hide it).
      Padding/margin are always-on so selection doesn't shift content.
      Only toggle the background color and cell tinting. */
-  .lexxy-content__table-wrapper.block--selected,
-  .lexxy-content__table-wrapper.block--focused {
+  .lexxy-content__table-wrapper.lexxy-editor__block--selected,
+  .lexxy-content__table-wrapper.lexxy-editor__block--focused {
     background-color: var(--block-select-bg);
     border-radius: var(--block-select-radius);
   }
 
-  .lexxy-content__table-wrapper.block--selected::after,
-  .lexxy-content__table-wrapper.block--focused::after {
+  .lexxy-content__table-wrapper.lexxy-editor__block--selected::after,
+  .lexxy-content__table-wrapper.lexxy-editor__block--focused::after {
     display: none;
   }
 
-  .lexxy-content__table-wrapper.block--selected td,
-  .lexxy-content__table-wrapper.block--selected th,
-  .lexxy-content__table-wrapper.block--focused td,
-  .lexxy-content__table-wrapper.block--focused th {
+  .lexxy-content__table-wrapper.lexxy-editor__block--selected td,
+  .lexxy-content__table-wrapper.lexxy-editor__block--selected th,
+  .lexxy-content__table-wrapper.lexxy-editor__block--focused td,
+  .lexxy-content__table-wrapper.lexxy-editor__block--focused th {
     background-color: var(--block-select-bg) !important;
   }
 
@@ -2212,18 +2212,18 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* Nested variant with :not(.lexxy-nested-listitem) bumps specificity to
      (0,4,3), matching the highest position-sensitive li rules so the fixed
      inset values win at any nesting depth. */
-  li.block--selected:has(> .lexxy-content__table-wrapper)::after,
-  li.block--focused:has(> .lexxy-content__table-wrapper)::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> .lexxy-content__table-wrapper)::after,
-  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> .lexxy-content__table-wrapper)::after {
+  li.lexxy-editor__block--selected:has(> .lexxy-content__table-wrapper)::after,
+  li.lexxy-editor__block--focused:has(> .lexxy-content__table-wrapper)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).lexxy-editor__block--selected:has(> .lexxy-content__table-wrapper)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).lexxy-editor__block--focused:has(> .lexxy-content__table-wrapper)::after {
     border-radius: var(--block-select-radius);
     inset: -4px -4px -4px -39px;
   }
 
-  li.block--selected:has(> .lexxy-content__table-wrapper) td,
-  li.block--selected:has(> .lexxy-content__table-wrapper) th,
-  li.block--focused:has(> .lexxy-content__table-wrapper) td,
-  li.block--focused:has(> .lexxy-content__table-wrapper) th {
+  li.lexxy-editor__block--selected:has(> .lexxy-content__table-wrapper) td,
+  li.lexxy-editor__block--selected:has(> .lexxy-content__table-wrapper) th,
+  li.lexxy-editor__block--focused:has(> .lexxy-content__table-wrapper) td,
+  li.lexxy-editor__block--focused:has(> .lexxy-content__table-wrapper) th {
     background-color: var(--block-select-bg) !important;
   }
 
@@ -2236,8 +2236,8 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* Horizontal dividers: fill the figure exactly (padding provides
      4px above/below the 1px line). The 10px margin keeps 4px visible
      gaps from neighboring blocks whose ::after extends 6px. */
-  .horizontal-divider.block--selected::after,
-  .horizontal-divider.block--focused::after {
+  .horizontal-divider.lexxy-editor__block--selected::after,
+  .horizontal-divider.lexxy-editor__block--focused::after {
     min-height: unset;
     inset: 0 -7px;
     border-radius: var(--block-select-radius);
@@ -2246,10 +2246,10 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* Blockquotes: slightly darken the vertical bar so it stays visible
      against the selection background (~25% darker than the unselected
      ink-lighter). Applies to both standalone and list-wrapped quotes. */
-  blockquote.block--selected,
-  blockquote.block--focused,
-  li.block--selected > blockquote,
-  li.block--focused > blockquote {
+  blockquote.lexxy-editor__block--selected,
+  blockquote.lexxy-editor__block--focused,
+  li.lexxy-editor__block--selected > blockquote,
+  li.lexxy-editor__block--focused > blockquote {
     border-inline-start-color: oklch(70% 0 0);
   }
 
@@ -2257,18 +2257,18 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      element's own border in CSS stacking context order, hiding the bar.
      Hide the CSS border, extend ::after left by 3px to compensate for
      the border width, and render the bar as a ::before at z-index: 1. */
-  blockquote.block--selected,
-  blockquote.block--focused {
+  blockquote.lexxy-editor__block--selected,
+  blockquote.lexxy-editor__block--focused {
     border-inline-start-color: transparent;
   }
 
-  blockquote.block--selected::after,
-  blockquote.block--focused::after {
+  blockquote.lexxy-editor__block--selected::after,
+  blockquote.lexxy-editor__block--focused::after {
     inset-inline-start: -10px; /* -7px standard + 3px border compensation */
   }
 
-  blockquote.block--selected::before,
-  blockquote.block--focused::before {
+  blockquote.lexxy-editor__block--selected::before,
+  blockquote.lexxy-editor__block--focused::before {
     content: "";
     position: absolute;
     inset-inline-start: -3px; /* align with border-box edge (abs positioning is relative to padding box) */
@@ -2282,8 +2282,8 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 
   /* Show wrapped block bullet during block selection and hover */
   li:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider) {
-    &.block--selected::before,
-    &.block--focused::before {
+    &.lexxy-editor__block--selected::before,
+    &.lexxy-editor__block--focused::before {
       opacity: 1;
     }
   }
@@ -2305,7 +2305,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
      blocks keep their explicit theme colors. Elements with their own color
      rules (blockquote, links) get explicit overrides below. */
   .lexxy-dragging,
-  .lexxy-dragging .block--selected,
+  .lexxy-dragging .lexxy-editor__block--selected,
   .lexxy-dragging li.lexxy-nested-listitem {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 5%, var(--lexxy-color-canvas)) !important;
   }

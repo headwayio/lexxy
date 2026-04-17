@@ -33,7 +33,7 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await editor.select("Hello")
     await page.keyboard.press("Escape")
 
-    await expect(editor.content.locator(".block--focused")).toHaveCount(1)
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toHaveCount(1)
 
     await page.keyboard.press(`${modifier}+/`)
 

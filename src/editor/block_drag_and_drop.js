@@ -1352,7 +1352,7 @@ export class BlockDragAndDrop {
 
     // Strip selection classes from cloned elements — they carry box-shadows
     // (bullet extensions, gap bridges) that render as dark borders in the ghost.
-    for (const el of ghostContent.querySelectorAll(".block--selected, .block--focused")) {
+    for (const el of ghostContent.querySelectorAll(".lexxy-editor__block--selected, .lexxy-editor__block--focused")) {
       el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
     }
     ghostContent.classList?.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
