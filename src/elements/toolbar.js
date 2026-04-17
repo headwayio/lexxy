@@ -209,7 +209,7 @@ export class LexicalToolbarElement extends HTMLElement {
     const selection = $getSelection()
     // In block select mode, the selection is an internal implementation detail
     // (used temporarily for commands like color/highlight). Don't reflect it.
-    if (!$isRangeSelection(selection) || this.editor.getRootElement()?.classList.contains("block-selection-active")) {
+    if (!$isRangeSelection(selection) || this.editor.getRootElement()?.classList.contains("lexxy-editor--block-selection-active")) {
       this.#clearAllPressedStates()
       return
     }

@@ -306,7 +306,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         const el = this.editor.getElementByKey(key)
         if (el) {
           el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS,
-            "block--select-first", "block--select-last")
+            "lexxy-editor__block--select-first", "lexxy-editor__block--select-last")
         }
       }
     }
@@ -338,14 +338,14 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   #syncSelectionGroupClasses() {
     // Clear previous group classes from blocks AND structural wrappers
-    for (const el of this.root?.querySelectorAll(".block--select-first, .block--select-last, .block--select-mid") || []) {
-      el.classList.remove("block--select-first", "block--select-last", "block--select-mid")
+    for (const el of this.root?.querySelectorAll(".lexxy-editor__block--select-first, .lexxy-editor__block--select-last, .lexxy-editor__block--select-mid") || []) {
+      el.classList.remove("lexxy-editor__block--select-first", "lexxy-editor__block--select-last", "lexxy-editor__block--select-mid")
     }
 
     if (this.#selectedBlockKeys.size === 0) return
 
     // Mark selected LIs that are adjacent to other selected LIs as
-    // block--select-mid. This enables contiguous group styling (flattened
+    // lexxy-editor__block--select-mid. This enables contiguous group styling (flattened
     // edges between items with 2px gaps). Items in mixed lists (4px gaps)
     // keep full radius since the wider gaps don't visually merge.
     for (const key of this.#selectedBlockKeys) {
@@ -379,29 +379,29 @@ export class BlockSelectionExtension extends LexxyExtension {
       const hasNext = next?.classList.contains(BLOCK_SELECTED_CLASS)
 
       if (hasPrev || hasNext) {
-        el.classList.add("block--select-mid")
+        el.classList.add("lexxy-editor__block--select-mid")
       }
     }
 
-    // Now assign first/last: selected LIs with block--select-mid flatten
-    // their touching edges. Items WITHOUT block--select-mid keep full radius.
-    // Items with block--select-mid but no selected neighbor above = first,
-    // items with block--select-mid but no selected neighbor below = last.
+    // Now assign first/last: selected LIs with lexxy-editor__block--select-mid flatten
+    // their touching edges. Items WITHOUT lexxy-editor__block--select-mid keep full radius.
+    // Items with lexxy-editor__block--select-mid but no selected neighbor above = first,
+    // items with lexxy-editor__block--select-mid but no selected neighbor below = last.
     for (const key of this.#selectedBlockKeys) {
       const el = this.editor.getElementByKey(key)
-      if (!el || !el.classList.contains("block--select-mid")) continue
+      if (!el || !el.classList.contains("lexxy-editor__block--select-mid")) continue
 
       const hasMidAbove = this.#hasSelectedNeighborAbove(el)
       const hasMidBelow = this.#hasSelectedNeighborBelow(el)
 
-      if (!hasMidAbove) el.classList.add("block--select-first")
-      if (!hasMidBelow) el.classList.add("block--select-last")
+      if (!hasMidAbove) el.classList.add("lexxy-editor__block--select-first")
+      if (!hasMidBelow) el.classList.add("lexxy-editor__block--select-last")
     }
 
     // Also mark structural wrappers at group boundaries
-    for (const wrapper of this.root?.querySelectorAll("li.lexxy-nested-listitem.block--select-mid") || []) {
+    for (const wrapper of this.root?.querySelectorAll("li.lexxy-nested-listitem.lexxy-editor__block--select-mid") || []) {
       if (!this.#hasSelectedNeighborBelow(wrapper)) {
-        wrapper.classList.add("block--select-last")
+        wrapper.classList.add("lexxy-editor__block--select-last")
       }
     }
   }
@@ -411,18 +411,18 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (prev?.classList.contains("lexxy-nested-listitem")) {
       prev = prev.previousElementSibling
     }
-    return prev?.classList.contains(BLOCK_SELECTED_CLASS) && prev.classList.contains("block--select-mid")
+    return prev?.classList.contains(BLOCK_SELECTED_CLASS) && prev.classList.contains("lexxy-editor__block--select-mid")
   }
 
   #hasSelectedNeighborBelow(el) {
     let next = el.nextElementSibling
-    if (next?.classList.contains("lexxy-nested-listitem") && next.classList.contains("block--select-mid")) {
+    if (next?.classList.contains("lexxy-nested-listitem") && next.classList.contains("lexxy-editor__block--select-mid")) {
       return true
     }
     if (next?.classList.contains("lexxy-nested-listitem")) {
       next = next.nextElementSibling
     }
-    return next?.classList.contains(BLOCK_SELECTED_CLASS) && next.classList.contains("block--select-mid")
+    return next?.classList.contains(BLOCK_SELECTED_CLASS) && next.classList.contains("lexxy-editor__block--select-mid")
   }
 
   // Check if a DOM LI element is inside a mixed list (one containing wrapped
@@ -1853,8 +1853,8 @@ export class BlockSelectionExtension extends LexxyExtension {
     for (const el of this.root?.querySelectorAll("[style*='--parent-selection-height']") || []) {
       el.style.removeProperty("--parent-selection-height")
     }
-    for (const el of this.root?.querySelectorAll(".block--flush-top") || []) {
-      el.classList.remove("block--flush-top")
+    for (const el of this.root?.querySelectorAll(".lexxy-editor__block--flush-top") || []) {
+      el.classList.remove("lexxy-editor__block--flush-top")
     }
 
     for (const key of this.#selectedBlockKeys) {
@@ -1884,7 +1884,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         if (!prevParent?.classList.contains(BLOCK_SELECTED_CLASS) &&
             prevSib.querySelector(`.${BLOCK_SELECTED_CLASS}`)) {
           topExt = 0
-          el.classList.add("block--flush-top")
+          el.classList.add("lexxy-editor__block--flush-top")
         }
       }
 

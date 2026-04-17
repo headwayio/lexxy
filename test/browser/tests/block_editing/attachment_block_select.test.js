@@ -17,10 +17,10 @@ async function openMenuAndTurnIntoIndex(page, editor, submenuIndex) {
   // Ensure block-select mode is active before opening the menu — the menu
   // handler is registered on the editor and only opens in block-select mode.
   // After a Turn into, #syncAndRefocus uses double-RAF before applying
-  // .block--focused, so poll patiently to avoid races between consecutive
+  // .lexxy-editor__block--focused, so poll patiently to avoid races between consecutive
   // menu operations.
   await expect.poll(async () => {
-    return await editor.content.locator(".block--focused").count()
+    return await editor.content.locator(".lexxy-editor__block--focused").count()
   }, { timeout: 5000 }).toBe(1)
 
   await page.keyboard.press(`${modifier}+/`)
@@ -63,11 +63,11 @@ async function selectAttachment(_figure, editor, page) {
   await page.keyboard.press("Escape")
   // We're now in block-select on the anchor paragraph. Move down to the
   // attachment block.
-  await expect(editor.content.locator(".block--focused")).toHaveCount(1, { timeout: 5000 })
+  await expect(editor.content.locator(".lexxy-editor__block--focused")).toHaveCount(1, { timeout: 5000 })
   await page.keyboard.press("ArrowDown")
   // Confirm focus moved off the anchor paragraph (attachment is now focused).
   await expect.poll(async () => {
-    return await editor.content.locator(".block--focused").evaluate(el => el.textContent)
+    return await editor.content.locator(".lexxy-editor__block--focused").evaluate(el => el.textContent)
   }, { timeout: 5000 }).not.toBe("anchor")
 }
 

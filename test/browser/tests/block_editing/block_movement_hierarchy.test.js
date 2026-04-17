@@ -35,7 +35,7 @@ test.describe("Block movement with parent-child hierarchy", () => {
     // Select "Parent" and enter block-select mode
     await editor.select("Parent")
     await page.keyboard.press("Escape")
-    await expect(editor.content.locator(".block--focused")).toContainText("Parent")
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toContainText("Parent")
 
     // Move down — should swap Parent+children with "Below", not nest into children
     await page.keyboard.press(`${modifier}+Shift+ArrowDown`)
@@ -60,7 +60,7 @@ test.describe("Block movement with parent-child hierarchy", () => {
     // Select "Child A" and enter block-select mode
     await editor.select("Child A")
     await page.keyboard.press("Escape")
-    await expect(editor.content.locator(".block--focused")).toContainText("Child A")
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toContainText("Child A")
 
     // Move up — should promote Child A above Parent, not nest inside Parent
     await page.keyboard.press(`${modifier}+Shift+ArrowUp`)
@@ -163,7 +163,7 @@ test.describe("Block movement with parent-child hierarchy", () => {
     // Extend selection to Block B
     await page.keyboard.press("Shift+ArrowDown")
 
-    await expect(editor.content.locator(".block--focused, .block--selected")).toHaveCount(2)
+    await expect(editor.content.locator(".lexxy-editor__block--focused, .lexxy-editor__block--selected")).toHaveCount(2)
 
     // Move both down
     await page.keyboard.press(`${modifier}+Shift+ArrowDown`)

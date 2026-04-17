@@ -2,9 +2,9 @@ import { $isListItemNode, $isListNode } from "@lexical/list"
 
 // CSS class names used by block selection, drag-and-drop, and block actions.
 // Centralised here to avoid stringly-typed duplication across modules.
-export const BLOCK_SELECTED_CLASS = "block--selected"
-export const BLOCK_FOCUSED_CLASS = "block--focused"
-export const BLOCK_SELECTION_ACTIVE_CLASS = "block-selection-active"
+export const BLOCK_SELECTED_CLASS = "lexxy-editor__block--selected"
+export const BLOCK_FOCUSED_CLASS = "lexxy-editor__block--focused"
+export const BLOCK_SELECTION_ACTIVE_CLASS = "lexxy-editor--block-selection-active"
 export const NESTED_LISTITEM_CLASS = "lexxy-nested-listitem"
 
 // Default fallback sizes (px) when computed styles aren't available.
