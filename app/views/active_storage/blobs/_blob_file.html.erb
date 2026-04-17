@@ -1,0 +1,7 @@
+<% extension = blob.filename.extension.downcase %>
+
+<figure class="attachment attachment--file attachment--<%= extension %>">
+  <span class="attachment__icon"><%= extension.upcase %></span>
+  <%= lexxy_attachment_file_caption(blob) %>
+  <%= lexxy_attachment_actions(blob) %>
+</figure>

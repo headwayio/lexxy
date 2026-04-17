@@ -3,6 +3,22 @@ module Lexxy
   # as a controller helper by Lexxy::Engine so it's available anywhere the
   # blob partial renders (ActionText show-page output, direct renders).
   module AttachmentHelper
+    INLINE_IMAGE_CONTENT_TYPES = %w[ image/gif image/webp image/avif image/svg+xml ].freeze
+
+    # Route the _blob.html.erb partial to a per-content-type sub-partial so
+    # each type's markup lives in its own file rather than a multi-branch if/
+    # elsif stack. The sub-partials are colocated in app/views/active_storage/
+    # blobs/ alongside _blob.html.erb.
+    def lexxy_blob_partial(blob)
+      case
+      when blob.video?                                           then "active_storage/blobs/blob_video"
+      when blob.audio?                                           then "active_storage/blobs/blob_audio"
+      when INLINE_IMAGE_CONTENT_TYPES.include?(blob.content_type) then "active_storage/blobs/blob_inline_image"
+      when blob.representable?                                   then "active_storage/blobs/blob_image"
+      else                                                            "active_storage/blobs/blob_file"
+      end
+    end
+
     def lexxy_attachment_preview_action(blob)
       link_to rails_blob_path(blob, disposition: :inline),
               class: "attachment__action", target: "_blank", title: "Open", aria: { label: "Open" } do
