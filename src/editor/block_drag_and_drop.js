@@ -9,6 +9,7 @@ import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } fr
 import { createElement } from "../helpers/html_helper"
 import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "./block_helpers"
 import { DragGhost } from "./block_drag_and_drop/ghost"
+import { AutoScroll } from "./block_drag_and_drop/autoscroll"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>
@@ -26,12 +27,6 @@ const ADD_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" st
 
 // Minimum pointer movement (px) before a handle pointerdown becomes a drag
 const DRAG_THRESHOLD = 5
-
-// Auto-scroll: how close to a container edge (px) before scrolling starts
-const SCROLL_EDGE_SIZE = 60
-
-// Auto-scroll: maximum pixels scrolled per animation frame
-const SCROLL_MAX_SPEED = 15
 
 export class BlockDragAndDrop {
   #editor
@@ -54,8 +49,7 @@ export class BlockDragAndDrop {
   #dropTarget = null
   #hideTimer = null
   #cleanupFns = []
-  #scrollRafId = null
-  #scrollableContainers = null
+  #autoScroll = null
   #lastPointerX = 0
   #lastPointerY = 0
   #showHandles = true
@@ -73,6 +67,10 @@ export class BlockDragAndDrop {
     this.#editorElement = editorElement
     this.#blockSelectionExtension = blockSelectionExtension
     this.#ghost = new DragGhost(editorElement)
+    this.#autoScroll = new AutoScroll(editorElement, {
+      getPointer: () => ({ x: this.#lastPointerX, y: this.#lastPointerY, isDragging: this.#isDragging }),
+      onScroll: (x, y) => this.#updateDropIndicator({ clientX: x, clientY: y })
+    })
 
     // Drag handles shown by default. Set block-handles="false" on <lexxy-editor>
     // to hide them (compact editors like comments/chat that don't need drag UX).
@@ -763,7 +761,7 @@ export class BlockDragAndDrop {
     window.addEventListener("mouseup", this.#onDragEnd, true)
     document.addEventListener("keydown", this.#onDragKeydown)
 
-    this.#startAutoScroll()
+    this.#autoScroll.start()
 
     // Immediately update the drop indicator for the current position
     this.#updateDropIndicator(event)
@@ -808,7 +806,7 @@ export class BlockDragAndDrop {
     // Stop responding to pointer events during the animation
     document.removeEventListener("pointermove", this.#onDragMove)
     document.removeEventListener("keydown", this.#onDragKeydown)
-    this.#stopAutoScroll()
+    this.#autoScroll.stop()
     this.#hideDropIndicator()
 
     const sourceRect = sourceEl.getBoundingClientRect()
@@ -2032,139 +2030,6 @@ export class BlockDragAndDrop {
     return draggedNode
   }
 
-  // -- Auto-scroll during drag ------------------------------------------------
-
-  #stickyTopOffset = 0
-
-  #findScrollableContainers() {
-    const containers = []
-    let current = this.#editorElement.parentElement
-
-    while (current && current !== document.documentElement) {
-      const style = getComputedStyle(current)
-      const overflowY = style.overflowY
-      if ((overflowY === "auto" || overflowY === "scroll") &&
-          current.scrollHeight > current.clientHeight) {
-        containers.push(current)
-      }
-      current = current.parentElement
-    }
-
-    // Always include viewport (window-level scrolling)
-    containers.push(null)
-
-    // Detect sticky/fixed headers that occlude the top of the viewport.
-    // Probe from the top center downward; for each hit element, walk its
-    // ancestor chain to find any fixed/sticky container.
-    this.#stickyTopOffset = 0
-    const probeX = window.innerWidth / 2
-    for (let y = 0; y < 200; y += 4) {
-      const el = document.elementFromPoint(probeX, y)
-      if (!el) continue
-
-      let fixedAncestor = null
-      let walk = el
-      while (walk && walk !== document.documentElement) {
-        const pos = getComputedStyle(walk).position
-        if (pos === "fixed" || pos === "sticky") {
-          fixedAncestor = walk
-          break
-        }
-        walk = walk.parentElement
-      }
-
-      if (fixedAncestor) {
-        const bottom = fixedAncestor.getBoundingClientRect().bottom
-        if (bottom > this.#stickyTopOffset) this.#stickyTopOffset = bottom
-      } else {
-        break
-      }
-    }
-
-    return containers
-  }
-
-  #getScrollSpeed(distFromEdge) {
-    if (distFromEdge >= SCROLL_EDGE_SIZE || distFromEdge < 0) return 0
-    const ratio = 1 - (distFromEdge / SCROLL_EDGE_SIZE)
-    return Math.round(SCROLL_MAX_SPEED * ratio * ratio)
-  }
-
-  #autoScrollTick = () => {
-    if (!this.#isDragging) {
-      this.#scrollRafId = null
-      return
-    }
-
-    const clientX = this.#lastPointerX
-    const clientY = this.#lastPointerY
-    let didScroll = false
-
-    for (const container of this.#scrollableContainers) {
-      const isViewport = container === null
-
-      const rect = isViewport
-        ? { top: this.#stickyTopOffset, bottom: window.innerHeight, left: 0, right: window.innerWidth }
-        : container.getBoundingClientRect()
-
-      if (clientX < rect.left || clientX > rect.right) continue
-
-      // Check if pointer can actually scroll this container
-      const canScrollUp = isViewport ? window.scrollY > 0 : container.scrollTop > 0
-      const canScrollDown = isViewport
-        ? (window.scrollY + window.innerHeight) < document.documentElement.scrollHeight
-        : (container.scrollTop + container.clientHeight) < container.scrollHeight
-
-      const distFromTop = clientY - rect.top
-      if (canScrollUp && distFromTop >= 0 && distFromTop < SCROLL_EDGE_SIZE) {
-        const speed = this.#getScrollSpeed(distFromTop)
-        if (speed > 0) {
-          if (isViewport) {
-            window.scrollBy(0, -speed)
-          } else {
-            container.scrollTop -= speed
-          }
-          didScroll = true
-        }
-      }
-
-      const distFromBottom = rect.bottom - clientY
-      if (canScrollDown && distFromBottom >= 0 && distFromBottom < SCROLL_EDGE_SIZE) {
-        const speed = this.#getScrollSpeed(distFromBottom)
-        if (speed > 0) {
-          if (isViewport) {
-            window.scrollBy(0, speed)
-          } else {
-            container.scrollTop += speed
-          }
-          didScroll = true
-        }
-      }
-    }
-
-    // Scrolling moved elements relative to the pointer — update drop target
-    if (didScroll) {
-      this.#updateDropIndicator({ clientX, clientY })
-    }
-
-    this.#scrollRafId = requestAnimationFrame(this.#autoScrollTick)
-  }
-
-  #startAutoScroll() {
-    this.#scrollableContainers = this.#findScrollableContainers()
-    if (!this.#scrollRafId) {
-      this.#scrollRafId = requestAnimationFrame(this.#autoScrollTick)
-    }
-  }
-
-  #stopAutoScroll() {
-    if (this.#scrollRafId) {
-      cancelAnimationFrame(this.#scrollRafId)
-      this.#scrollRafId = null
-    }
-    this.#scrollableContainers = null
-  }
-
   // -- Utilities --------------------------------------------------------------
 
   #getNodeKeyFromElement(element) {
@@ -2174,7 +2039,7 @@ export class BlockDragAndDrop {
   }
 
   #cleanup() {
-    this.#stopAutoScroll()
+    this.#autoScroll.stop()
     this.#hideDropIndicator()
     this.#ghost.remove()
 
