@@ -59,7 +59,6 @@ export class BlockDragAndDrop {
   #lastPointerY = 0
   #showHandles = true
   #hoverSuppressed = false
-  #elementsCreated = false
 
   constructor(editor, editorElement, blockSelectionExtension) {
     this.#editor = editor
@@ -69,9 +68,13 @@ export class BlockDragAndDrop {
     // Drag handles shown by default. Set block-handles="false" on <lexxy-editor>
     // to hide them (compact editors like comments/chat that don't need drag UX).
     this.#showHandles = editorElement.getAttribute("block-handles") !== "false"
-    // DOM elements (handle, add button, drop indicator) are created lazily on
-    // first mouse interaction — they're invisible until hover, so eager creation
-    // during bootstrap wastes time (SVG innerHTML parsing, DOM insertions).
+
+    if (this.#showHandles) {
+      this.#createAddButton()
+      this.#createHandleElement()
+    }
+    this.#createDropIndicator()
+
     this.#registerListeners()
   }
 
@@ -120,17 +123,6 @@ export class BlockDragAndDrop {
     this.#dropIndicatorElement?.remove()
     for (const fn of this.#cleanupFns) fn()
     this.#cleanupFns = []
-  }
-
-  #ensureElementsCreated() {
-    if (this.#elementsCreated) return
-    this.#elementsCreated = true
-
-    if (this.#showHandles) {
-      this.#createAddButton()
-      this.#createHandleElement()
-    }
-    this.#createDropIndicator()
   }
 
   // -- Handle element ---------------------------------------------------------
@@ -537,7 +529,6 @@ export class BlockDragAndDrop {
 
   #updateHoveredBlock(event) {
     if (this.#hoverSuppressed) return
-    this.#ensureElementsCreated()
     const root = this.#editor.getRootElement()
     if (!root) return
 
