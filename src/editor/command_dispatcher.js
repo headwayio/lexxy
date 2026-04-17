@@ -1,9 +1,11 @@
 import {
   $createTextNode,
+  $getRoot,
   $getSelection,
   $isRangeSelection,
   $isTextNode,
   $setSelection,
+  COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   FORMAT_TEXT_COMMAND,
@@ -13,6 +15,7 @@ import {
   OUTDENT_CONTENT_COMMAND,
   PASTE_COMMAND,
   REDO_COMMAND,
+  SELECT_ALL_COMMAND,
   UNDO_COMMAND
 } from "lexical"
 import { CodeNode } from "@lexical/code"
@@ -54,6 +57,16 @@ const COMMANDS = [
   "undo",
   "redo"
 ]
+
+// Commands that replace DOM elements or restore a prior editor state,
+// both of which trigger Lexical's scrollIntoViewIfNeeded and cause the
+// page to jump. These get scroll preservation.
+const BLOCK_FORMAT_COMMANDS = new Set([
+  "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall",
+  "setFormatParagraph", "insertUnorderedList", "insertOrderedList",
+  "insertQuoteBlock", "insertCodeBlock",
+  "undo", "redo"
+])
 
 export class CommandDispatcher {
   #selectionBeforeDrag = null
@@ -303,10 +316,31 @@ export class CommandDispatcher {
   #registerCommands() {
     for (const command of COMMANDS) {
       const methodName = `dispatch${capitalize(command)}`
-      this.#registerCommandHandler(command, 0, this[methodName].bind(this))
+      let handler = this[methodName].bind(this)
+
+      if (BLOCK_FORMAT_COMMANDS.has(command)) {
+        handler = withPreservedScroll(handler)
+      }
+
+      this.#registerCommandHandler(command, 0, handler)
     }
 
     this.#registerCommandHandler(PASTE_COMMAND, COMMAND_PRIORITY_LOW, this.dispatchPaste.bind(this))
+    this.#registerCommandHandler(SELECT_ALL_COMMAND, COMMAND_PRIORITY_NORMAL, this.#handleSelectAll.bind(this))
+
+    // Keyboard Cmd+Z / Cmd+Shift+Z bypass the COMMANDS string-dispatch and go
+    // straight to Lexical's UNDO_COMMAND / REDO_COMMAND. Register HIGH-priority
+    // handlers on those commands too so the scroll position is preserved
+    // regardless of whether undo was triggered from the toolbar button or the
+    // keyboard shortcut. Returning false lets Lexical's history plugin still
+    // run at normal priority.
+    for (const cmd of [ UNDO_COMMAND, REDO_COMMAND ]) {
+      this.#registerCommandHandler(cmd, COMMAND_PRIORITY_HIGH, () => {
+        const y = window.scrollY
+        queueMicrotask(() => window.scrollTo(window.scrollX, y))
+        return false
+      })
+    }
   }
 
   #registerCommandHandler(command, priority, handler) {
@@ -412,10 +446,10 @@ export class CommandDispatcher {
   }
 
   #handleTabKey(event) {
-    if (this.selection.isInsideList) {
+    if (this.selection.isInsideCodeBlock) {
+      return this.#handleTabForCode(event)
+    } else if (this.selection.isInsideList) {
       return this.#handleTabForList(event)
-    } else if (this.selection.isInsideCodeBlock) {
-      return this.#handleTabForCode()
     }
     return false
   }
@@ -428,13 +462,105 @@ export class CommandDispatcher {
     return this.editor.dispatchCommand(command)
   }
 
-  #handleTabForCode() {
+  #handleTabForCode(event) {
     const selection = $getSelection()
-    return $isRangeSelection(selection) && selection.isCollapsed()
+    if (!$isRangeSelection(selection)) return false
+
+    event.preventDefault()
+
+    if (event.shiftKey) {
+      this.#outdentCodeLine(selection)
+    } else {
+      this.editor.update(() => {
+        selection.insertText("\t")
+      })
+    }
+
+    return true
+  }
+
+  #handleSelectAll(event) {
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return false
+
+    // If the entire document is already selected, escalate to block select mode.
+    // Check if selection spans from the root's first to last position.
+    if (!selection.isCollapsed()) {
+      const root = $getRoot()
+      const { anchor, focus } = selection
+      const first = root.getFirstDescendant()
+      const last = root.getLastDescendant()
+      const isAtStart = first && (anchor.key === first.getKey() && anchor.offset === 0
+        || anchor.key === root.getKey() && anchor.offset === 0)
+      const lastSize = last?.getTextContentSize?.() ?? root.getChildrenSize()
+      const isAtEnd = last && (focus.key === last.getKey() && focus.offset === lastSize
+        || focus.key === root.getKey() && focus.offset === root.getChildrenSize())
+      if (isAtStart && isAtEnd) {
+        event.preventDefault()
+        this.editorElement.selectAllBlocks?.()
+        return true
+      }
+    }
+
+    // Inside a code block: first Cmd+A selects code content,
+    // second escalates to block select
+    if (this.selection.isInsideCodeBlock) {
+      const anchorNode = selection.anchor.getNode()
+      let codeNode = anchorNode
+      while (codeNode && !(codeNode instanceof CodeNode)) {
+        codeNode = codeNode.getParent()
+      }
+      if (codeNode) {
+        const codeText = codeNode.getTextContent()
+        const selectedText = selection.getTextContent()
+        if (selectedText === codeText && !selection.isCollapsed()) {
+          event.preventDefault()
+          this.editorElement.selectAllBlocks?.()
+          return true
+        }
+
+        event.preventDefault()
+        codeNode.select(0, codeNode.getChildrenSize())
+        return true
+      }
+    }
+
+    return false
+  }
+
+  #outdentCodeLine(selection) {
+    this.editor.update(() => {
+      const anchor = selection.anchor
+      const node = anchor.getNode()
+      if (!$isTextNode(node)) return
+
+      const text = node.getTextContent()
+      if (text.startsWith("\t")) {
+        // Remove leading tab
+        const updated = node.getWritable()
+        updated.setTextContent(text.slice(1))
+        // Adjust cursor position
+        const newOffset = Math.max(0, anchor.offset - 1)
+        selection.anchor.set(node.getKey(), newOffset, "text")
+        selection.focus.set(node.getKey(), newOffset, "text")
+      }
+    })
   }
 
 }
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+// Wraps a handler so the page scroll position is saved before and restored
+// after Lexical's DOM reconciliation (which calls scrollIntoViewIfNeeded).
+// The microtask fires after reconciliation but before the browser repaints.
+function withPreservedScroll(handler) {
+  return (...args) => {
+    const y = window.scrollY
+    const result = handler(...args)
+    queueMicrotask(() => window.scrollTo(window.scrollX, y))
+    return result
+  }
 }
