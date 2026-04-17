@@ -1,7 +1,10 @@
 import DOMPurify from "dompurify"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 
-const ALLOWED_HTML_ATTRIBUTES = [ "class", "contenteditable", "href", "src", "style", "title" ]
+const ALLOWED_HTML_ATTRIBUTES = [ "alt", "blob-url", "caption", "class", "content", "content-type", "contenteditable",
+  "data-direct-upload-id", "data-sgid", "data-collapsed", "data-caption-hidden",
+  "filename", "filesize", "height", "href", "presentation",
+  "previewable", "sgid", "src", "style", "title", "url", "width" ]
 
 const ALLOWED_STYLE_PROPERTIES = [ "color", "background-color" ]
 
