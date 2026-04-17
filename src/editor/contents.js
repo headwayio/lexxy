@@ -9,10 +9,11 @@ import {
 import { $generateNodesFromDOM } from "@lexical/html"
 import { $createCodeNode, $isCodeNode, CodeNode } from "@lexical/code"
 import { $createHeadingNode, $createQuoteNode, $isQuoteNode, QuoteNode } from "@lexical/rich-text"
-import { $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
+import { $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
 import { dispatch, parseHtml } from "../helpers/html_helper"
+import { getListItemNode } from "../helpers/lexical_helper"
 import { $ensureForwardRangeSelection, $forEachSelectedTextNode, $setBlocksType } from "@lexical/selection"
 import Uploader from "./contents/uploader"
 import { $isActionTextAttachmentNode } from "../nodes/action_text_attachment_node"
@@ -67,7 +68,7 @@ export default class Contents {
 
     // When inside a wrapped block in a list item, unwrap back to regular content
     const anchorNode = selection.anchor.getNode()
-    const listItem = this.#findParentListItem(anchorNode)
+    const listItem = getListItemNode(anchorNode)
     if (listItem) {
       const children = listItem.getChildren()
       const wrappedChild = children.find(c =>
@@ -92,22 +93,13 @@ export default class Contents {
     // When the cursor is inside a list item, wrap the content in a heading
     // node (creating a wrapped block) instead of replacing the LI container.
     const anchorNode = selection.anchor.getNode()
-    const listItem = this.#findParentListItem(anchorNode)
+    const listItem = getListItemNode(anchorNode)
     if (listItem) {
       this.#wrapListItemInBlock(listItem, $createHeadingNode(tag))
       return
     }
 
     $setBlocksType(selection, () => $createHeadingNode(tag))
-  }
-
-  #findParentListItem(node) {
-    let current = node
-    while (current) {
-      if ($isListItemNode(current)) return current
-      current = current.getParent()
-    }
-    return null
   }
 
   // Wrap a list item's inline content in a block element (heading, quote, code).
@@ -170,7 +162,7 @@ export default class Contents {
 
     // Inside a list item → wrap as a code block
     const anchorNode = selection.anchor.getNode()
-    const listItem = this.#findParentListItem(anchorNode)
+    const listItem = getListItemNode(anchorNode)
     if (listItem) {
       this.#wrapListItemInBlock(listItem, $createCodeNode("plain"))
       return
@@ -197,7 +189,7 @@ export default class Contents {
 
     // Inside a list item → wrap as a blockquote
     const anchorNode = selection.anchor.getNode()
-    const listItem = this.#findParentListItem(anchorNode)
+    const listItem = getListItemNode(anchorNode)
     if (listItem) {
       this.#wrapListItemInBlock(listItem, $createQuoteNode())
       return
