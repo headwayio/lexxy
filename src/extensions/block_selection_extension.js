@@ -671,7 +671,13 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #isPromptOpen() {
-    return !!this.editorElement.querySelector("lexxy-prompt[open]")
+    // lexxy-prompt tracks visibility via the popoverElement's
+    // .lexxy-prompt-menu--visible class, not an [open] attribute. The popover
+    // is appended to lexxy-editor (not inside lexxy-prompt), so query from
+    // the editor element directly. Mirror the prompt's own `get open()` getter
+    // so Escape and other keys don't enter block-select while a popover is
+    // showing.
+    return !!this.editorElement.querySelector(".lexxy-prompt-menu--visible")
   }
 
   #isBlockActionsMenuOpen() {
