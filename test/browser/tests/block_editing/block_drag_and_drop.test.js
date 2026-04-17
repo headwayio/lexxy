@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
-import { assertBlockHtml } from "../../helpers/assertions.js"
+import { assertBlockHtml, stripDynamicAttrs } from "../../helpers/assertions.js"
 import { dragBlock } from "../../helpers/drag.js"
 
 // Helper: get the center point of an element's bounding box
