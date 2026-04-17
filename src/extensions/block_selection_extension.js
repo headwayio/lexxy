@@ -32,6 +32,7 @@ import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/ric
 import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_extension"
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
+import { getListItemNode } from "../helpers/lexical_helper"
 import { BlockDragAndDrop } from "../editor/block_selection/drag_and_drop"
 import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS, getNodeKeyFromElement } from "../editor/block_helpers"
 import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS } from "../editor/block_selection/highlight_css"
@@ -3575,12 +3576,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!$isRangeSelection(selection)) return
 
       // Find the list item containing the selection
-      let listItem = null
-      let current = selection.anchor.getNode()
-      while (current) {
-        if ($isListItemNode(current)) { listItem = current; break }
-        current = current.getParent()
-      }
+      const listItem = getListItemNode(selection.anchor.getNode())
       if (!listItem) return
 
       // Check if this item has children (structural wrapper)
@@ -3829,13 +3825,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             this.editor.update(() => {
               const selection = $getSelection()
               if (!$isRangeSelection(selection)) return
-              const anchor = selection.anchor.getNode()
-              let listItem = $isListItemNode(anchor) ? anchor : null
-              if (!listItem) {
-                let current = anchor.getParent()
-                while (current && !$isListItemNode(current)) current = current.getParent()
-                listItem = current
-              }
+              const listItem = getListItemNode(selection.anchor.getNode())
               if (listItem) this.#inheritParentHighlight(listItem)
             })
           }, 0)
