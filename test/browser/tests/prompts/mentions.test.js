@@ -83,14 +83,15 @@ test.describe("Mentions", () => {
   })
 
   test("popover stays within the editor when triggered near the editor's right edge", async ({ page, editor }) => {
-    await page.setViewportSize({ width: 400, height: 600 })
+    // 600px viewport × 300px editor with margin-left:auto puts the editor's
+    // right edge at the viewport's right edge. "Some text @" comfortably fits
+    // on a single line regardless of block-handles gutter config (needs ≥70px
+    // of content). The @ lands near the viewport's right edge so the popover's
+    // natural anchor overflows and the right-clamp logic must engage.
+    await page.setViewportSize({ width: 600, height: 600 })
     await editor.locator.evaluate((el) => {
-      // Disable block-handles so the editor uses the 1ch content padding this
-      // test was designed around. With block-handles on (this branch's default)
-      // the gutter eats most of the content width and breaks the popover-
-      // positioning math on strict-layout engines (webkit/Linux in CI).
-      el.setAttribute("block-handles", "false")
-      el.style.width = "220px"
+      el.style.width = "300px"
+      el.style.marginLeft = "auto"
     })
 
     await editor.send("Some text @")
