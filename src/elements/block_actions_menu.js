@@ -1,5 +1,6 @@
 import ToolbarIcons from "./toolbar_icons"
 import { VIEWPORT_PADDING } from "../editor/block_helpers"
+import { getLastUsedColor, saveLastUsedColor } from "../helpers/storage_helper"
 
 const PALETTE_ICON = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
   <path d="M8 1C4.136 1 1 4.136 1 8s3.136 7 7 7c.644 0 1.167-.523 1.167-1.167 0-.303-.117-.573-.292-.77a1.15 1.15 0 01-.292-.763c0-.644.523-1.167 1.167-1.167h1.377c2.254 0 4.083-1.829 4.083-4.083C14.21 3.757 11.454 1 8 1zM3.917 8a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm2.333-3.5a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm3.5 0a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333zm2.333 3.5a1.167 1.167 0 110-2.333 1.167 1.167 0 010 2.333z" fill="currentColor"/>
@@ -18,7 +19,10 @@ const TURN_INTO_OPTIONS = [
 
 const COLOR_NAMES = [ "Yellow", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Brown", "Gray" ]
 
-function colorLabel(cssVar, style) {
+// Derives a human-readable label ("Yellow text", "Orange background") from
+// a CSS var referencing the default highlight palette. Exported so the
+// highlight dropdown can record the same label when saving last-used-color.
+export function colorLabel(cssVar, style) {
   const match = cssVar.match(/--highlight-(?:bg-)?(\d+)/)
   const name = match ? COLOR_NAMES[parseInt(match[1]) - 1] || `Color ${match[1]}` : cssVar
   return style === "background-color" ? `${name} background` : `${name} text`
@@ -205,7 +209,7 @@ export class BlockActionsMenu extends HTMLElement {
 
     let html = ""
 
-    const last = BlockActionsMenu.getLastUsedColor()
+    const last = getLastUsedColor()
     if (last) {
       const swatchStyle = last.style === "background-color"
         ? `background-color:${last.value}`
@@ -246,20 +250,6 @@ export class BlockActionsMenu extends HTMLElement {
       </button>`
 
     panel.innerHTML = html
-  }
-
-  static saveLastUsedColor(style, value) {
-    try {
-      const label = colorLabel(value, style)
-      localStorage.setItem("lexxy-last-color", JSON.stringify({ style, value, label }))
-    } catch { /* localStorage may be unavailable */ }
-  }
-
-  static getLastUsedColor() {
-    try {
-      const stored = localStorage.getItem("lexxy-last-color")
-      return stored ? JSON.parse(stored) : null
-    } catch { return null }
   }
 
   #position(anchorRect) {
@@ -560,8 +550,9 @@ export class BlockActionsMenu extends HTMLElement {
     }
 
     if (button.dataset.action === "color") {
-      BlockActionsMenu.saveLastUsedColor(button.dataset.style, button.dataset.value)
-      this.#onAction?.({ type: "color", style: button.dataset.style, value: button.dataset.value })
+      const { style, value } = button.dataset
+      saveLastUsedColor({ style, value, label: colorLabel(value, style) })
+      this.#onAction?.({ type: "color", style, value })
       this.close()
       return
     }

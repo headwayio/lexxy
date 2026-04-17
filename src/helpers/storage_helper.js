@@ -39,3 +39,23 @@ export function representationToBlobUrl(url) {
     "/rails/active_storage/blobs/redirect/$1/$2"
   )
 }
+
+const LAST_USED_COLOR_KEY = "lexxy-last-color"
+
+// Persist the most-recently-applied highlight color so the next color apply
+// (via block-actions menu or highlight dropdown) can one-tap re-apply it.
+// Scoped to localStorage so it survives a refresh and is shared across every
+// editor on the same origin — which matches user intent ("reuse my last
+// color"). Callers provide a `label` string for the menu to display.
+export function saveLastUsedColor({ style, value, label }) {
+  try {
+    localStorage.setItem(LAST_USED_COLOR_KEY, JSON.stringify({ style, value, label }))
+  } catch { /* localStorage may be unavailable (private mode, quota) */ }
+}
+
+export function getLastUsedColor() {
+  try {
+    const stored = localStorage.getItem(LAST_USED_COLOR_KEY)
+    return stored ? JSON.parse(stored) : null
+  } catch { return null }
+}
