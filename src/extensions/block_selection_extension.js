@@ -3735,15 +3735,10 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Check if a node is inside a list item whose immediate parent has the
   // same highlight color — if so, Enter should retain the color.
   #shouldRetainHighlightFromParent(node, currentStyle) {
-    let current = node
-    while (current) {
-      if ($isListItemNode(current)) {
-        const parentColor = this.#getParentHighlight(current, 1)
-        return parentColor !== null && this.#highlightColorsMatch(currentStyle, parentColor)
-      }
-      current = current.getParent()
-    }
-    return false
+    const listItem = getListItemNode(node)
+    if (!listItem) return false
+    const parentColor = this.#getParentHighlight(listItem, 1)
+    return parentColor !== null && this.#highlightColorsMatch(currentStyle, parentColor)
   }
 
   // -- Wrapped block indent/outdent -------------------------------------------
