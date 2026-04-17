@@ -7,7 +7,8 @@ import {
 } from "lexical"
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list"
 import { createElement } from "../helpers/html_helper"
-import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "./block_helpers"
+import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "./block_helpers"
+import { DragGhost } from "./block_drag_and_drop/ghost"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>
@@ -39,7 +40,7 @@ export class BlockDragAndDrop {
   #handleElement = null
   #addButtonElement = null
   #dropIndicatorElement = null
-  #dragGhostElement = null
+  #ghost = null
   #currentHoveredBlock = null
   #isDragging = false
   #isPendingDrag = false
@@ -71,6 +72,7 @@ export class BlockDragAndDrop {
     this.#editor = editor
     this.#editorElement = editorElement
     this.#blockSelectionExtension = blockSelectionExtension
+    this.#ghost = new DragGhost(editorElement)
 
     // Drag handles shown by default. Set block-handles="false" on <lexxy-editor>
     // to hide them (compact editors like comments/chat that don't need drag UX).
@@ -746,7 +748,7 @@ export class BlockDragAndDrop {
     }
 
     // Create a floating ghost clone that follows the cursor
-    this.#createDragGhost(el, event)
+    this.#ghost.create(el, event)
 
     // Hide the handle and + button during drag
     this.#handleElement?.classList.remove("lexxy-block-handle--visible")
@@ -775,7 +777,7 @@ export class BlockDragAndDrop {
     this.#lastPointerX = event.clientX
     this.#lastPointerY = event.clientY
 
-    this.#positionDragGhost(event)
+    this.#ghost.position(event)
 
     if (!this.#rafId) {
       this.#rafId = requestAnimationFrame(() => {
@@ -795,7 +797,7 @@ export class BlockDragAndDrop {
   }
 
   #cancelDragWithSnapBack() {
-    const ghost = this.#dragGhostElement
+    const ghost = this.#ghost.element
     const sourceEl = this.#draggedNodeKey && this.#editor.getElementByKey(this.#draggedNodeKey)
 
     if (!ghost || !sourceEl) {
@@ -1326,86 +1328,6 @@ export class BlockDragAndDrop {
   }
 
   // -- Drag ghost (floating clone follows cursor) ------------------------------
-
-  #createDragGhost(sourceElement, event) {
-    this.#removeDragGhost()
-    if (!sourceElement) return
-
-    const rect = sourceElement.getBoundingClientRect()
-
-    // For list items with children, the children live in a structural
-    // wrapper sibling. Build a container that includes both the item
-    // and its children so the ghost shows the full subtree.
-    let ghostContent
-    const nextSib = sourceElement.nextElementSibling
-    const hasChildren = sourceElement.tagName === "LI" &&
-      nextSib && nextSib.classList.contains(NESTED_LISTITEM_CLASS)
-
-    if (hasChildren) {
-      // Wrap in a mini list so the bullets render correctly
-      const list = document.createElement(sourceElement.closest("ul, ol")?.tagName || "UL")
-      list.appendChild(sourceElement.cloneNode(true))
-      list.appendChild(nextSib.cloneNode(true))
-      list.style.margin = "0"
-      list.style.paddingInlineStart = "1.5em"
-      ghostContent = list
-    } else if (sourceElement.tagName === "LI") {
-      // Single list item — wrap in a list for proper bullet rendering
-      const list = document.createElement(sourceElement.closest("ul, ol")?.tagName || "UL")
-      list.appendChild(sourceElement.cloneNode(true))
-      list.style.margin = "0"
-      list.style.paddingInlineStart = "1.5em"
-      ghostContent = list
-    } else {
-      ghostContent = sourceElement.cloneNode(true)
-    }
-
-    // Strip selection classes from cloned elements — they carry box-shadows
-    // (bullet extensions, gap bridges) that render as dark borders in the ghost.
-    for (const el of ghostContent.querySelectorAll(".lexxy-editor__block--selected, .lexxy-editor__block--focused")) {
-      el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
-    }
-    ghostContent.classList?.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS)
-
-    // Wrap in a container with Lexxy's CSS classes so content styles
-    // (bullets, headings, code blocks, blockquotes, etc.) render correctly.
-    const styleWrapper = createElement("div", { className: "lexxy-content lexxy-editor__content" })
-    styleWrapper.appendChild(ghostContent)
-
-    // Copy CSS custom properties from the editor to the ghost so code blocks,
-    // colors, etc. render correctly outside the <lexxy-editor> element.
-    const editorStyles = getComputedStyle(this.#editorElement)
-    const varsToForward = [
-      "--lexxy-color-code-bg", "--lexxy-color-code-text", "--lexxy-color-canvas",
-      "--lexxy-color-surface", "--lexxy-color-ink", "--lexxy-color-ink-lighter",
-      "--lexxy-color-ink-lightest", "--lexxy-color-accent-dark", "--lexxy-focus-ring-color"
-    ]
-    for (const v of varsToForward) {
-      const val = editorStyles.getPropertyValue(v)
-      if (val) styleWrapper.style.setProperty(v, val)
-    }
-
-    const ghost = createElement("div", { className: "lexxy-drag-ghost" })
-    ghost.appendChild(styleWrapper)
-    ghost.style.width = `${rect.width + 16}px`
-    ghost.style.left = `${event.clientX + 12}px`
-    ghost.style.top = `${event.clientY - 12}px`
-    ghost.style.transition = "opacity 100ms ease"
-
-    document.body.appendChild(ghost)
-    this.#dragGhostElement = ghost
-  }
-
-  #positionDragGhost(event) {
-    if (!this.#dragGhostElement) return
-    this.#dragGhostElement.style.left = `${event.clientX + 12}px`
-    this.#dragGhostElement.style.top = `${event.clientY - 12}px`
-  }
-
-  #removeDragGhost() {
-    this.#dragGhostElement?.remove()
-    this.#dragGhostElement = null
-  }
 
   // -- Drop execution ---------------------------------------------------------
 
@@ -2254,7 +2176,7 @@ export class BlockDragAndDrop {
   #cleanup() {
     this.#stopAutoScroll()
     this.#hideDropIndicator()
-    this.#removeDragGhost()
+    this.#ghost.remove()
 
     document.removeEventListener("pointermove", this.#onDragMove)
     window.removeEventListener("pointerup", this.#onDragEnd, true)
