@@ -1,8 +1,8 @@
 task :default do
   root = File.expand_path("..", __dir__)
-  target = File.join(root, "app", "assets", "javascript", "lexxy.js")
+  targets = %w[ lexxy.js lexxy-content-preview.js ].map { |name| File.join(root, "app", "assets", "javascript", name) }
 
-  next if File.exist?(target)
+  next if targets.all? { |target| File.exist?(target) }
 
   puts <<~MSG
 

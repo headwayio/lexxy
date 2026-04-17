@@ -10,6 +10,16 @@ import { promisify } from "util"
 /* global Buffer */
 const brotliPromise = promisify(brotliCompress)
 
+const sharedPlugins = [
+  gzipPlugin({
+    gzipOptions: { level: 9 }
+  }),
+  gzipPlugin({
+    customCompression: content => brotliPromise(Buffer.from(content)),
+    fileName: ".br"
+  })
+]
+
 export default [
   {
     input: "./src/index.js",
@@ -36,13 +46,22 @@ export default [
         Prism: ["prismjs", "default"],
         include: "**/prismjs/components/**"
       }),
-      gzipPlugin({
-        gzipOptions: { level: 9 }
-      }),
-      gzipPlugin({
-        customCompression: content => brotliPromise(Buffer.from(content)),
-        fileName: ".br"
-      })
+      ...sharedPlugins
+    ]
+  },
+  // Standalone show-page preview modal. Host apps pin "lexxy-content-preview"
+  // and import it on pages that render ActionText content without the editor.
+  {
+    input: "./src/preview/content_preview.js",
+    output: {
+      file: "./app/assets/javascript/lexxy-content-preview.js",
+      format: "esm",
+      sourcemap: true
+    },
+    plugins: [
+      nodeResolve(),
+      commonjs(),
+      ...sharedPlugins
     ]
   }
 ]
