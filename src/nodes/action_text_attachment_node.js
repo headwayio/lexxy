@@ -1,7 +1,8 @@
 import Lexxy from "../config/lexxy"
 import { $getEditor, $getNearestRootOrShadowRoot, DecoratorNode, HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG } from "lexical"
 import { SILENT_UPDATE_TAGS } from "../helpers/lexical_helper"
-import { attachmentIconLabel, createAttachmentFigure, createElement, dispatch, isPreviewableImage } from "../helpers/html_helper"
+import { attachmentIconLabel, createAttachmentFigure, createElement, isPreviewableImage } from "../helpers/html_helper"
+import { dispatchAttachmentPreview } from "../helpers/attachment_preview_helper"
 import { bytesToHumanSize, extractFileExtension, extractFileName, representationToBlobUrl } from "../helpers/storage_helper"
 import { parseBoolean } from "../helpers/string_helper"
 
@@ -657,14 +658,11 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   #handlePreviewClick(event) {
     if (event.target.closest("textarea, lexxy-attachment-controls, button")) return
 
-    dispatch(event.currentTarget, "lexxy:preview-attachment", {
-      src: this.src,
-      blobUrl: this.playbackUrl,
-      fileName: this.fileName,
-      contentType: this.contentType,
-      fileSize: this.fileSize,
-      sgid: this.sgid
-    }, true)
+    // Shared with attachment_controls.js #openPreview so both entry points
+    // source the detail from the same live DOM state — important for SVG,
+    // where the figure's <img>.src has been swapped to a blob: object URL
+    // (this.src is the raw ActiveStorage URL that forces download).
+    dispatchAttachmentPreview(event.currentTarget)
   }
 }
 

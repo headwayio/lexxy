@@ -1,6 +1,6 @@
 import { $getNearestNodeFromDOMNode } from "lexical"
-import { createElement, dispatch } from "../helpers/html_helper"
-import { representationToBlobUrl } from "../helpers/storage_helper"
+import { createElement } from "../helpers/html_helper"
+import { dispatchAttachmentPreview } from "../helpers/attachment_preview_helper"
 import { $isActionTextAttachmentNode } from "../nodes/action_text_attachment_node"
 import { $isImageGalleryNode } from "../nodes/image_gallery_node"
 import AttachmentIcons from "./attachment_icons"
@@ -129,32 +129,10 @@ export class AttachmentControls extends HTMLElement {
     const figure = this.#figure
     if (!figure) return
 
-    // Read caption from whichever DOM element is rendering it — the name
-    // strong (file cards, collapsed cards, audio preview) or the editable
-    // textarea (image/video preview). Skip Lexical state reads here because
-    // the preview button click fires outside of Lexical's read/update context.
-    // Caption rendering in the modal is independent of the inline
-    // caption-hidden toggle — the modal always shows a custom caption when
-    // one exists, with the filename + size as subtitle. The authoritative
-    // caption is kept on the figure's `data-caption` by updateDOM; fall
-    // back to visible name/textarea text in case the dataset isn't synced.
-    const nameText = figure.querySelector(".attachment__name")?.textContent
-    const textareaText = figure.querySelector("figcaption textarea")?.value
-    const fileName = figure.dataset.fileName || ""
-    const candidate = (figure.dataset.caption || nameText || textareaText || "").trim()
-    const caption = candidate && candidate !== fileName ? candidate : ""
-    const src = figure.querySelector("img")?.src || figure.dataset.src
-
-    dispatch(figure, "lexxy:preview-attachment", {
-      src,
-      blobUrl: figure.dataset.blobUrl || representationToBlobUrl(src),
-      fileName,
-      contentType: figure.dataset.contentType,
-      fileSize: figure.dataset.fileSize,
-      sgid: figure.dataset.sgid,
-      caption,
-      pageMedia: figure.querySelector("video, audio") || null
-    }, true)
+    // Shared with the figure's dblclick handler in action_text_attachment_node.js
+    // so both entry points see the same live DOM state (including the
+    // post-swap blob: URL for SVG attachments).
+    dispatchAttachmentPreview(figure)
   }
 
   #toggleCollapse() {
