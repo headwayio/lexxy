@@ -330,6 +330,12 @@ export default class Selection {
       for (const node of selection.getNodes()) {
         this.currentlySelectedKeys.add(node.getKey())
       }
+    } else if (selection && $isRangeSelection(selection)) {
+      for (const node of selection.getNodes()) {
+        if ($isDecoratorNode(node)) {
+          this.currentlySelectedKeys.add(node.getKey())
+        }
+      }
     }
 
     return this.currentlySelectedKeys
