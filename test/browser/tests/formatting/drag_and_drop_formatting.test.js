@@ -38,7 +38,7 @@ test.describe("Text drag-and-drop in editor", () => {
     await editor.flush()
 
     // Apply code formatting — should not crash
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await editor.flush()
 
     const fatalErrors = errors.filter(
