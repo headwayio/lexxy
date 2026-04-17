@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
-import { assertBlockHtml } from "../../helpers/assertions.js"
+import { normalizeHtml } from "../../helpers/html.js"
+import { assertBlockHtml, stripDynamicAttrs } from "../../helpers/assertions.js"
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control"
 
