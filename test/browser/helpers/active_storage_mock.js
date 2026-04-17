@@ -1,11 +1,11 @@
 // Mocks the Active Storage direct upload endpoints using Playwright route interception.
 // Returns a handle for asserting that the expected calls were made.
 
-// 1×1 transparent PNG used as a fallback when the fixture file doesn't exist on disk.
-const TRANSPARENT_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAAlwSFlzAAAWJQAAFiUBSVIk8AAAAA0lEQVQI12P4z8BQDwAEgAF/QualzQAAAABJRU5ErkJggg==",
-  "base64"
-)
+// 160×120 SVG placeholder served in place of real blob URLs. The explicit
+// dimensions guarantee the <img> has real height — otherwise the figure
+// collapses and the hover-activated floating controls cover the caption
+// textarea, making Playwright click checks fail.
+const PLACEHOLDER_IMAGE_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='120'><rect width='160' height='120' fill='#d8d5cf'/></svg>"
 
 export async function mockActiveStorageUploads(page, { delayBlobResponses = false, delayDirectUploadResponse = false } = {}) {
   let blobCounter = 0
@@ -92,16 +92,18 @@ export async function mockActiveStorageUploads(page, { delayBlobResponses = fals
     const contentType = blob?.content_type || "application/octet-stream"
 
     const fulfill = async () => {
-      // Serve the fixture file if it exists, otherwise return a 1×1 transparent PNG.
-      // The fixture file is only needed when delayBlobResponses is true (preview swap test).
-      // For other tests, always serve the tiny PNG to avoid layout shifts from full-size
-      // images that can break position-dependent tests like drag and drop.
+      // Serve the fixture file if it exists (needed for the preview-swap test with
+      // delayBlobResponses). Otherwise fall back to a 160×120 SVG placeholder — the
+      // explicit dimensions prevent the figure from collapsing, which would otherwise
+      // cover the caption textarea with hover-activated floating controls and break
+      // Playwright click checks. SVG also keeps the image small enough to avoid
+      // layout-shift breaking drag-and-drop tests.
       const fs = await import("fs")
       const fixturePath = `test/fixtures/files/${filename}`
       if (delayBlobResponses && fs.existsSync(fixturePath)) {
         await route.fulfill({ status: 200, contentType, path: fixturePath })
       } else {
-        await route.fulfill({ status: 200, contentType: "image/png", body: TRANSPARENT_PNG })
+        await route.fulfill({ status: 200, contentType: "image/svg+xml", body: PLACEHOLDER_IMAGE_SVG })
       }
     }
 

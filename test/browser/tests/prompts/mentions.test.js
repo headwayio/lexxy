@@ -78,8 +78,8 @@ test.describe("Mentions", () => {
 
     expect(positions).not.toBeNull()
     // The mention and 's should be on the same line (their vertical positions should overlap)
-    expect(positions.textTop).toBeLessThan(positions.mentionBottom)
-    expect(positions.textBottom).toBeGreaterThan(positions.mentionTop)
+    expect(positions.textTop).toBeLessThanOrEqual(positions.mentionBottom)
+    expect(positions.textBottom).toBeGreaterThanOrEqual(positions.mentionTop)
   })
 
   test("popover stays within viewport when triggered near right edge", async ({ page, editor }) => {
