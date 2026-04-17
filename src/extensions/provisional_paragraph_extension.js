@@ -1,4 +1,4 @@
-import { $getRoot, COMMAND_PRIORITY_HIGH, RootNode, SELECTION_CHANGE_COMMAND, defineExtension } from "lexical"
+import { $addUpdateTag, $getRoot, COMMAND_PRIORITY_HIGH, HISTORY_MERGE_TAG, RootNode, SELECTION_CHANGE_COMMAND, defineExtension } from "lexical"
 import { $descendantsMatching, $firstToLastIterator, $insertFirst, mergeRegister } from "@lexical/utils"
 import { $isProvisionalParagraphNode, ProvisionalParagraphNode } from "../nodes/provisional_paragraph_node"
 import LexxyExtension from "./lexxy_extension"
@@ -45,6 +45,12 @@ function $removeUnneededProvisionalParagraphs(rootNode) {
 }
 
 function $markAllProvisionalParagraphsDirty() {
+  // Selection-change-driven dirtying is derived reactivity, not a user action.
+  // Tag the triggered commit HISTORY_MERGE_TAG so it folds into whatever
+  // update caused the selection change rather than becoming its own undo
+  // step — otherwise block-select operations like Turn into take two Cmd+Z
+  // presses to revert (the first undoes this invisible mark-dirty commit).
+  $addUpdateTag(HISTORY_MERGE_TAG)
   for (const provisionalParagraph of $getAllProvisionalParagraphs()) {
     provisionalParagraph.markDirty()
   }
