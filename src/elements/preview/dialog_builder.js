@@ -1,6 +1,6 @@
-import { attachmentIconLabel, createElement } from "../helpers/html_helper"
-import { bytesToHumanSize } from "../helpers/storage_helper"
-import AttachmentIcons from "../elements/attachment_icons"
+import { attachmentIconLabel, createElement } from "../../helpers/html_helper"
+import { bytesToHumanSize, extractFileExtension } from "../../helpers/storage_helper"
+import AttachmentIcons from "../attachment_icons"
 
 // Shared <dialog>-based preview modal builder used by both the editor-side
 // custom element (src/elements/preview_modal.js) and the standalone show-page
@@ -56,7 +56,7 @@ export function buildPreviewDialog({ src, blobUrl, fileName, contentType, captio
 function buildHeader({ downloadHref, fileName, caption, fileSize }) {
   const header = createElement("div", { className: "lexxy-preview-modal__header" })
 
-  const ext = fileExtension(fileName)
+  const ext = extractFileExtension(fileName)
   const icon = createElement("span", {
     className: `lexxy-preview-modal__icon attachment--${ext}`,
     textContent: attachmentIconLabel(ext)
@@ -154,7 +154,7 @@ function buildTextPreview({ src, fileName }) {
 }
 
 function buildGenericFallback({ src, fileName, caption }) {
-  const ext = fileExtension(fileName)
+  const ext = extractFileExtension(fileName)
   const wrapper = createElement("div", { className: "lexxy-preview-modal__generic" })
 
   wrapper.appendChild(createElement("span", {
@@ -209,10 +209,6 @@ const TEXT_EXTENSIONS = new Set([
 
 function isTextType(contentType, fileName) {
   if (contentType?.startsWith("text/")) return true
-  const ext = fileExtension(fileName)
+  const ext = extractFileExtension(fileName)
   return ext && TEXT_EXTENSIONS.has(ext)
-}
-
-function fileExtension(fileName) {
-  return fileName ? fileName.split(".").pop().toLowerCase() : ""
 }

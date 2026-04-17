@@ -3,7 +3,7 @@ import { ActionTextAttachmentNode } from "./action_text_attachment_node"
 import { $isProvisionalParagraphNode } from "./provisional_paragraph_node"
 import { attachmentIconLabel, createElement, dispatch } from "../helpers/html_helper"
 import { loadFileIntoImage } from "../helpers/upload_helper"
-import { bytesToHumanSize } from "../helpers/storage_helper"
+import { bytesToHumanSize, extractFileExtension } from "../helpers/storage_helper"
 
 export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   static getType() {
@@ -111,7 +111,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   }
 
   #getFileExtension() {
-    return (this.fileName || "").split(".").pop().toLowerCase()
+    return extractFileExtension(this.fileName || "")
   }
 
   #createCaption() {

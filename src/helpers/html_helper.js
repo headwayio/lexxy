@@ -1,3 +1,5 @@
+import { extractFileExtension } from "./storage_helper"
+
 export function createElement(name, properties, content = "") {
   const element = document.createElement(name)
   for (const [ key, value ] of Object.entries(properties || {})) {
@@ -21,7 +23,7 @@ export function parseHtml(html) {
 }
 
 export function createAttachmentFigure(contentType, isPreviewable, fileName) {
-  const extension = fileName ? fileName.split(".").pop().toLowerCase() : "unknown"
+  const extension = extractFileExtension(fileName) || "unknown"
   return createElement("figure", {
     className: `attachment attachment--${isPreviewable ? "preview" : "file"} attachment--${extension}`,
     "data-content-type": contentType
