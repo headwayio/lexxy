@@ -36,6 +36,7 @@ import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection
 import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_drag_and_drop"
 import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS } from "../editor/block_helpers"
+import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS } from "./block_selection/highlight_css"
 
 export class BlockSelectionExtension extends LexxyExtension {
   #mode = "edit"
@@ -3504,23 +3505,23 @@ export class BlockSelectionExtension extends LexxyExtension {
           // so new text won't inherit highlight color.
           const checkStyle = selection.style ||
             ($isListItemNode(anchor) ? anchor.getTextStyle() : "")
-          if (checkStyle && this.#extractHighlightFromCSS(checkStyle)) {
+          if (checkStyle && extractHighlightFromCSS(checkStyle)) {
             if (this.#shouldRetainHighlightFromParent(anchor, checkStyle)) {
               // Retaining parent color — set the <li> element style so the
               // bullet marker is colored immediately (the transform can't
               // detect color from an empty item with no text nodes yet).
               if ($isListItemNode(anchor)) {
-                const highlight = this.#extractHighlightFromCSS(checkStyle)
+                const highlight = extractHighlightFromCSS(checkStyle)
                 if (highlight?.color) {
-                  anchor.setStyle(this.#mergeHighlightIntoCSS(anchor.getStyle(), { color: highlight.color }))
+                  anchor.setStyle(mergeHighlightIntoCSS(anchor.getStyle(), { color: highlight.color }))
                 }
               }
               return
             }
-            const cleared = this.#removeHighlightFromCSS(checkStyle) ?? ""
+            const cleared = removeHighlightFromCSS(checkStyle) ?? ""
             selection.setStyle(cleared)
             if ($isListItemNode(anchor)) {
-              anchor.setTextStyle(this.#removeHighlightFromCSS(anchor.getTextStyle()) ?? "")
+              anchor.setTextStyle(removeHighlightFromCSS(anchor.getTextStyle()) ?? "")
             }
           }
           // Always try to inherit parent color — handles cases where the new
@@ -3536,20 +3537,20 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (text.length > 0) return
 
       const style = anchor.getStyle()
-      if (this.#extractHighlightFromCSS(style)) {
+      if (extractHighlightFromCSS(style)) {
         // Has highlight — check if parent retains it
         if (this.#shouldRetainHighlightFromParent(anchor, style)) {
           let listItem = anchor.getParent()
           while (listItem && !$isListItemNode(listItem)) listItem = listItem.getParent()
           if (listItem) {
-            const highlight = this.#extractHighlightFromCSS(style)
+            const highlight = extractHighlightFromCSS(style)
             if (highlight?.color) {
-              listItem.setStyle(this.#mergeHighlightIntoCSS(listItem.getStyle(), { color: highlight.color }))
+              listItem.setStyle(mergeHighlightIntoCSS(listItem.getStyle(), { color: highlight.color }))
             }
           }
           return
         }
-        const cleared = this.#removeHighlightFromCSS(style)
+        const cleared = removeHighlightFromCSS(style)
         anchor.setStyle(cleared ?? "")
         selection.setStyle(cleared ?? "")
       }
@@ -3675,12 +3676,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Parse highlight properties directly from the raw CSS string.
     // getStyleObjectFromCSS can fail to parse var() values in some build
     // configurations, so we extract color/background-color manually.
-    const firstHighlight = this.#extractHighlightFromCSS(rawStyle)
+    const firstHighlight = extractHighlightFromCSS(rawStyle)
     if (!firstHighlight) return
 
     // Verify all parent text nodes share the same highlight colors
     const allMatch = textNodes.every(t => {
-      const h = this.#extractHighlightFromCSS(t.getStyle())
+      const h = extractHighlightFromCSS(t.getStyle())
       return h &&
         (h.color || "") === (firstHighlight.color || "") &&
         (h["background-color"] || "") === (firstHighlight["background-color"] || "")
@@ -3691,7 +3692,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     const childTextNodes = this.#getAllTextNodesForItem(node)
 
     for (const textNode of childTextNodes) {
-      const newStyle = this.#mergeHighlightIntoCSS(textNode.getStyle(), firstHighlight)
+      const newStyle = mergeHighlightIntoCSS(textNode.getStyle(), firstHighlight)
       textNode.setStyle(newStyle)
     }
 
@@ -3699,53 +3700,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     // continued typing inherits the parent's color. The bullet marker color
     // is handled by the #registerBulletMarkerColorSync transform.
     if ($isListItemNode(node)) {
-      node.setTextStyle(this.#mergeHighlightIntoCSS(node.getTextStyle(), firstHighlight))
+      node.setTextStyle(mergeHighlightIntoCSS(node.getTextStyle(), firstHighlight))
     }
     const selection = $getSelection()
     if ($isRangeSelection(selection)) {
-      selection.setStyle(this.#mergeHighlightIntoCSS(selection.style, firstHighlight))
+      selection.setStyle(mergeHighlightIntoCSS(selection.style, firstHighlight))
     }
-  }
-
-  // Extract color and background-color from a raw CSS string. Returns an
-  // object with those properties, or null if neither is present. Uses manual
-  // parsing because getStyleObjectFromCSS (from @lexical/selection) fails to
-  // parse CSS var() values in some Rollup build configurations.
-  #extractHighlightFromCSS(css) {
-    if (!css) return null
-    const result = {}
-    const colorMatch = css.match(/(?:^|;\s*)color\s*:\s*([^;]+)/)
-    const bgMatch = css.match(/(?:^|;\s*)background-color\s*:\s*([^;]+)/)
-    if (colorMatch) result.color = colorMatch[1].trim()
-    if (bgMatch) result["background-color"] = bgMatch[1].trim()
-    return (result.color || result["background-color"]) ? result : null
-  }
-
-  // Merge highlight properties into an existing CSS string, preserving
-  // other properties (bold, italic, font-size, etc.).
-  #mergeHighlightIntoCSS(existingCSS, highlight) {
-    const parts = (existingCSS || "").split(";").filter(s => s.trim())
-    const nonHighlight = parts.filter(p => {
-      const key = p.split(":")[0]?.trim()
-      return key !== "color" && key !== "background-color"
-    })
-    if (highlight.color) nonHighlight.push(`color: ${highlight.color}`)
-    if (highlight["background-color"]) nonHighlight.push(`background-color: ${highlight["background-color"]}`)
-    return nonHighlight.join(";") + ";"
-  }
-
-  // Remove color and background-color from a CSS string, preserving other props.
-  // Returns null (not "") when no properties remain — callers should skip
-  // setStyle entirely for null to avoid setting an explicit empty style that
-  // overrides the CSS-inherited default text color.
-  #removeHighlightFromCSS(css) {
-    if (!css) return null
-    const parts = css.split(";").filter(s => s.trim())
-    const kept = parts.filter(p => {
-      const key = p.split(":")[0]?.trim()
-      return key !== "color" && key !== "background-color"
-    })
-    return kept.length > 0 ? kept.join(";") + ";" : null
   }
 
   // When a highlight color is applied to a parent list item, propagate it to
@@ -3820,28 +3780,28 @@ export class BlockSelectionExtension extends LexxyExtension {
         })
 
         const highlight = textNodes.length > 0
-          ? this.#extractHighlightFromCSS(textNodes[0].getStyle())
+          ? extractHighlightFromCSS(textNodes[0].getStyle())
           : null
 
-        const liHighlight = this.#extractHighlightFromCSS(node.getStyle())
+        const liHighlight = extractHighlightFromCSS(node.getStyle())
 
         // For empty items, fall back to textStyle (controls what color new
         // text will be typed in — set by inheritance or Enter retention).
         const effectiveHighlight = highlight
-          || this.#extractHighlightFromCSS(node.getTextStyle())
+          || extractHighlightFromCSS(node.getTextStyle())
 
         if (effectiveHighlight?.color) {
           // Text (or pending text) is colored → set <li> color for bullet marker
           const allSameColor = !highlight || textNodes.every(t => {
-            const h = this.#extractHighlightFromCSS(t.getStyle())
+            const h = extractHighlightFromCSS(t.getStyle())
             return h && (h.color || "") === (effectiveHighlight.color || "")
           })
           if (allSameColor && (liHighlight?.color || "") !== effectiveHighlight.color) {
-            node.setStyle(this.#mergeHighlightIntoCSS(node.getStyle(), { color: effectiveHighlight.color }))
+            node.setStyle(mergeHighlightIntoCSS(node.getStyle(), { color: effectiveHighlight.color }))
           }
         } else if (liHighlight?.color) {
           // No text or pending highlight → clear <li> color
-          node.setStyle(this.#removeHighlightFromCSS(node.getStyle()) ?? "")
+          node.setStyle(removeHighlightFromCSS(node.getStyle()) ?? "")
         }
       })
     )
@@ -3963,8 +3923,8 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #highlightColorsMatch(style1, style2) {
-    const s1 = this.#extractHighlightFromCSS(style1) || {}
-    const s2 = this.#extractHighlightFromCSS(style2) || {}
+    const s1 = extractHighlightFromCSS(style1) || {}
+    const s2 = extractHighlightFromCSS(style2) || {}
     return (s1.color || "") === (s2.color || "") &&
       (s1["background-color"] || "") === (s2["background-color"] || "")
   }
