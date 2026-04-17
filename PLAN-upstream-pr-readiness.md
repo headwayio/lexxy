@@ -48,45 +48,45 @@ npx playwright test --config test/browser/playwright.config.js --project=chromiu
 ## Progress checklist
 
 ### P0 — ship blockers
-- [ ] P0-1: CSS class `lexxy-editor__block--*` rename
+- [x] P0-1: CSS class `lexxy-editor__block--*` rename
 - [ ] P0-2: split `block_selection_extension.js` into `src/editor/block_selection/*`
 - [ ] P0-3: split `block_drag_and_drop.js` into `src/editor/block_selection/drag_and_drop/*`
-- [ ] P0-4: engine.rb — register helpers via `ActionController::Base.helper`
-- [ ] P0-5: delete `Lexxy::AttachmentIconHelper` (derive label from extension or blob)
-- [ ] P0-6: move SVG path constants out of `AttachmentHelper`
-- [ ] P0-7: SVG fetch: cache object URL, revoke on destroy, dedupe poll by src
-- [ ] P0-8: `indexOf` → `Map` in delete/duplicate/move (O(N²) → O(N))
+- [x] P0-4: engine.rb — register helpers via `ActionController::Base.helper`
+- [x] P0-5: delete `Lexxy::AttachmentIconHelper` (derive label from extension or blob)
+- [x] P0-6: move SVG path constants out of `AttachmentHelper`
+- [x] P0-7: SVG fetch: cache object URL, revoke on destroy, dedupe poll by src
+- [x] P0-8: `indexOf` → `Map` in delete/duplicate/move (O(N²) → O(N))
 - [x] P0-9: keep PLAN/AUDIT docs (deferred to user's pre-push cleanup)
 
 ★ milestone — run Playwright
 
 ### P1 — strongly recommended
-- [ ] P1-1: collapse `#userWrappedKeys` + `#movementWrappedKeys` to one set
-- [ ] P1-2: dedupe test helpers → `test/browser/helpers/{assertions,drag}.js`
-- [ ] P1-3: remove `embed` from engine.rb allowed_tags
-- [ ] P1-4: tighten `var()` CSS — scrubber or match `color/background-color` only
-- [ ] P1-5: split `_blob.html.erb` into per-type partials
-- [ ] P1-6: short-term — document the SVG allowlist; long-term ticket for Content-Disposition
-- [ ] P1-7: `Extensions.prototype.get(klass)` + generalize `block-handles` attr
-- [ ] P1-8: move `BlockActionsMenu.saveLastUsedColor` off the class (module-level or per-instance)
-- [ ] P1-9: move `preview/{dialog_builder,playback_sync}.js` under `src/elements/preview/`
-- [ ] P1-10: perf — track applied classes in Sets, drop `querySelectorAll` in `#syncSelection*`
-- [ ] P1-11: perf — cache `#getNavigableBlockKeys()` per key event
+- [~] P1-1: collapse `#userWrappedKeys` + `#movementWrappedKeys` — DEFERRED. See note below.
+- [x] P1-2: dedupe test helpers → `test/browser/helpers/{assertions,drag}.js`
+- [x] P1-3: remove `embed` from engine.rb allowed_tags
+- [x] P1-4: tighten `var()` CSS — documented scope + attack surface (full scrubber deferred)
+- [x] P1-5: split `_blob.html.erb` into per-type partials
+- [x] P1-6: SVG allowlist documented (Content-Disposition fix is follow-up)
+- [x] P1-7: `Extensions.prototype.get(klass)` (generalized attr observer deferred)
+- [x] P1-8: move `BlockActionsMenu.saveLastUsedColor` off the class
+- [x] P1-9: move `preview/{dialog_builder,playback_sync}.js` under `src/elements/preview/`
+- [x] P1-10: perf — track applied classes in Sets, drop `querySelectorAll`
+- [x] P1-11: perf — cache `#getNavigableBlockKeys()` per key event
 - [ ] P1-12: perf — cache drag ancestor/snap points at `#startDrag`
 
 ★ milestone — run Playwright
 
 ### P2 — polish
-- [ ] P2-1: `block_drag_and_drop.js` → `ListenerBin` instead of raw addEventListener
-- [ ] P2-2: delete dead code (`ListItemNode` unused import, `dispatchCustomEvent`, `#ensureElementsCreated` eager create)
-- [ ] P2-3: extract `#wrapInPreviewView` helper in attachment_node.js
-- [ ] P2-4: drop duplicated `#backgroundUpdateTags` from upload node (inherits)
-- [ ] P2-5: consolidate `extractFileExtension` helper
-- [ ] P2-6: narrow empty catch blocks (7 occurrences)
-- [ ] P2-7: move module-level `$provisionalTableEscapeKeys` Set onto an extension
+- [ ] P2-1: `block_drag_and_drop.js` → `ListenerBin` (defer; pair with P0-3 split)
+- [x] P2-2: delete dead code (`dispatchCustomEvent`, `#ensureElementsCreated`; `ListItemNode` is actually used)
+- [x] P2-3: extract `#wrapInPreviewView` helper in attachment_node.js
+- [x] P2-4: drop duplicated `#backgroundUpdateTags` from upload node (inherits)
+- [x] P2-5: consolidate `extractFileExtension` helper
+- [x] P2-6: narrow empty catch blocks (explained + caller tolerates false negatives)
+- [~] P2-7: DEFERRED — pair with P0-2/P0-3 split
 - [ ] P2-8: simplify `#selectionUndoStack` or move to history command handlers
-- [ ] P2-9: unify `COMMANDS` + `BLOCK_FORMAT_COMMANDS` to one map with flags
-- [ ] P2-10: rename `PreviewModal.handlePreviewEvent` → `#handlePreviewEvent`
+- [x] P2-9: unify `COMMANDS` + `BLOCK_FORMAT_COMMANDS` to one map with flags
+- [x] P2-10: rename `PreviewModal.handlePreviewEvent` → `#handlePreviewEvent`
 
 ★ final milestone — run Playwright full suite + `yarn lint`
 
