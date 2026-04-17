@@ -131,28 +131,15 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const figure = this.createAttachmentFigure()
 
     if (this.isAudio) {
-      const previewView = createElement("div", { className: "attachment__preview-view" })
-      previewView.appendChild(this.#createIconLabel())
-      previewView.appendChild(this.#createFileCaption())
-      previewView.appendChild(this.#createAudioPlayer())
-      figure.appendChild(previewView)
-
+      figure.appendChild(this.#wrapInPreviewView(this.#createIconLabel(), this.#createFileCaption(), this.#createAudioPlayer()))
       // Audio's card view is identical DOM to the preview-view header (icon + name),
       // so defer creation until it's actually needed (collapsed mode).
       if (this.collapsed) figure.appendChild(this.#createCardView())
     } else if (this.isVideo) {
-      const previewView = createElement("div", { className: "attachment__preview-view" })
-      previewView.appendChild(this.#createVideoPlayer())
-      previewView.appendChild(this.#createEditableCaption())
-      figure.appendChild(previewView)
-
+      figure.appendChild(this.#wrapInPreviewView(this.#createVideoPlayer(), this.#createEditableCaption()))
       if (this.collapsed) figure.appendChild(this.#createCardView())
     } else if (this.isPreviewableAttachment) {
-      const previewView = createElement("div", { className: "attachment__preview-view" })
-      previewView.appendChild(this.#createDOMForImage())
-      previewView.appendChild(this.#createEditableCaption())
-      figure.appendChild(previewView)
-
+      figure.appendChild(this.#wrapInPreviewView(this.#createDOMForImage(), this.#createEditableCaption()))
       // Card view is hidden by CSS until the user collapses the attachment.
       // Skip creating it eagerly — significant DOM cost when rendering many
       // attachments at once. updateDOM recreates it when `collapsed` flips.
@@ -168,6 +155,12 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     figure.addEventListener("dblclick", (event) => this.#handlePreviewClick(event))
 
     return figure
+  }
+
+  #wrapInPreviewView(...children) {
+    const previewView = createElement("div", { className: "attachment__preview-view" })
+    children.forEach(child => previewView.appendChild(child))
+    return previewView
   }
 
   updateDOM(prevNode, dom) {
