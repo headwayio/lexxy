@@ -83,15 +83,14 @@ test.describe("Mentions", () => {
   })
 
   test("popover stays within viewport when triggered near right edge", async ({ page, editor }) => {
-    await page.setViewportSize({ width: 400, height: 600 })
+    // 600px viewport × 300px editor with margin-left:auto puts the editor's
+    // right edge at the viewport's right edge. "Some text @" comfortably fits
+    // on a single line regardless of block-handles gutter config (needs ≥70px
+    // of content). The @ lands near the viewport's right edge so the popover's
+    // natural anchor overflows and the right-clamp logic must engage.
+    await page.setViewportSize({ width: 600, height: 600 })
     await editor.locator.evaluate((el) => {
-      // Disable block-handles so the editor uses the 1ch content padding this
-      // test was designed around. With block-handles on (our branch's default)
-      // the 62px left/right gutter leaves only ~26px of content in a 150px-wide
-      // editor, which breaks the popover-positioning math on strict-layout
-      // engines (webkit/Linux in CI).
-      el.setAttribute("block-handles", "false")
-      el.style.width = "150px"
+      el.style.width = "300px"
       el.style.marginLeft = "auto"
     })
 
@@ -104,7 +103,7 @@ test.describe("Mentions", () => {
       const r = el.getBoundingClientRect()
       return { left: r.left, right: r.right }
     })
-    expect(rect.right).toBeLessThanOrEqual(400)
+    expect(rect.right).toBeLessThanOrEqual(600)
     expect(rect.left).toBeGreaterThanOrEqual(0)
   })
 })
