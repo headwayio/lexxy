@@ -1,6 +1,6 @@
 import Lexxy from "../config/lexxy"
-import { buildPreviewDialog } from "../preview/dialog_builder"
-import { attachPlaybackSync, installPauseOthers } from "../preview/playback_sync"
+import { buildPreviewDialog } from "./preview/dialog_builder"
+import { attachPlaybackSync, installPauseOthers } from "./preview/playback_sync"
 
 // <lexxy-preview-modal> is registered by the editor when the host app opts
 // in via Lexxy.configure({ global: { previewModal: true } }). It listens for
