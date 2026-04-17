@@ -11,6 +11,7 @@ import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, 
 import { DragGhost } from "./block_drag_and_drop/ghost"
 import { AutoScroll } from "./block_drag_and_drop/autoscroll"
 import { DropIndicator } from "./block_drag_and_drop/drop_indicator"
+import { findNearestSnapPoint, getElementNestingDepth, nextContentSibling, previousContentSibling } from "./block_drag_and_drop/geometry"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>
@@ -978,7 +979,7 @@ export class BlockDragAndDrop {
     // the immediate next sibling. The snap system offers depth selection —
     // same depth is a no-op, but dragging left enables multi-level outdent.
 
-    const targetDepth = this.#getElementNestingDepth(resolvedBlock, root)
+    const targetDepth = getElementNestingDepth(resolvedBlock, root)
     const closestList = resolvedBlock.closest("ul, ol")
     const listType = closestList?.tagName?.toLowerCase() || null
     const listPadding = closestList
@@ -1018,7 +1019,7 @@ export class BlockDragAndDrop {
         const snapPoints = this.#getDropSnapPoints(resolvedBlock, position, root)
         const validSnaps = snapPoints.filter(p => p.depth >= 0 && p.depth <= targetDepth)
         if (validSnaps.length > 1) {
-          const snap = this.#findNearestSnapPoint(validSnaps, event.clientX)
+          const snap = findNearestSnapPoint(validSnaps, event.clientX)
           if (snap.depth < targetDepth) {
             const snapContentLeft = snap.pixelLeft + listPadding
             const snapBulletLeft = snap.depth === 0 ? snapContentLeft : snapContentLeft - 12
@@ -1064,7 +1065,7 @@ export class BlockDragAndDrop {
       const validSnaps = snapPoints.filter(p => p.depth >= minDepth && p.depth <= targetDepth)
       if (validSnaps.length >= 1) {
         const snap = validSnaps.length > 1
-          ? this.#findNearestSnapPoint(validSnaps, event.clientX)
+          ? findNearestSnapPoint(validSnaps, event.clientX)
           : validSnaps[0]
         const snapContentLeft = snap.pixelLeft + listPadding
         const snapBulletLeft = snap.depth === 0 ? snapContentLeft : snapContentLeft - 12
@@ -1165,39 +1166,6 @@ export class BlockDragAndDrop {
     return points.sort((a, b) => a.depth - b.depth)
   }
 
-  // Find the snap point whose pixelLeft is closest to the cursor X
-  #findNearestSnapPoint(points, clientX) {
-    if (points.length === 0) return { depth: 0, pixelLeft: 0 }
-
-    let best = points[0]
-    let bestDist = Math.abs(clientX - best.pixelLeft)
-
-    for (let i = 1; i < points.length; i++) {
-      const dist = Math.abs(clientX - points[i].pixelLeft)
-      if (dist < bestDist) {
-        best = points[i]
-        bestDist = dist
-      }
-    }
-
-    return best
-  }
-
-  // Count how deep a block element is nested (0 = root child, 1 = in a list, etc.)
-  #getElementNestingDepth(element, root) {
-    let depth = 0
-    let current = element
-
-    while (current && current !== root) {
-      if (current.tagName === "UL" || current.tagName === "OL") {
-        depth++
-      }
-      current = current.parentElement
-    }
-
-    return depth
-  }
-
   // -- Drop indicator positioning ---------------------------------------------
 
   #showDropIndicator(target) {
@@ -1216,7 +1184,7 @@ export class BlockDragAndDrop {
     if (target.position === "before") {
       // Center the indicator between the previous sibling and this block
       // so that "after A" and "before B" converge to the same position.
-      const prev = this.#previousContentSibling(target.element, root)
+      const prev = previousContentSibling(target.element, root)
       if (prev) {
         top = (prev.getBoundingClientRect().bottom + blockRect.top) / 2 - editorRect.top - lineOffset
       } else if (target.element.tagName === "LI") {
@@ -1237,7 +1205,7 @@ export class BlockDragAndDrop {
       }
     } else {
       // "After" and "inside": center between this block and the next sibling
-      const next = this.#nextContentSibling(target.element, root)
+      const next = nextContentSibling(target.element, root)
       if (next && target.position === "after") {
         top = (blockRect.bottom + next.getBoundingClientRect().top) / 2 - editorRect.top - lineOffset
       } else if (target.position === "after" && target.element.tagName === "LI") {
@@ -1260,28 +1228,6 @@ export class BlockDragAndDrop {
   #hideDropIndicator() {
     this.#dropIndicator.hide()
   }
-
-  #previousContentSibling(element, root) {
-    let el = element.previousElementSibling
-    while (el && el !== root && (el.tagName === "BR" || el.hidden ||
-           el.classList.contains("hidden") || el.classList.contains("lexxy-block-handle") ||
-           el.classList.contains("lexxy-block-add") || el.classList.contains("lexxy-drop-indicator"))) {
-      el = el.previousElementSibling
-    }
-    return (el && el !== root) ? el : null
-  }
-
-  #nextContentSibling(element, root) {
-    let el = element.nextElementSibling
-    while (el && el !== root && (el.tagName === "BR" || el.hidden ||
-           el.classList.contains("hidden") || el.classList.contains("lexxy-block-handle") ||
-           el.classList.contains("lexxy-block-add") || el.classList.contains("lexxy-drop-indicator"))) {
-      el = el.nextElementSibling
-    }
-    return (el && el !== root) ? el : null
-  }
-
-  // -- Drag ghost (floating clone follows cursor) ------------------------------
 
   // -- Drop execution ---------------------------------------------------------
 
