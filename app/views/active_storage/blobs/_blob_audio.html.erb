@@ -1,0 +1,12 @@
+<% extension = blob.filename.extension.downcase %>
+
+<figure class="attachment attachment--audio attachment--<%= extension %>">
+  <div class="attachment__file-info">
+    <span class="attachment__icon"><%= extension.upcase %></span>
+    <%= lexxy_attachment_file_caption(blob) %>
+    <%= lexxy_attachment_actions(blob) %>
+  </div>
+  <%= tag.audio controls: true, preload: "metadata" do %>
+    <%= tag.source src: url_for(blob), type: blob.content_type %>
+  <% end %>
+</figure>

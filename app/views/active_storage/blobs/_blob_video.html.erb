@@ -1,0 +1,11 @@
+<% extension = blob.filename.extension.downcase %>
+
+<figure class="attachment attachment--preview attachment--<%= extension %>">
+  <div class="attachment__media">
+    <%= tag.video controls: true, preload: "metadata" do %>
+      <%= tag.source src: url_for(blob), type: blob.content_type %>
+    <% end %>
+  </div>
+  <%= lexxy_attachment_preview_caption(blob, extension.upcase) %>
+  <%= lexxy_attachment_actions(blob) %>
+</figure>
