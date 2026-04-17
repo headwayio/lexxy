@@ -3,9 +3,7 @@ import { ToolbarDropdown } from "../toolbar_dropdown"
 import { registerEventListener } from "../../helpers/listener_helper"
 
 export class LinkDropdown extends ToolbarDropdown {
-  connectedCallback() {
-    super.connectedCallback()
-
+  initialize() {
     this.input = this.querySelector("input")
 
     this.track(

@@ -5,14 +5,24 @@ export class ToolbarDropdown extends HTMLElement {
   #listeners = new ListenerBin()
 
   connectedCallback() {
-    this.container = this.closest("details")
+    // Defer to next microtask — when dynamically created editors build the
+    // toolbar via createElement + innerHTML (#createDefaultToolbar in editor.js),
+    // connectedCallback fires for child custom elements (LinkDropdown,
+    // HighlightDropdown) during innerHTML parsing, BEFORE the toolbar is
+    // prepended to the document. At that point this.closest("details") returns
+    // null because the element isn't connected yet. The microtask runs after
+    // the full tree is inserted into the DOM.
+    queueMicrotask(() => {
+      this.container = this.closest("details")
+      if (!this.container) return
 
-    this.#listeners.track(
-      registerEventListener(this.container, "toggle", this.#handleToggle),
-      registerEventListener(this.container, "keydown", this.#handleKeyDown)
-    )
+      this.#listeners.track(
+        registerEventListener(this.container, "toggle", this.#handleToggle),
+        registerEventListener(this.container, "keydown", this.#handleKeyDown)
+      )
 
-    this.#onToolbarEditor(this.initialize.bind(this))
+      this.#onToolbarEditor(this.initialize.bind(this))
+    })
   }
 
   disconnectedCallback() {
@@ -40,7 +50,11 @@ export class ToolbarDropdown extends HTMLElement {
   }
 
   close() {
-    this.editor.focus()
+    if (this.editorElement?.hasBlockSelection) {
+      this.editor.getRootElement()?.focus({ preventScroll: true })
+    } else {
+      this.editor.focus()
+    }
     this.container.open = false
   }
 
