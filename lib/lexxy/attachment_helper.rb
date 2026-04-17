@@ -1,24 +1,19 @@
 module Lexxy
-  # View helpers used by app/views/active_storage/blobs/_blob.html.erb to keep
-  # the partial free of tag-concatenation logic. Included into ActionView::Base
-  # by Lexxy::Engine.
+  # View helpers for app/views/active_storage/blobs/_blob.html.erb. Registered
+  # as a controller helper by Lexxy::Engine so it's available anywhere the
+  # blob partial renders (ActionText show-page output, direct renders).
   module AttachmentHelper
-    # Two <svg> icons match attachment_icons.js on the JS side — keep the path
-    # data in sync. (Preview = eye, download = arrow-into-tray.)
-    PREVIEW_ICON_PATH = "M9 4C5.13 4 1.86 6.42 0.5 9.5C1.86 12.58 5.13 15 9 15C12.87 15 16.14 12.58 17.5 9.5C16.14 6.42 12.87 4 9 4ZM9 13C6.79 13 5 11.21 5 9C5 6.79 6.79 5 9 5C11.21 5 13 6.79 13 9C13 11.21 11.21 13 9 13ZM9 6.5C7.62 6.5 6.5 7.62 6.5 9C6.5 10.38 7.62 11.5 9 11.5C10.38 11.5 11.5 10.38 11.5 9C11.5 7.62 10.38 6.5 9 6.5Z".freeze
-    DOWNLOAD_ICON_PATH = "M9 12L4 7h3V2h4v5h3L9 12zM3 14h12v2H3v-2z".freeze
-
     def lexxy_attachment_preview_action(blob)
       link_to rails_blob_path(blob, disposition: :inline),
               class: "attachment__action", target: "_blank", title: "Open", aria: { label: "Open" } do
-        lexxy_attachment_icon_svg(PREVIEW_ICON_PATH)
+        lexxy_inline_svg("lexxy/preview.svg")
       end
     end
 
     def lexxy_attachment_download_action(blob)
       link_to url_for(blob),
               class: "attachment__action", download: blob.filename, title: "Download", aria: { label: "Download" } do
-        lexxy_attachment_icon_svg(DOWNLOAD_ICON_PATH)
+        lexxy_inline_svg("lexxy/download.svg")
       end
     end
 
@@ -29,8 +24,7 @@ module Lexxy
     # allowlist to cover common SVG primitives.
     def lexxy_attachment_image_tag(blob)
       if blob.content_type == "image/svg+xml"
-        markup = blob.download.sub(/\A<\?xml[^>]*\?>\s*/, "")
-        markup.html_safe
+        blob.download.sub(/\A<\?xml[^>]*\?>\s*/, "").html_safe
       else
         image_tag(url_for(blob))
       end
@@ -54,6 +48,16 @@ module Lexxy
       tag.figcaption(lexxy_attachment_name_and_size(blob), class: "attachment__caption")
     end
 
+    # Read the SVG file from the engine's asset paths and emit it inline so
+    # CSS can theme its paths via currentColor (an <img> tag can't). Cached
+    # once per filename for the lifetime of the process.
+    def lexxy_inline_svg(path)
+      LEXXY_INLINE_SVG_CACHE[path] ||= Lexxy::Engine.root.join("app", "assets", "images", path).read.html_safe
+    end
+
+    LEXXY_INLINE_SVG_CACHE = {}
+    private_constant :LEXXY_INLINE_SVG_CACHE
+
     private
       # When the ActionText::Attachment has a caption and the editor-managed
       # `data-caption-hidden` flag is NOT set, we display the caption as the
@@ -73,7 +77,7 @@ module Lexxy
         end
 
         name_tag = tag.span(display_name, class: "attachment__name")
-        size_tag = show_size ? tag.span(number_to_human_size(blob.byte_size), class: "attachment__size") : ActiveSupport::SafeBuffer.new
+        size_tag = show_size ? tag.span(number_to_human_size(blob.byte_size), class: "attachment__size") : "".html_safe
         name_tag + size_tag
       end
 
@@ -85,10 +89,6 @@ module Lexxy
 
         caption = blob.caption
         caption if caption.present?
-      end
-
-      def lexxy_attachment_icon_svg(path_data)
-        tag.svg(tag.path(d: path_data), viewBox: "0 0 18 18", xmlns: "http://www.w3.org/2000/svg")
       end
   end
 end
