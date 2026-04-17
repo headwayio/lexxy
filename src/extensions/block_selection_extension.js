@@ -931,15 +931,22 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Remember position in the document so arrow keys know where to start.
     // Find the neighbors BEFORE deleting.
     const allKeys = this.#getDocumentOrderBlockKeys()
+    const keyIdx = new Map(allKeys.map((k, i) => [ k, i ]))
     const selectedSet = new Set(this.#selectedBlockKeys)
     let nextKey = null
     let prevKey = null
 
-    const lastSelectedIdx = Math.max(...[ ...selectedSet ].map(k => allKeys.indexOf(k)))
+    let lastSelectedIdx = -1
+    let firstSelectedIdx = allKeys.length
+    for (const key of selectedSet) {
+      const idx = keyIdx.get(key)
+      if (idx == null) continue
+      if (idx > lastSelectedIdx) lastSelectedIdx = idx
+      if (idx < firstSelectedIdx) firstSelectedIdx = idx
+    }
     for (let i = lastSelectedIdx + 1; i < allKeys.length; i++) {
       if (!selectedSet.has(allKeys[i])) { nextKey = allKeys[i]; break }
     }
-    const firstSelectedIdx = Math.min(...[ ...selectedSet ].map(k => allKeys.indexOf(k)))
     for (let i = firstSelectedIdx - 1; i >= 0; i--) {
       if (!selectedSet.has(allKeys[i])) { prevKey = allKeys[i]; break }
     }
@@ -1467,8 +1474,9 @@ export class BlockSelectionExtension extends LexxyExtension {
   #handleDuplicate() {
     this.editor.update(() => {
       const allKeys = this.#getDocumentOrderBlockKeys()
+      const keyIdx = new Map(allKeys.map((k, i) => [ k, i ]))
       const rootKeys = this.#filterToRootKeys([ ...this.#selectedBlockKeys ])
-      rootKeys.sort((a, b) => allKeys.indexOf(a) - allKeys.indexOf(b))
+      rootKeys.sort((a, b) => keyIdx.get(a) - keyIdx.get(b))
 
       const newKeys = []
       // Insert clones after the LAST root key (+ its wrapper) so the group stays together
@@ -1689,7 +1697,8 @@ export class BlockSelectionExtension extends LexxyExtension {
     // selected children to be siblings of their root key.
     const rootKeys = this.#filterToRootKeys(selectedKeys)
     const allKeys = this.#getDocumentOrderBlockKeys()
-    rootKeys.sort((a, b) => allKeys.indexOf(a) - allKeys.indexOf(b))
+    const keyIdx = new Map(allKeys.map((k, i) => [ k, i ]))
+    rootKeys.sort((a, b) => keyIdx.get(a) - keyIdx.get(b))
 
     this.pushSelectionHistory()
     this.editor.update(() => {
