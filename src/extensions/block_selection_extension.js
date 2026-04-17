@@ -60,6 +60,12 @@ export class BlockSelectionExtension extends LexxyExtension {
   #selectionUndoStack = [] // parallel stack for block selection state
   #selectionRedoStack = []
   #interactionHandlersRegistered = false
+  // Elements currently carrying transient selection-group decorations, tracked
+  // so cleanup can iterate the set instead of querySelectorAll-ing the root
+  // on every selection change (hot path during shift-extend on large docs).
+  #selectionGroupElements = new Set()
+  #parentHeightElements = new Set()
+  #flushTopElements = new Set()
 
   get enabled() {
     return this.editorElement.supportsRichText
@@ -338,9 +344,10 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   #syncSelectionGroupClasses() {
     // Clear previous group classes from blocks AND structural wrappers
-    for (const el of this.root?.querySelectorAll(".lexxy-editor__block--select-first, .lexxy-editor__block--select-last, .lexxy-editor__block--select-mid") || []) {
+    for (const el of this.#selectionGroupElements) {
       el.classList.remove("lexxy-editor__block--select-first", "lexxy-editor__block--select-last", "lexxy-editor__block--select-mid")
     }
+    this.#selectionGroupElements.clear()
 
     if (this.#selectedBlockKeys.size === 0) return
 
@@ -380,6 +387,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       if (hasPrev || hasNext) {
         el.classList.add("lexxy-editor__block--select-mid")
+        this.#selectionGroupElements.add(el)
       }
     }
 
@@ -398,8 +406,11 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!hasMidBelow) el.classList.add("lexxy-editor__block--select-last")
     }
 
-    // Also mark structural wrappers at group boundaries
-    for (const wrapper of this.root?.querySelectorAll("li.lexxy-nested-listitem.lexxy-editor__block--select-mid") || []) {
+    // Also mark structural wrappers at group boundaries. Iterate the tracked
+    // set (the nested-listitems picked up during the mid-classification pass)
+    // instead of querySelectorAll-ing the root.
+    for (const wrapper of this.#selectionGroupElements) {
+      if (wrapper.tagName !== "LI" || !wrapper.classList.contains("lexxy-nested-listitem")) continue
       if (!this.#hasSelectedNeighborBelow(wrapper)) {
         wrapper.classList.add("lexxy-editor__block--select-last")
       }
@@ -1864,12 +1875,14 @@ export class BlockSelectionExtension extends LexxyExtension {
   // flat-list 32px edge items), deeply nested parents use 30px uniform pitch.
   #syncParentSelectionHeight() {
     // Clear previous parent height variables and flush-top class
-    for (const el of this.root?.querySelectorAll("[style*='--parent-selection-height']") || []) {
+    for (const el of this.#parentHeightElements) {
       el.style.removeProperty("--parent-selection-height")
     }
-    for (const el of this.root?.querySelectorAll(".lexxy-editor__block--flush-top") || []) {
+    this.#parentHeightElements.clear()
+    for (const el of this.#flushTopElements) {
       el.classList.remove("lexxy-editor__block--flush-top")
     }
+    this.#flushTopElements.clear()
 
     for (const key of this.#selectedBlockKeys) {
       const el = this.editor.getElementByKey(key)
@@ -1899,6 +1912,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             prevSib.querySelector(`.${BLOCK_SELECTED_CLASS}`)) {
           topExt = 0
           el.classList.add("lexxy-editor__block--flush-top")
+          this.#flushTopElements.add(el)
         }
       }
 
@@ -1938,6 +1952,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       const height = (bottom - parentRect.top) + topExt + bottomExt
       el.style.setProperty("--parent-selection-height", `${height}px`)
+      this.#parentHeightElements.add(el)
     }
 
   }
