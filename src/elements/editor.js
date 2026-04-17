@@ -10,6 +10,7 @@ import { CodeHighlightNode, CodeNode, registerCodeHighlighting } from "@lexical/
 import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
 import { HORIZONTAL_DIVIDER } from "../editor/markdown/horizontal_divider_transformer"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
+import { registerListBlockShortcuts } from "../editor/markdown/list_heading_shortcut"
 import { createEmptyHistoryState, registerHistory } from "@lexical/history"
 
 import theme from "../config/theme"
@@ -37,6 +38,7 @@ import { TrixContentExtension } from "../extensions/trix_content_extension"
 import { TablesExtension } from "../extensions/tables_extension"
 import { AttachmentsExtension } from "../extensions/attachments_extension.js"
 import { FormatEscapeExtension } from "../extensions/format_escape_extension.js"
+import { BlockSelectionExtension } from "../extensions/block_selection_extension.js"
 import { LinkOpenerExtension } from "../extensions/link_opener_extension.js"
 
 
@@ -45,7 +47,7 @@ export class LexicalEditorElement extends HTMLElement {
   static debug = false
   static commands = [ "bold", "italic", "strikethrough" ]
 
-  static observedAttributes = [ "connected", "required" ]
+  static observedAttributes = [ "connected", "required", "block-handles" ]
 
   #initialValue = ""
   #initialValueLoaded = false
@@ -106,6 +108,12 @@ export class LexicalEditorElement extends HTMLElement {
       this.#validationTextArea.required = this.hasAttribute("required")
       this.#setValidity()
     }
+
+    if (name === "block-handles" && this.isConnected) {
+      const show = newValue !== "false"
+      const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+      ext?.setShowHandles(show)
+    }
   }
 
   formResetCallback() {
@@ -131,6 +139,18 @@ export class LexicalEditorElement extends HTMLElement {
     return this.getAttribute("name")
   }
 
+  /** True when one or more blocks are selected via drag-handle click or Cmd+click. */
+  get hasBlockSelection() {
+    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+    return ext?.hasBlockSelection ?? false
+  }
+
+  /** Enter block select mode with all blocks selected. */
+  selectAllBlocks() {
+    const ext = this.extensions?.enabledExtensions?.find(e => e instanceof BlockSelectionExtension)
+    ext?.selectAll()
+  }
+
   get toolbarElement() {
     if (!this.#hasToolbar) return null
 
@@ -146,6 +166,7 @@ export class LexicalEditorElement extends HTMLElement {
       TablesExtension,
       AttachmentsExtension,
       FormatEscapeExtension,
+      BlockSelectionExtension,
       LinkOpenerExtension
     ]
   }
@@ -309,6 +330,11 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFocusEvents()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.#applyCodeSettings()
+    this.extensions.initializeEditors()
+    for (const ext of this.extensions.enabledExtensions) {
+      if (typeof ext.dispose === "function") this.#disposables.push(ext)
+    }
     this.#configureSanitizer()
     this.#loadInitialValue()
     this.#resetBeforeTurboCaches()
@@ -448,7 +474,8 @@ export class LexicalEditorElement extends HTMLElement {
         const transformers = [ ...TRANSFORMERS, HORIZONTAL_DIVIDER ]
         registered.push(
           registerMarkdownShortcuts(this.editor, transformers),
-          registerMarkdownLeadingTagHandler(this.editor, transformers)
+          registerMarkdownLeadingTagHandler(this.editor, transformers),
+          registerListBlockShortcuts(this.editor)
         )
       }
     } else {
@@ -550,6 +577,13 @@ export class LexicalEditorElement extends HTMLElement {
     }))
   }
 
+  #applyCodeSettings() {
+    const tabSize = this.config.get("code.tabSize")
+    if (tabSize) {
+      this.style.setProperty("--lexxy-code-tab-size", tabSize)
+    }
+  }
+
   #attachToolbar() {
     if (this.#hasToolbar) {
       this.toolbarElement.setEditor(this)
@@ -576,7 +610,7 @@ export class LexicalEditorElement extends HTMLElement {
 
   #createDefaultToolbar() {
     const toolbar = createElement("lexxy-toolbar")
-    toolbar.innerHTML = LexicalToolbar.defaultTemplate
+    toolbar.appendChild(LexicalToolbar.cloneDefaultTemplate())
     toolbar.setAttribute("data-attachments", this.supportsAttachments) // Drives toolbar CSS styles
     toolbar.configure(this.config.get("toolbar"))
     this.prepend(toolbar)
