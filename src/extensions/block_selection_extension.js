@@ -33,7 +33,7 @@ import { REMOVE_HIGHLIGHT_COMMAND, TOGGLE_HIGHLIGHT_COMMAND } from "./highlight_
 import { getCSSFromStyleObject, getStyleObjectFromCSS } from "@lexical/selection"
 import { hasHighlightStyles } from "../helpers/format_helper"
 import { BlockDragAndDrop } from "../editor/block_selection/drag_and_drop"
-import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS } from "../editor/block_helpers"
+import { $isStructuralWrapper, BLOCK_FOCUSED_CLASS, BLOCK_SELECTED_CLASS, BLOCK_SELECTION_ACTIVE_CLASS, NESTED_LISTITEM_CLASS, getNodeKeyFromElement } from "../editor/block_helpers"
 import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS } from "../editor/block_selection/highlight_css"
 import { SelectionHistory } from "../editor/block_selection/selection_history"
 import { WrappedOriginTracker } from "../editor/block_selection/wrapped_origin"
@@ -4161,7 +4161,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
       const blockElement = this.#findBlockElementFromDOM(decorator)
       if (blockElement) {
-        const nodeKey = this.#getNodeKeyFromElement(blockElement)
+        const nodeKey = getNodeKeyFromElement(blockElement)
         if (nodeKey) {
           this.enterBlockSelectMode(nodeKey)
         }
@@ -4214,7 +4214,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     const isGutterClick = event.clientX < gutterThreshold
 
     if (isGutterClick) {
-      const nodeKey = this.#getNodeKeyFromElement(blockElement)
+      const nodeKey = getNodeKeyFromElement(blockElement)
       if (nodeKey) {
         if (event.shiftKey && this.isBlockSelectMode) {
           this.#selectBlock(nodeKey, true)
@@ -4228,7 +4228,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Clicking on a decorator block (HR, images) enters block-select mode
     // rather than using Lexical's default decorator selection.
     if (this.#isDecoratorBlock(blockElement)) {
-      const nodeKey = this.#getNodeKeyFromElement(blockElement)
+      const nodeKey = getNodeKeyFromElement(blockElement)
       if (nodeKey) {
         this.enterBlockSelectMode(nodeKey)
         return true
@@ -4259,12 +4259,6 @@ export class BlockSelectionExtension extends LexxyExtension {
       current = current.parentElement
     }
     return null
-  }
-
-  #getNodeKeyFromElement(element) {
-    const keyProp = Object.keys(element).find(k => k.startsWith("__lexicalKey_"))
-    if (keyProp) return element[keyProp]
-    return element.dataset?.lexicalNodeKey || null
   }
 
   // -- Utilities --------------------------------------------------------------
