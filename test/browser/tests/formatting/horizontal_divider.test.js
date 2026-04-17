@@ -56,16 +56,11 @@ test.describe("Horizontal divider", () => {
     await page.getByRole("button", { name: "Insert a divider" }).click()
     await editor.send("Text after")
 
+    // Click the HR to enter block-select mode, then delete with Backspace
     await editor.content
       .locator("figure.horizontal-divider")
       .click()
-
-    await expect(
-      editor.locator.locator("lexxy-node-delete-button"),
-    ).toBeVisible()
-    await editor.locator
-      .locator("lexxy-node-delete-button button[aria-label='Remove']")
-      .click()
+    await page.keyboard.press("Backspace")
 
     await assertEditorContent(editor, async (content) => {
       await expect(

@@ -53,11 +53,11 @@ test.describe("Inline formatting", () => {
     await editor.setValue(HELLO_EVERYONE)
     await editor.select("everyone")
 
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await assertEditorHtml(editor, "<p>Hello <code>everyone</code></p>")
 
     await editor.select("everyone")
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await assertEditorHtml(editor, "<p>Hello everyone</p>")
   })
 
@@ -67,7 +67,7 @@ test.describe("Inline formatting", () => {
   }) => {
     await editor.setValue("<p>Hello <code>code</code></p>")
 
-    const codeButton = page.getByRole("button", { name: "Code" })
+    const codeButton = page.getByRole("button", { name: "Code", exact: true })
 
     await editor.content.locator("code").click()
     await expect(codeButton).toHaveAttribute("aria-pressed", "true")
@@ -86,7 +86,7 @@ test.describe("Inline formatting", () => {
   }) => {
     await editor.setValue("<p>Hello <code>code</code> world</p>")
 
-    const codeButton = page.getByRole("button", { name: "Code" })
+    const codeButton = page.getByRole("button", { name: "Code", exact: true })
 
     await editor.content.locator("code").click()
     await expect(codeButton).toHaveAttribute("aria-pressed", "true")
@@ -99,7 +99,7 @@ test.describe("Inline formatting", () => {
   test("deleting all inline code text clears the code format", async ({ page, editor }) => {
     await editor.setValue("<p><code>hello</code></p>")
 
-    const codeButton = page.getByRole("button", { name: "Code" })
+    const codeButton = page.getByRole("button", { name: "Code", exact: true })
 
     // Select the code text and verify code button is active
     await editor.select("hello")
@@ -124,7 +124,7 @@ test.describe("Inline formatting", () => {
       "<p>Hello <strong>bold</strong> and <em>italic</em> world</p>",
     )
     await editor.selectAll()
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await assertEditorHtml(editor, "<p><code>Hello bold and italic world</code></p>")
   })
 
@@ -154,7 +154,7 @@ test.describe("Inline formatting", () => {
     })
     await editor.flush()
 
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
 
     await assertEditorHtml(
       editor,
@@ -166,13 +166,13 @@ test.describe("Inline formatting", () => {
     await editor.setValue(HELLO_EVERYONE)
     await editor.click()
 
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await assertEditorHtml(
       editor,
       '<pre data-language="plain" data-highlight-language="plain">Hello everyone</pre>',
     )
 
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await assertEditorHtml(editor, "<p>Hello everyone</p>")
   })
 
