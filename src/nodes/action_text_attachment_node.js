@@ -2,7 +2,7 @@ import Lexxy from "../config/lexxy"
 import { $getEditor, $getNearestRootOrShadowRoot, DecoratorNode, HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG } from "lexical"
 import { SILENT_UPDATE_TAGS } from "../helpers/lexical_helper"
 import { attachmentIconLabel, createAttachmentFigure, createElement, dispatch, isPreviewableImage } from "../helpers/html_helper"
-import { bytesToHumanSize, extractFileName, representationToBlobUrl } from "../helpers/storage_helper"
+import { bytesToHumanSize, extractFileExtension, extractFileName, representationToBlobUrl } from "../helpers/storage_helper"
 import { parseBoolean } from "../helpers/string_helper"
 
 // Per-src cache of SVG object URLs. ActiveStorage forces image/svg+xml blobs
@@ -526,7 +526,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   }
 
   get #fileExtension() {
-    return this.fileName ? this.fileName.split(".").pop().toLowerCase() : "unknown"
+    return extractFileExtension(this.fileName) || "unknown"
   }
 
   get #displayName() {
