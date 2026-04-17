@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
-import { assertBlockHtml } from "../../helpers/assertions.js"
+import { assertBlockHtml, stripDynamicAttrs } from "../../helpers/assertions.js"
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control"
 
@@ -290,7 +290,7 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await page.keyboard.press("ArrowDown")
     await page.keyboard.press("Enter")
 
-    const html = await editor.value()
+    const html = stripDynamicAttrs(await editor.value())
     // Table cells preserved.
     expect(html).toContain("<table>")
     expect(html).toMatch(/<td>[^<]*<p>A<\/p>[^<]*<\/td>/)
@@ -407,7 +407,7 @@ test.describe("Block actions menu (Cmd+/)", () => {
     await page.keyboard.press("ArrowDown")
     await page.keyboard.press("Enter")
 
-    const html = await editor.value()
+    const html = stripDynamicAttrs(await editor.value())
     // The HR ends up at root level, after the Alpha list segment.
     expect(html).toMatch(/<ul><li>Alpha<\/li><\/ul>\s*<hr>/)
   })

@@ -85,13 +85,15 @@ expect.extend({
 })
 
 // Strip attributes whose value is derived from transient block-selection state
-// (bullet depth, list-item type, wrap origin). Tests assert on structure, not
-// on these decorations.
+// (bullet depth, list-item type, wrap origin). Also strip Lexical ListItemNode's
+// serialized `value="N"` attribute — it reflects internal counter state, not
+// structure. Tests assert on structure, not on these decorations.
 export function stripDynamicAttrs(html) {
   return html
     .replace(/\s*data-bullet-depth="[^"]*"/g, "")
     .replace(/\s*data-list-item-type="[^"]*"/g, "")
     .replace(/\s*data-block-movement-wrapped="[^"]*"/g, "")
+    .replace(/(<li)\s+value="[^"]*"/g, "$1")
 }
 
 // Like assertEditorHtml but also strips dynamic block-selection attrs.
