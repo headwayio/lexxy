@@ -6,8 +6,8 @@
 // Listens for clicks on .attachment__action[aria-label="Preview"] inside
 // rendered content, opens a <dialog> via the shared builder, and keeps
 // media-playback time in sync across inline ↔ modal transitions.
-import { buildPreviewDialog } from "./dialog_builder"
-import { attachPlaybackSync, installPauseOthers } from "./playback_sync"
+import { buildPreviewDialog } from "../elements/preview/dialog_builder"
+import { attachPlaybackSync, installPauseOthers } from "../elements/preview/playback_sync"
 
 const DIALOG_ID = "lexxy-content-preview"
 
