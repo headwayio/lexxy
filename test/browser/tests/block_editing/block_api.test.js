@@ -19,7 +19,7 @@ test.describe("Block editing public API", () => {
     await editor.select("Hello")
     await page.keyboard.press("Escape")
 
-    await expect(editor.content.locator(".block--focused")).toHaveCount(1)
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toHaveCount(1)
 
     const result = await editor.locator.evaluate(el => el.hasBlockSelection)
     expect(result).toBe(true)
@@ -30,12 +30,12 @@ test.describe("Block editing public API", () => {
     await editor.select("Hello")
     await page.keyboard.press("Escape")
 
-    await expect(editor.content.locator(".block--focused")).toHaveCount(1)
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toHaveCount(1)
     expect(await editor.locator.evaluate(el => el.hasBlockSelection)).toBe(true)
 
     // Enter exits block-select mode
     await page.keyboard.press("Enter")
-    await expect(editor.content.locator(".block--focused")).toHaveCount(0)
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toHaveCount(0)
 
     expect(await editor.locator.evaluate(el => el.hasBlockSelection)).toBe(false)
   })

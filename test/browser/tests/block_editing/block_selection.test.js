@@ -33,8 +33,8 @@ test.describe("Block selection", () => {
     await editor.select("Second")
     await page.keyboard.press("Escape")
 
-    await expect(editor.content.locator(".block--focused")).toHaveCount(1)
-    await expect(editor.content.locator(".block--focused")).toContainText("Second")
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toHaveCount(1)
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toContainText("Second")
   })
 
   test("Arrow keys navigate between blocks in block-select mode", async ({ editor, page }) => {
@@ -43,12 +43,12 @@ test.describe("Block selection", () => {
     await page.keyboard.press("Escape")
     await page.keyboard.press("ArrowDown")
 
-    await expect(editor.content.locator(".block--focused")).toContainText("Third")
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toContainText("Third")
 
     await page.keyboard.press("ArrowUp")
     await page.keyboard.press("ArrowUp")
 
-    await expect(editor.content.locator(".block--focused")).toContainText("First")
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toContainText("First")
   })
 
   test("Enter key exits block-select mode and places cursor in focused block", async ({ editor, page }) => {
@@ -59,8 +59,8 @@ test.describe("Block selection", () => {
     await page.keyboard.press("Enter")
 
     // Should have exited block-select mode
-    await expect(editor.content.locator(".block--focused")).toHaveCount(0)
-    await expect(editor.content.locator(".block--selected")).toHaveCount(0)
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toHaveCount(0)
+    await expect(editor.content.locator(".lexxy-editor__block--selected")).toHaveCount(0)
   })
 
   test("Delete key removes selected block", async ({ editor, page }) => {
@@ -77,7 +77,7 @@ test.describe("Block selection", () => {
     await editor.select("Item two")
     await page.keyboard.press("Escape")
 
-    const focused = editor.content.locator(".block--focused")
+    const focused = editor.content.locator(".lexxy-editor__block--focused")
     await expect(focused).toHaveCount(1)
     await expect(focused).toContainText("Item two")
   })

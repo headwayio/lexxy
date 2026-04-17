@@ -98,11 +98,11 @@ test.describe("Horizontal divider in block-select mode", () => {
     await page.keyboard.press("ArrowDown")
     // Focus should be on the HR. HorizontalDividerNode renders as
     // <figure class="horizontal-divider"><hr><...></figure> in the DOM.
-    const focused = editor.content.locator(".block--focused")
+    const focused = editor.content.locator(".lexxy-editor__block--focused")
     await expect(focused).toHaveCount(1)
     await expect(focused.locator("hr")).toHaveCount(1)
 
     await page.keyboard.press("ArrowDown")
-    await expect(editor.content.locator(".block--focused")).toContainText("Below")
+    await expect(editor.content.locator(".lexxy-editor__block--focused")).toContainText("Below")
   })
 })
