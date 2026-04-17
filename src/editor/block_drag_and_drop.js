@@ -10,6 +10,7 @@ import { createElement } from "../helpers/html_helper"
 import { $isStructuralWrapper, DEFAULT_ADD_BUTTON_WIDTH, DEFAULT_HANDLE_HEIGHT, DEFAULT_ROOT_PADDING, HANDLE_CONTENT_GAP, NESTED_LISTITEM_CLASS } from "./block_helpers"
 import { DragGhost } from "./block_drag_and_drop/ghost"
 import { AutoScroll } from "./block_drag_and_drop/autoscroll"
+import { DropIndicator } from "./block_drag_and_drop/drop_indicator"
 
 const GRIP_ICON = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
   <circle cx="2" cy="2" r="1.5"/>
@@ -34,7 +35,7 @@ export class BlockDragAndDrop {
   #blockSelectionExtension
   #handleElement = null
   #addButtonElement = null
-  #dropIndicatorElement = null
+  #dropIndicator = null
   #ghost = null
   #currentHoveredBlock = null
   #isDragging = false
@@ -80,7 +81,7 @@ export class BlockDragAndDrop {
       this.#createAddButton()
       this.#createHandleElement()
     }
-    this.#createDropIndicator()
+    this.#dropIndicator = new DropIndicator(editorElement)
 
     this.#registerListeners()
   }
@@ -127,7 +128,7 @@ export class BlockDragAndDrop {
     this.#cancelHideTimer()
     this.#addButtonElement?.remove()
     this.#handleElement?.remove()
-    this.#dropIndicatorElement?.remove()
+    this.#dropIndicator?.destroy()
     for (const fn of this.#cleanupFns) fn()
     this.#cleanupFns = []
   }
@@ -182,25 +183,6 @@ export class BlockDragAndDrop {
     this.#handleElement.addEventListener("pointerdown", this.#onHandlePointerDown)
 
     this.#editorElement.appendChild(this.#handleElement)
-  }
-
-  #createDropIndicator() {
-    this.#editorElement.querySelector(".lexxy-drop-indicator")?.remove()
-
-    const indicator = createElement("div", {
-      className: "lexxy-drop-indicator",
-      "aria-hidden": "true"
-    })
-
-    // The indicator has a circle at the left end and a line extending right
-    const circle = createElement("div", { className: "lexxy-drop-indicator__circle" })
-    indicator.appendChild(circle)
-
-    const line = createElement("div", { className: "lexxy-drop-indicator__line" })
-    indicator.appendChild(line)
-
-    this.#dropIndicatorElement = indicator
-    this.#editorElement.appendChild(indicator)
   }
 
   #positionHandle(blockElement) {
@@ -1218,13 +1200,7 @@ export class BlockDragAndDrop {
 
   // -- Drop indicator positioning ---------------------------------------------
 
-  #lastIndicatorTop = null
-  #lastIndicatorLeft = null
-
   #showDropIndicator(target) {
-    const indicator = this.#dropIndicatorElement
-    if (!indicator) return
-
     const editorRect = this.#editorElement.getBoundingClientRect()
     const blockRect = target.element.getBoundingClientRect()
     const root = this.#editor.getRootElement()
@@ -1275,34 +1251,14 @@ export class BlockDragAndDrop {
 
     const left = target.bulletLeft - editorRect.left
     const gap = target.contentLeft - target.bulletLeft - 3
-
-    // Skip if the indicator would barely move — prevents flicker between
-    // adjacent "after A" / "before B" targets at the same depth
-    if (this.#lastIndicatorTop !== null &&
-        Math.abs(top - this.#lastIndicatorTop) < 5 &&
-        Math.abs(left - this.#lastIndicatorLeft) < 5) {
-      return
-    }
-    this.#lastIndicatorTop = top
-    this.#lastIndicatorLeft = left
-
     const rootPaddingRight = parseFloat(getComputedStyle(root).paddingInlineEnd) || 0
+    const right = editorRect.right - rootRect.right + rootPaddingRight
 
-    indicator.style.top = `${top}px`
-    indicator.style.left = `${left}px`
-    indicator.style.right = `${editorRect.right - rootRect.right + rootPaddingRight}px`
-    indicator.style.setProperty("--indicator-gap", `${Math.max(0, gap)}px`)
-
-    indicator.dataset.depth = target.depth
-    indicator.dataset.listType = target.listType || ""
-
-    indicator.classList.add("lexxy-drop-indicator--visible")
+    this.#dropIndicator.show({ top, left, right, gap, depth: target.depth, listType: target.listType })
   }
 
   #hideDropIndicator() {
-    this.#dropIndicatorElement?.classList.remove("lexxy-drop-indicator--visible")
-    this.#lastIndicatorTop = null
-    this.#lastIndicatorLeft = null
+    this.#dropIndicator.hide()
   }
 
   #previousContentSibling(element, root) {
