@@ -60,7 +60,16 @@ export class ToolbarDropdown extends HTMLElement {
   }
 
   close({ focusEditor = true } = {}) {
-    if (focusEditor) this.editor?.focus()
+    if (focusEditor) {
+      // With an active block selection, focus the root element directly and
+      // suppress scrolling — editor.focus() would collapse to a caret and
+      // scroll the block selection out of view.
+      if (this.editorElement?.hasBlockSelection) {
+        this.editor.getRootElement()?.focus({ preventScroll: true })
+      } else {
+        this.editor?.focus()
+      }
+    }
 
     if (this.isClosed) return
     this.trigger.setAttribute("aria-expanded", "false")

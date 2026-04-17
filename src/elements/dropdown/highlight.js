@@ -1,6 +1,7 @@
 import { $getSelection, $isRangeSelection } from "lexical"
 import { $getSelectionStyleValueForProperty } from "@lexical/selection"
 import { ToolbarDropdown } from "../toolbar_dropdown"
+import { BlockActionsMenu } from "../block_actions_menu"
 import { registerEventListener } from "../../helpers/listener_helper"
 import { createElement } from "../../helpers/html_helper"
 
@@ -23,6 +24,7 @@ export class HighlightDropdown extends ToolbarDropdown {
       this.#updateColorButtonStates($getSelection())
     })
   }
+
 
   #registerButtonHandlers() {
     this.#colorButtons.forEach(button => {
@@ -67,7 +69,15 @@ export class HighlightDropdown extends ToolbarDropdown {
 
     const { style, value } = button.dataset
 
+    BlockActionsMenu.saveLastUsedColor(style, value)
     this.editor.dispatchCommand("toggleHighlight", { [style]: value })
+    this.close()
+  }
+
+  #handleRemoveHighlightClick = (event) => {
+    event.preventDefault()
+
+    this.editor.dispatchCommand("removeHighlight")
     this.close()
   }
 
