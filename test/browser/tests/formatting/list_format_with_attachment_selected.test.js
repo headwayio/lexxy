@@ -9,12 +9,21 @@ test.describe("List formatting with attachment selected", () => {
     await page.goto("/attachments-enabled.html")
     await page.waitForSelector("lexxy-editor[connected]")
     await page.waitForSelector("lexxy-toolbar[connected]")
+
+    // Hide the floating attachment-controls overlay: it appears on hover
+    // and intercepts pointer events when Playwright tries to click the
+    // attachment image, flaking differently across browsers. The test is
+    // about Lexical's list-command behavior on a NodeSelection, not the
+    // controls overlay.
+    await page.addStyleTag({
+      content: "lexxy-attachment-controls { display: none !important; }",
+    })
   })
 
   test("bullet list does not crash when an attachment is selected", async ({ page, editor }) => {
     await editor.setValue(`<p>Hello</p>${ATTACHMENT_HTML}`)
 
-    // Click the figure to select the attachment (creating a NodeSelection)
+    // Click the img to select the attachment (creating a NodeSelection)
     await editor.content.locator("figure.attachment img").click()
     await editor.flush()
     await expect(editor.content.locator("figure.node--selected")).toHaveCount(1)
@@ -38,7 +47,7 @@ test.describe("List formatting with attachment selected", () => {
   test("numbered list does not crash when an attachment is selected", async ({ page, editor }) => {
     await editor.setValue(`<p>Hello</p>${ATTACHMENT_HTML}`)
 
-    // Click the figure to select the attachment (creating a NodeSelection)
+    // Click the img to select the attachment (creating a NodeSelection)
     await editor.content.locator("figure.attachment img").click()
     await editor.flush()
     await expect(editor.content.locator("figure.node--selected")).toHaveCount(1)
