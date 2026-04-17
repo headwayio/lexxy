@@ -1,26 +1,6 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
-import { normalizeHtml } from "../../helpers/html.js"
-
-// Assert editor HTML, stripping dynamic attributes (data-bullet-depth,
-// data-list-item-type) that EarlyEscapeListItemNode adds at runtime.
-async function assertBlockHtml(editor, expected) {
-  await expect
-    .poll(
-      async () => {
-        await editor.flush()
-        return stripDynamicAttrs(normalizeHtml(await editor.value()))
-      },
-      { timeout: 5_000 },
-    )
-    .toBe(stripDynamicAttrs(normalizeHtml(expected)))
-}
-
-function stripDynamicAttrs(html) {
-  return html
-    .replace(/\s*data-bullet-depth="[^"]*"/g, "")
-    .replace(/\s*data-list-item-type="[^"]*"/g, "")
-}
+import { assertBlockHtml } from "../../helpers/assertions.js"
 
 test.describe("Block selection", () => {
   test.beforeEach(async ({ page }) => {

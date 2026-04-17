@@ -1,13 +1,7 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
 import { normalizeHtml } from "../../helpers/html.js"
-
-function stripDynamicAttrs(html) {
-  return html
-    .replace(/\s*data-bullet-depth="[^"]*"/g, "")
-    .replace(/\s*data-list-item-type="[^"]*"/g, "")
-    .replace(/\s*data-block-movement-wrapped="[^"]*"/g, "")
-}
+import { stripDynamicAttrs } from "../../helpers/assertions.js"
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control"
 

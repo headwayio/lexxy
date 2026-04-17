@@ -1,14 +1,8 @@
 import { expect } from "@playwright/test"
 import { test } from "../../test_helper.js"
 import { normalizeHtml } from "../../helpers/html.js"
+import { stripDynamicAttrs } from "../../helpers/assertions.js"
 import { mockActiveStorageUploads } from "../../helpers/active_storage_mock.js"
-
-function stripDynamicAttrs(html) {
-  return html
-    .replace(/\s*data-bullet-depth="[^"]*"/g, "")
-    .replace(/\s*data-list-item-type="[^"]*"/g, "")
-    .replace(/\s*data-block-movement-wrapped="[^"]*"/g, "")
-}
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control"
 
