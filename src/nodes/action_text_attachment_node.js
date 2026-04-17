@@ -316,7 +316,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
       fetch(this.src)
         .then((response) => response.blob())
         .then((blob) => {
-          img.src = URL.createObjectURL(new Blob([blob], { type: "image/svg+xml" }))
+          img.src = URL.createObjectURL(new Blob([ blob ], { type: "image/svg+xml" }))
         })
         .catch(() => this.#swapPreviewToFileDOM(img))
     }
