@@ -2,6 +2,18 @@
 
 :where(lexxy-editor) {
   --lexxy-editor-padding: 1ch;
+  --lexxy-block-handle-gutter: 62px;
+  --lexxy-content-padding-block: 62px;
+  --lexxy-drop-indicator-size: 3px;
+  --lexxy-code-block-radius: 10px;
+  --lexxy-bullet-size: 5px;
+  --lexxy-bullet-gradient-radius: 2.5px;
+  --lexxy-bullet-offset-x: 8.5px;
+
+  &[block-handles="false"] {
+    --lexxy-block-handle-gutter: var(--lexxy-editor-padding);
+    --lexxy-content-padding-block: var(--lexxy-editor-padding);
+  }
   --lexxy-editor-rows: 8lh;
   /* eslint-disable-next-line css/no-invalid-properties */
   @supports (min-block-size: attr(rows lh)) {
@@ -54,7 +66,7 @@
     appearance: none;
     background: var(--lexxy-color-canvas);
     border: none;
-    border-radius: var(--lexxy-radius);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
     cursor: pointer;
     line-height: normal;
     font-size: inherit;
@@ -197,6 +209,7 @@
 
   .attachment {
     background-color: var(--lexxy-color-canvas);
+    position: relative;
 
     progress {
       max-inline-size: 10ch;
@@ -204,6 +217,8 @@
     }
 
     &.attachment--preview {
+      border-radius: var(--lexxy-radius);
+
       progress {
         inset-block-start: 2ch;
         inset-inline-start: 0;
@@ -211,9 +226,9 @@
         position: absolute;
       }
 
-      lexxy-node-delete-button {
-        inset-block-start: 1.5ch;
-        inset-inline-end: 1.5ch;
+      lexxy-attachment-controls {
+        inset-block-start: 12px;
+        inset-inline-end: 12px;
         inset-inline-start: unset;
       }
     }
@@ -242,6 +257,174 @@
         text-align: start;
       }
     }
+  }
+
+  /* Preview / card toggle for previewable attachments */
+  .attachment--preview .attachment__card-view {
+    display: none;
+  }
+
+  /* Audio preview: file card with audio player below */
+  .attachment--preview[data-content-type^="audio"] {
+    inline-size: 100%;
+
+    .attachment__preview-view {
+      border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+      border-radius: var(--lexxy-radius);
+      overflow: hidden;
+
+      /* File info row: icon + caption side by side */
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto auto;
+      align-items: center;
+      gap: 0 0.75rem;
+      padding: 0.75rem;
+
+      > .attachment__icon {
+        grid-row: 1 / -1;
+      }
+
+      > figcaption {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+        text-align: start;
+        padding: 0;
+        position: relative;
+        top: 1px;
+
+        .attachment__name {
+          color: var(--lexxy-color-ink);
+          font-size: 0.875rem;
+          font-weight: 600;
+          line-height: 1.3;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .attachment__size {
+          color: var(--lexxy-color-text-subtle, #9ca3af);
+          font-size: 0.75rem;
+        }
+      }
+
+      audio {
+        grid-column: 1 / -1;
+        box-shadow: 0 -1px 0 var(--lexxy-color-ink-lighter, #e5e7eb);
+        display: block;
+        inline-size: calc(100% + 1.5rem);
+        margin: 0.75rem -0.75rem -0.75rem;
+        padding: 0.75rem;
+      }
+    }
+  }
+
+  .attachment--preview.attachment--collapsed {
+    align-items: center;
+    background-color: var(--lexxy-color-canvas);
+    border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+    border-radius: var(--lexxy-radius);
+    display: flex;
+    gap: 0.75rem;
+    inline-size: 100%;
+    padding: 0.75rem;
+    position: relative;
+
+    &, & * {
+      ::selection {
+        background: transparent;
+      }
+    }
+
+    .attachment__preview-view {
+      display: none;
+    }
+
+    .attachment__card-view {
+      display: contents;
+    }
+
+    .attachment__icon {
+      background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+      block-size: 2.5rem;
+      inline-size: 2.5rem;
+      border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+      border-radius: var(--lexxy-radius);
+      box-sizing: border-box;
+      color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+      display: grid;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      place-content: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .attachment__caption {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 0.125rem;
+      min-width: 0;
+      padding: 0;
+      text-align: start;
+    }
+
+    .attachment__name {
+      color: var(--lexxy-color-ink);
+      cursor: text;
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment__subtitle {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    lexxy-attachment-controls {
+      inset-block-start: 50%;
+      inset-inline-end: 12px;
+      inset-inline-start: unset;
+      transform: translate(0, -50%);
+    }
+  }
+
+  .attachment--preview.attachment--caption-hidden:not([data-content-type^="audio"]) .attachment__preview-view figcaption {
+    display: none;
+  }
+
+  /* Inline video preview styling */
+  .attachment__video {
+    block-size: auto;
+    border-radius: var(--lexxy-radius);
+    display: block;
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+
+  .attachment__name-input,
+  .attachment__name-input:focus,
+  .attachment__name-input:focus-visible {
+    background: transparent;
+    border: none;
+    color: inherit;
+    field-sizing: content;
+    font: inherit;
+    max-inline-size: 100%;
+    outline: none;
+    padding: 0;
   }
 
   .attachment[draggable] {
@@ -278,7 +461,7 @@
   .lexxy-drop-target--list-before::before,
   .lexxy-drop-target--list-after::after {
     background-color: var(--lexxy-focus-ring-color);
-    block-size: 3px;
+    block-size: var(--lexxy-drop-indicator-size);
     border-radius: 1px;
     content: "";
     inset-inline: 0;
@@ -309,7 +492,7 @@
     border-radius: 1px;
     content: "";
     inset-block: 0;
-    inline-size: 3px;
+    inline-size: var(--lexxy-drop-indicator-size);
     pointer-events: none;
     position: absolute;
   }
@@ -327,13 +510,177 @@
     outline-offset: var(--lexxy-focus-ring-offset);
   }
 
+
   .attachment--file {
-    lexxy-node-delete-button {
+    align-items: center;
+    background-color: var(--lexxy-color-canvas);
+    border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
+    border-radius: var(--lexxy-radius);
+    display: flex;
+    gap: 0.75rem;
+    inline-size: 100%;
+    padding: 0.75rem;
+    position: relative;
+
+    &, & * {
+      ::selection {
+        background: transparent;
+      }
+    }
+
+    .attachment__icon {
+      background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+      block-size: 2.5rem;
+      inline-size: 2.5rem;
+      border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+      border-radius: var(--lexxy-radius);
+      box-sizing: border-box;
+      color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+      display: grid;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      place-content: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .attachment__caption {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 0.125rem;
+      min-width: 0;
+      padding: 0;
+      text-align: start;
+    }
+
+    .attachment__name {
+      color: var(--lexxy-color-ink);
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment__meta {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    .attachment__caption-text {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.8125rem;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment__subtitle,
+    .attachment__size {
+      color: var(--lexxy-color-text-subtle, #9ca3af);
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    lexxy-attachment-controls {
       inset-block-start: 50%;
-      inset-inline-end: 1ch;
+      inset-inline-end: 12px;
       inset-inline-start: unset;
       transform: translate(0, -50%);
     }
+  }
+
+  /* File type icon colors — matching the files panel design */
+  .attachment--pdf {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(30% 0.05 27);
+  }
+
+  .attachment--md {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(40% 0 0);
+    --lexxy-attachment-icon-text: oklch(30% 0 0);
+  }
+
+  .attachment--csv,
+  .attachment--numbers {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: oklch(45% 0.15 160);
+  }
+
+  .attachment--xls,
+  .attachment--xlsx {
+    --lexxy-attachment-icon-bg: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-border: oklch(55% 0.15 160);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--txt,
+  .attachment--rtf {
+    --lexxy-attachment-icon-bg: oklch(55% 0 0);
+    --lexxy-attachment-icon-border: oklch(55% 0 0);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--doc,
+  .attachment--docx,
+  .attachment--pages {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: oklch(45% 0.196 258);
+  }
+
+  .attachment--psd,
+  .attachment--key,
+  .attachment--sketch,
+  .attachment--ai,
+  .attachment--eps,
+  .attachment--indd,
+  .attachment--ppt,
+  .attachment--pptx {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.2 27);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 27);
+  }
+
+  .attachment--svg {
+    --lexxy-attachment-icon-bg: oklch(72% 0.18 65);
+    --lexxy-attachment-icon-border: oklch(72% 0.18 65);
+    --lexxy-attachment-icon-text: white;
+  }
+
+  .attachment--css,
+  .attachment--php,
+  .attachment--json,
+  .attachment--htm,
+  .attachment--html,
+  .attachment--rb,
+  .attachment--erb,
+  .attachment--ts,
+  .attachment--js {
+    --lexxy-attachment-icon-bg: white;
+    --lexxy-attachment-icon-border: oklch(55% 0.15 305);
+    --lexxy-attachment-icon-text: oklch(40% 0.15 305);
+  }
+
+  .attachment--png,
+  .attachment--jpg,
+  .attachment--jpeg,
+  .attachment--gif,
+  .attachment--webp {
+    --lexxy-attachment-icon-bg: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-border: oklch(55% 0.196 258);
+    --lexxy-attachment-icon-text: white;
   }
 
   /* Image galleries */
@@ -378,6 +725,7 @@
       block-size: fit-content;
       border: 0;
       border-radius: var(--lexxy-radius);
+      box-shadow: none;
       box-sizing: border-box;
       color: inherit;
       display: block;
@@ -394,7 +742,8 @@
 
       &:focus {
         background: var(--lexxy-color-canvas);
-        outline: 0;
+        box-shadow: none;
+        outline: none;
       }
 
       &:placeholder-shown {
@@ -414,6 +763,32 @@
 /* Reserve the mounted height before upgrade so it doesn't shift layout on mount. */
 :where(lexxy-editor:not(:defined)) {
   min-block-size: calc(var(--lexxy-toolbar-height) + var(--lexxy-editor-rows) + 2 * var(--lexxy-editor-padding));
+/* Restore native text selection highlight on name input — must be outside
+   :where(lexxy-editor) to override the inherited transparent ::selection */
+.attachment__name-input,
+.attachment__name-input:focus,
+.attachment__name-input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.attachment__name-input::selection {
+  background: #3390FF !important;
+  color: white !important;
+}
+
+/* Suppress attachment hover outline while dragging, but preserve it
+   on the selected attachment and the one being dragged */
+.lexxy-block-dragging .attachment:hover:not(.node--selected):not(.lexxy-dragging) {
+  outline: none !important;
+}
+
+/* Suppress code block hover controls during block selection and drag */
+.block-selection-active ~ lexxy-code-language-picker,
+:where(lexxy-editor).lexxy-block-dragging lexxy-code-language-picker {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 /* Placeholder */
@@ -433,7 +808,7 @@
   /* eslint-disable-next-line css/no-invalid-properties */
   min-block-size: var(--lexxy-editor-rows);
   outline: 0;
-  padding: var(--lexxy-editor-padding);
+  padding: var(--lexxy-content-padding-block) var(--lexxy-block-handle-gutter);
 
   /* Isolate the contenteditable root's layout and style. Lexical's reconciler
      commits mutations inside this element (nodes appended, text inserted,
@@ -441,6 +816,201 @@
      invalidating ancestor-dependent selectors and sibling layout elsewhere
      in the editor. */
   contain: layout style;
+
+  /* !! IMPORTANT — FIRST-ELEMENT SPACING RULES !!
+     ============================================
+     These rules ensure EXACTLY 48px between the editor's top border and the
+     first visible glyph/content, regardless of which element type renders first.
+
+     Each element has different built-in margins, padding, and line-height leading
+     that must be compensated with a negative margin-top offset.
+
+     HOW TO ADD A NEW ELEMENT TYPE:
+     1. Place the new element as the first item in the editor
+     2. Measure the pixel distance from editor top border to the first visible
+        content (glyph top for text, line/edge for decorators)
+     3. Calculate offset: if measured > 48, use more negative (pull up);
+        if measured < 48, use less negative (push down)
+     4. Add a rule following the pattern below
+     5. Test BOTH cases: fresh (with provisional-paragraph.hidden before it)
+        AND saved/reloaded (without the provisional paragraph)
+     6. If the element gets wrapped in a <p> after save (like HR does),
+        add a :has() rule AND exclude it from the p:not(.hidden) rule
+
+     Matches both :first-child AND .hidden + * (element after Lexical's
+     hidden provisional paragraph). */
+  > :is(:first-child, .hidden + *):is(h1)     { margin-top: -11px !important; }
+  > :is(:first-child, .hidden + *):is(h2)     { margin-top: -8px !important; }
+  > :is(:first-child, .hidden + *):is(h3)     { margin-top: -7px !important; }
+  > :is(:first-child, .hidden + *):is(h4)     { margin-top: -5.5px !important; }
+  > :is(:first-child, .hidden + *):is(p:not(.hidden):not(:has(> .horizontal-divider)), .attachment, .attachment-gallery) { margin-top: -5.5px !important; }
+  > :is(:first-child, .hidden + *):is(ul, ol) { margin-top: -11.5px !important; }
+  > :is(:first-child, .hidden + *):is(table)  { margin-top: -28px !important; }
+  > :is(:first-child, .hidden + *):is(blockquote) { margin-top: -0.5px !important; }
+  /* HR fresh (provisional-p → figure): measured 42 → 48 */
+  > :is(:first-child, .hidden + *):is(figure.horizontal-divider) { margin-top: -5px !important; }
+  /* HR saved (p wraps figure): measured 51 → 48 */
+  > :is(:first-child, .hidden + *):has(> .horizontal-divider) { margin-top: -8px !important; }
+  /* Other figures (attachments etc.) */
+  > :is(:first-child, .hidden + *):is(figure:not(.horizontal-divider)) { margin-top: -8px !important; }
+}
+
+/* Compact editors (block-handles=false): reset first-child offsets that
+   are designed for the 48px padding. These editors use 1ch padding. */
+lexxy-editor[block-handles="false"] .lexxy-editor__content {
+  > :is(:first-child, .hidden + *) { margin-top: 0 !important; padding-top: revert !important; }
+}
+
+:where(.lexxy-editor__content) {
+  /* Strikethrough + underline combination */
+  s u, u s {
+    text-decoration: line-through underline;
+  }
+
+  /* Code blocks in editor */
+  code, pre {
+    background-color: var(--lexxy-color-code-bg, var(--lexxy-color-ink-lightest));
+    border-radius: var(--lexxy-radius);
+    color: var(--lexxy-color-code-text, var(--lexxy-color-ink));
+    font-family: var(--lexxy-font-mono);
+    font-size: 0.9em;
+    padding: 0.25ch 0.5ch;
+
+    &:is(pre),
+    &[data-language] {
+      border-radius: var(--lexxy-code-block-radius);
+      display: block;
+      hyphens: none;
+      margin-block: 0 var(--lexxy-content-margin, 1rem);
+      overflow-x: auto;
+      padding: 36px 22px;
+      tab-size: var(--lexxy-code-tab-size, 2);
+      text-wrap: nowrap;
+      white-space: pre;
+      word-break: break-word;
+    }
+  }
+
+  /* Syntax highlighting token colors */
+  .code-token__attr { color: var(--lexxy-color-code-token-att); }
+  .code-token__property { color: var(--lexxy-color-code-token-property); }
+  .code-token__selector { color: var(--lexxy-color-code-token-selector); }
+  .code-token__comment { color: var(--lexxy-color-code-token-comment); font-style: italic; }
+  .code-token__operator { color: var(--lexxy-color-code-token-operator); }
+  .code-token__function { color: var(--lexxy-color-code-token-function); }
+  .code-token__variable { color: var(--lexxy-color-code-token-variable); }
+  .code-token__punctuation { color: var(--lexxy-color-code-token-punctuation); }
+
+  /* Blockquotes in editor */
+  blockquote {
+    border-inline-start: 3px solid var(--lexxy-color-ink-lighter);
+    color: var(--lexxy-color-ink-medium);
+    margin-block: 0 var(--lexxy-content-margin, 1rem);
+    margin-inline: 0;
+    padding: 0.25lh 2ch;
+
+    p:last-child {
+      margin-block-end: 0;
+    }
+  }
+
+  /* Regular list items: replace native markers with positioned ::before
+     so we can nudge vertical alignment with drag handles */
+  li:not(.lexxy-nested-listitem):not(:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)) {
+    list-style-type: none;
+    position: relative;
+
+    &::marker {
+      content: none;
+    }
+  }
+
+  /* Unordered list bullets */
+  ul:not(.lexxy-prompt-menu) > li:not(.lexxy-nested-listitem):not(:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)) {
+    &::before {
+      content: "";
+      position: absolute;
+      right: calc(100% + var(--lexxy-bullet-offset-x));
+      top: 0px;
+      width: var(--lexxy-bullet-size);
+      height: 1lh;
+      background: radial-gradient(circle, currentColor var(--lexxy-bullet-gradient-radius), transparent var(--lexxy-bullet-gradient-radius)) center no-repeat;
+    }
+  }
+
+  /* Ordered list numbers */
+  ol {
+    counter-reset: lexxy-ol;
+  }
+
+  ol > li:not(.lexxy-nested-listitem):not(:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)) {
+    counter-increment: lexxy-ol;
+
+    &::before {
+      content: counter(lexxy-ol) ".";
+      position: absolute;
+      right: 100%;
+      top: 0px;
+      width: 2em;
+      display: inline-block;
+      text-align: center;
+    }
+  }
+
+  /* Block editing: structural wrappers and wrapped blocks hide their markers */
+  li.lexxy-nested-listitem {
+    list-style-type: none;
+
+    &::marker {
+      content: none;
+    }
+  }
+
+  /* Wrapped blocks (headings, code blocks etc. dragged into lists) hide markers
+     but show a subtle bullet on hover matching the drag handle color */
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider) {
+    list-style-type: none;
+    position: relative;
+
+    &::marker {
+      content: none;
+    }
+
+    &::before {
+      content: "";
+      display: block;
+      position: absolute;
+      /* X: ~11px from the first glyph, matching native bullet offset */
+      right: calc(100% + var(--lexxy-bullet-offset-x));
+      /* Y: --bullet-offset-y positions so offset + 12 = first-line center.
+         Add 10.5 to center the bullet dot (12 - 2.5 + 1 nudge down). */
+      top: calc(var(--bullet-offset-y, 0px) + 10.5px);
+      width: var(--lexxy-bullet-size);
+      height: var(--lexxy-bullet-size);
+      border-radius: 50%;
+      background: var(--lexxy-color-ink-lighter);
+      font-size: 0;
+      line-height: 0;
+      opacity: 0;
+      transition: opacity 100ms ease;
+    }
+
+    &.lexxy-block-hovered::before {
+      opacity: 0.7;
+    }
+
+    /* h4+ are body-text sized — bullet needs 1px less offset than larger headings */
+    &:has(> h4, > h5, > h6)::before {
+      top: calc(var(--bullet-offset-y, 0px) + 9.5px);
+    }
+  }
+}
+
+/* Show all wrapped block bullets during drag so the user can see hierarchy */
+:where(lexxy-editor).lexxy-block-dragging {
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider)::before {
+    opacity: 0.4;
+  }
 }
 
 :where(.lexxy-editor--drag-over) {
@@ -499,7 +1069,7 @@
     aspect-ratio: 1;
     block-size: var(--lexxy-toolbar-button-size);
     border: 0;
-    border-radius: var(--lexxy-radius);
+    border-radius: calc(var(--lexxy-radius) + var(--lexxy-toolbar-gap));
     color: currentColor;
     display: grid;
     line-height: inherit;
@@ -561,6 +1131,7 @@
 
 :where(.lexxy-editor__toolbar-dropdown) {
   -webkit-user-select: none;
+}
 
   @supports (user-select: none) {
     user-select: none;
@@ -745,6 +1316,10 @@
         }
       }
     }
+
+    button[type="button"] {
+      background-color: var(--lexxy-color-ink-lightest);
+    }
   }
 
   /* --------------------------------------------------------------------------
@@ -888,6 +1463,8 @@
   .lexxy-floating-controls__group {
     background-color: var(--lexxy-color-ink);
     border-radius: var(--floating-tools-radius);
+    display: flex;
+    flex-direction: row;
     padding: 0.25ch;
   }
 
@@ -994,17 +1571,45 @@
 
 
   /* --------------------------------------------------------------------------
-  /* Attachment delete button */
+  /* Attachment controls (preview, download, delete) */
 
-  &:is(lexxy-node-delete-button) {
+  &:is(lexxy-attachment-controls) {
     inset-block-start: 0;
     inset-inline-start: 100%;
     opacity: 0;
     pointer-events: none;
 
-    .node--selected & {
+    .node--selected &,
+    .attachment:hover & {
       opacity: 1;
       pointer-events: auto;
+    }
+
+    .lexxy-node-action {
+      align-items: center;
+      aspect-ratio: 1;
+      background: transparent;
+      block-size: var(--button-size);
+      border-radius: var(--floating-tools-radius);
+      color: var(--lexxy-color-ink-inverted);
+      display: flex;
+      justify-content: center;
+      min-block-size: var(--button-size);
+      min-inline-size: var(--button-size);
+      text-decoration: none;
+
+      svg {
+        block-size: 1.125em;
+        inline-size: 1.125em;
+        fill: currentColor;
+        opacity: 0.8;
+      }
+
+      &:hover {
+        background: var(--lexxy-color-ink-medium);
+
+        svg { opacity: 1; }
+      }
     }
 
     .lexxy-node-delete:hover {
@@ -1017,7 +1622,41 @@
   /* Language picker */
 
   &:is(lexxy-code-language-picker) {
+    align-items: center;
+    display: flex;
+    gap: 0.5ch;
     inset-inline-end: var(--lexxy-editor-padding);
+    opacity: 0;
+    padding: 0.5ch 0.5ch 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+
+    &.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .lexxy-code-copy-button {
+      align-items: center;
+      background: none;
+      border: none;
+      border-radius: var(--lexxy-radius);
+      color: var(--lexxy-color-ink-light);
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      padding: 0.3ch;
+      transition: background 150ms, color 150ms;
+
+      svg {
+        display: block;
+      }
+
+      &:hover {
+        background: var(--lexxy-color-ink-lightest);
+        color: var(--lexxy-color-ink);
+      }
+    }
 
     select {
       -webkit-appearance: none;
@@ -1034,7 +1673,7 @@
       font-family: var(--lexxy-font-base);
       font-size: var(--lexxy-text-small);
       font-weight: normal;
-      margin: 0.5ch 0.5ch 0 -0.5ch;
+      margin: 0;
       padding: 0 2ch 0 1ch;
       text-align: start;
 
@@ -1045,6 +1684,15 @@
   }
 }
 
+
+/* Link selection highlight overlay (matches native ::selection height) */
+.lexxy-link-selection-overlay {
+  background-color: #B7D9FF;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
 
 /* --------------------------------------------------------------------------
 /* Prompt */
@@ -1057,8 +1705,9 @@
   --lexxy-prompt-offset-y: 0;
 
   background-color: var(--lexxy-color-canvas);
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
   border-radius: calc(var(--lexxy-prompt-padding) * 2);
-  box-shadow: var(--lexxy-shadow);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
   color: var(--lexxy-color-ink);
   font-family: var(--lexxy-font-base);
   font-size: var(--lexxy-text-small);
@@ -1066,12 +1715,12 @@
   inset-block-start: var(--lexxy-prompt-offset-y);
   inset-inline-start: var(--lexxy-prompt-offset-x);
   margin: 0;
-  max-block-size: 200px;
-  max-inline-size: min(20ch, calc(100% - var(--lexxy-prompt-offset-x)));
+  max-block-size: 40vh;
+  max-inline-size: 300px;
   min-inline-size: 20ch;
   overflow: auto;
-  padding: var(--lexxy-prompt-padding);
-  position: absolute;
+  padding: 6px var(--lexxy-prompt-padding);
+  position: fixed;
   visibility: hidden;
   z-index: var(--lexxy-z-popup);
 
@@ -1080,11 +1729,33 @@
     inset-inline-end: 1ch;
     max-inline-size: calc(100% - 1ch);
   }
+}
 
-  &[data-clipped-at-bottom] {
-    inset-block-start: unset;
-    inset-block-end: var(--lexxy-prompt-offset-y);
-  }
+/* Override browser default ul padding-inline-start: 40px which beats :where() specificity */
+.lexxy-prompt-menu {
+  padding: 2px var(--lexxy-prompt-padding);
+  min-inline-size: 300px;
+  scroll-padding: 6px 0 32px;
+  position: fixed;
+}
+
+.lexxy-prompt-menu::before {
+  content: "";
+  position: sticky;
+  top: -2px;
+  display: block;
+  height: 24px;
+  margin-bottom: -24px;
+  background: linear-gradient(to bottom, var(--lexxy-color-canvas, #fff), transparent);
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.lexxy-prompt-menu--fade-top::before {
+  opacity: 1;
 }
 
 :where(.lexxy-prompt-menu--visible[data-anchored]) {
@@ -1104,7 +1775,17 @@
   }
 
   &[aria-selected] {
-    background-color: var(--lexxy-color-selected);
+    background-color: var(--lexxy-color-ink-lightest);
+  }
+
+  &[data-keyboard-focus] {
+    outline: 2px solid var(--lexxy-color-accent, #2563eb);
+    outline-offset: -2px;
+    background-color: var(--lexxy-color-ink-lightest);
+  }
+
+  .lexxy-prompt-menu--keyboard-active &:not([data-keyboard-focus]):hover {
+    background-color: transparent;
   }
 
   img {
@@ -1125,6 +1806,116 @@
   padding: var(--lexxy-prompt-padding);
 }
 
+/* Slash command items */
+
+:where(.lexxy-slash-command__icon) {
+  align-items: center;
+  color: var(--lexxy-color-ink-medium);
+  display: flex;
+  flex-shrink: 0;
+
+  svg {
+    block-size: 1.125em;
+    fill: currentColor;
+    inline-size: 1.125em;
+  }
+}
+
+:where(.lexxy-slash-command__label) {
+  white-space: nowrap;
+  flex: 1;
+}
+
+:where(.lexxy-slash-command__filter-suffix) {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+}
+
+:where(.lexxy-slash-command__shortcut) {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: 12px;
+  font-family: var(--lexxy-font-mono, ui-monospace, monospace);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+:where(.lexxy-slash-command__color-swatch) {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Section headers in prompt menus */
+
+:where(.lexxy-prompt-menu__section-header) {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  padding: 8px var(--lexxy-prompt-padding) 2px;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  user-select: none;
+}
+
+:where(.lexxy-prompt-menu__section-header:first-child) {
+  padding-top: 2px;
+}
+
+/* Close menu footer */
+
+:where(.lexxy-prompt-menu__footer) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px var(--lexxy-prompt-padding);
+  margin-top: 6px;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: var(--lexxy-text-small);
+  border-top: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  margin-top: 4px;
+  cursor: pointer;
+  position: sticky;
+  bottom: -2px;
+  background: var(--lexxy-color-canvas, #fff);
+  z-index: 1;
+}
+
+.lexxy-prompt-menu__footer::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 34px;
+  background: linear-gradient(to top, var(--lexxy-color-canvas, #fff), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.lexxy-prompt-menu--fade-bottom .lexxy-prompt-menu__footer::before {
+  opacity: 1;
+}
+
+
+:where(.lexxy-prompt-menu__footer:hover) {
+  color: var(--lexxy-color-ink);
+}
+
+:where(.lexxy-prompt-menu__footer-key) {
+  background: var(--lexxy-color-ink-lightest, #e5e7eb);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+
 
 /* --------------------------------------------------------------------------
 /* Custom attachments */
@@ -1136,7 +1927,7 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     outline: none;
   }
 
-  lexxy-node-delete-button {
+  lexxy-attachment-controls {
     inset-inline-start: 0;
     line-height: 1lh;
 
@@ -1150,5 +1941,1042 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
         border-radius: 50%;
       }
     }
+  }
+}
+
+/* Block selection mode -------------------------------------------------------- */
+
+:where(.lexxy-editor__content).block-selection-active {
+  caret-color: transparent;
+  user-select: none;
+}
+
+:where(.lexxy-editor__content) {
+  --block-select-radius: 3px;
+
+  /* Notion-style uniform block highlight — opaque color (mixed with canvas)
+     prevents visual stacking when nested elements overlap.
+     Border-radius: only round the top of the first and bottom of the last
+     in a contiguous group so adjacent selections form a unified band. */
+  .block--selected,
+  .block--selected.block--focused {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
+    --block-select-pad: 6px;
+    position: relative;
+    z-index: 0; /* stacking context so ::after z-index: -1 stays visible */
+  }
+
+  /* Ensure list containers don't clip the selection pseudo-elements */
+  ul:has(.block--selected),
+  ol:has(.block--selected),
+  li:has(.block--selected) {
+    overflow: visible;
+  }
+
+  /* Selection highlight as a pseudo-element with independent border-radius.
+     Non-list items: 7px left/6px top+bottom+right.
+     List items: 15px left of bullet (bullet is ~11px left of text, so
+     15px from bullet = 26px from content = inset-left: -26px). */
+  .block--selected::after {
+    content: "";
+    position: absolute;
+    inset: -6px -6px -6px -7px;
+    min-height: 36px;
+    background: var(--block-select-bg);
+    border-radius: var(--block-select-radius);
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* List item highlights: extend 2px on each side for the base (28px on 24px items).
+     First/last extend 6px outward for rounded corners (32px). Standalone = 36px.
+     Flat-list margin of 6px produces 2px visible gaps between highlights. */
+  li.block--selected::after {
+    min-height: auto;
+    top: -2px;
+    bottom: -2px;
+    left: calc(-2em - 7px);
+  }
+
+  li:first-child.block--selected::after {
+    top: -6px;
+  }
+
+  /* Last item in a flat list: 32px (top=-2 + 24 + bottom=6) */
+  li:last-child:not(.lexxy-nested-listitem).block--selected::after,
+  li.block--selected:has(+ li.lexxy-nested-listitem:last-child)::after {
+    bottom: -6px;
+  }
+
+  /* Parent group following an unparented selected child: flush top
+     so there's a 2px gap (child extends 4px + 0px top + 6px margin = 2px gap). */
+  li.block--flush-top.block--selected::after {
+    top: 0px;
+  }
+
+  /* Nested last item (inside a structural wrapper): 30px */
+  li.lexxy-nested-listitem li:last-child:not(.lexxy-nested-listitem).block--selected::after {
+    bottom: -4px;
+  }
+
+
+  li:only-child.block--selected::after {
+    top: -6px;
+    bottom: -6px;
+  }
+
+  /* Nested only-child: regular sizing, not standalone. A single item
+     inside a structural wrapper is a child, not a standalone bullet. */
+  li.lexxy-nested-listitem li:only-child.block--selected::after {
+    top: -2px;
+    bottom: -2px;
+  }
+
+  /* Contiguous selection groups (list items only — root blocks always have
+     margins so they keep full radius). JS marks adjacent selected LIs with
+     block--select-mid, and first/last at group boundaries.
+     Radius applied to the ::after pseudo-element. */
+  .block--select-mid:not(.block--select-first):not(.block--select-last)::after {
+    border-radius: 0;
+  }
+  .block--select-mid.block--select-first:not(.block--select-last)::after {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .block--select-mid.block--select-last:not(.block--select-first)::after {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  /* Structural wrappers get highlighted only when their preceding sibling
+     is selected — this means the parent item is part of the selection, so
+     all children should be too. Prevents ancestor wrappers from lighting
+     up when only a deeply nested item is selected. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
+    position: relative;
+    z-index: 0; /* stacking context so ::after z-index: -1 stays visible */
+    margin-top: 0;
+  }
+
+  /* Structural wrapper ::after is suppressed — the parent's ::after covers
+     the entire parent+children area via the --parent-selection-height variable.
+     Keeping the rule for wrappers whose parent isn't selected (edge cases). */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected)::after {
+    display: none;
+  }
+
+  /* The parent item's ::after pseudo extends downward to cover the gap
+     between itself and the structural wrapper. No box-shadow needed. */
+
+  /* Children inside a highlighted wrapper: suppress their own highlight
+     so the wrapper provides a single continuous highlight surface. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected,
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected.block--focused {
+    box-shadow: none;
+  }
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) .block--selected::after {
+    display: none;
+  }
+
+  /* Inner structural wrappers: suppress their ::after when already inside
+     a highlighted outer wrapper. Without this, each nesting level draws its
+     own rectangle at a stepped x-position instead of one solid rectangle. */
+  .block--selected + li.lexxy-nested-listitem:has(.block--selected) li.lexxy-nested-listitem::after {
+    display: none;
+  }
+
+  /* Parent with selected children: size ::after to cover the entire
+     parent+children area using a JS-set CSS variable. The parent's
+     ::after alone provides the highlight — no wrapper stitching needed. */
+  li.block--selected:has(+ li.lexxy-nested-listitem .block--selected)::after {
+    height: var(--parent-selection-height, auto);
+    bottom: auto;
+    border-bottom-left-radius: var(--block-select-radius);
+    border-bottom-right-radius: var(--block-select-radius);
+  }
+
+  /* The parent item above the wrapper should also use the uniform shade
+     when its children are selected (not the darker focused shade). */
+  .block--focused:has(+ li.lexxy-nested-listitem .block--selected) {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
+  }
+
+  /* Bullet extension and gap bridging are handled by the ::after pseudo-element
+     (inset: -6px extends past the bullet and bridges adjacent item gaps). */
+
+  /* Code blocks: override z-index to NOT create a stacking context.
+     This lets the ::after (z-index: -1) paint below the code block's
+     opaque background in the parent context. A 6px solid outline in the
+     selection fill color provides the rounded selection border.
+     The box-shadow adds a subtle tint to the code bg. */
+  pre.block--selected,
+  code[data-language].block--selected,
+  pre.block--selected.block--focused,
+  code[data-language].block--selected.block--focused {
+    z-index: auto;
+    box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 7%, transparent);
+    outline: 6px solid var(--block-select-bg);
+    overflow: hidden;
+  }
+
+  /* Attachments: the ::after fills the same width as other block
+     selections. An inset box-shadow tints the card interior (the card's
+     opaque background covers the ::after within its bounds). The outline
+     provides the blue focus ring on the card itself. */
+  .attachment.block--selected,
+  .attachment.block--selected.block--focused {
+    outline: var(--lexxy-focus-ring-size) solid var(--lexxy-focus-ring-color);
+    outline-offset: var(--lexxy-focus-ring-offset);
+    box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, transparent);
+  }
+  /* Compensate for the card's 1px border — ::after is positioned relative
+     to the padding box, so extend 1px extra on each side. */
+  .attachment.block--selected::after {
+    inset: -7px -7px -7px -8px;
+  }
+
+  /* When an attachment is wrapped inside a block-selected list item, the
+     list item already shows the highlight — suppress the inner card's
+     duplicated outline/tint so it doesn't read as a nested frame. */
+  li.block--selected > .attachment.block--selected,
+  li.block--selected > .attachment.block--selected.block--focused {
+    outline: none;
+    box-shadow: none;
+  }
+  li.block--selected > .attachment.block--selected::after {
+    display: none;
+  }
+
+  /* Wrapped block selector used across multiple rules below. */
+
+  /* Zero inner element margins to prevent collapse-through on all wrapped
+     block lis. The li's own margin handles spacing. */
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider, > pre, > code[data-language]) {
+    > h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > pre, > code[data-language] {
+      margin-block: 0;
+    }
+  }
+
+  /* Mixed lists: any ul/ol containing at least one wrapped block.
+     ALL items (wrapped and regular) get 12px margin and -4px insets
+     so every pair produces: 12 - 4 - 4 = 4px gap.
+     Pure regular-only lists keep their existing 6px/2px Notion-style sizing. */
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) {
+    > li:not(.lexxy-nested-listitem) {
+      margin-block: 12px !important;
+    }
+  }
+
+  /* All items in mixed lists: fixed -4px selection inset.
+     The nested variant bumps specificity to beat position-sensitive li rules. */
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--selected::after,
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--focused::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--selected::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:not(.lexxy-nested-listitem).block--focused::after {
+    inset: -4px -4px -4px -39px;
+  }
+
+  /* Last child in nested mixed lists: -6px bottom bridges the 12px gap
+     at nesting boundaries (12 - 6 - 2 = 4px visual gap). Must beat the
+     mixed-list inset rule above, so uses the same context selector. */
+  :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.block--selected, .block--focused)::after,
+  :is(li.lexxy-nested-listitem) :is(ul, ol):has(> li > h1, > li > h2, > li > h3, > li > h4, > li > h5, > li > h6, > li > blockquote, > li > figure, > li > .horizontal-divider, > li > pre, > li > code[data-language], > li > .lexxy-content__table-wrapper) > li:last-child:not(.lexxy-nested-listitem):is(.block--selected, .block--focused)::after {
+    bottom: -6px;
+  }
+
+  /* Wrapped code blocks inside list items: the li's ::after provides
+     the selection. Override it to match the code block's 10px rounding
+     with 6px padding on top/right/bottom. Left side keeps bullet spacing.
+     Nested variant with :not(.lexxy-nested-listitem) bumps specificity to
+     (0,4,3), matching the highest position-sensitive li rules so the fixed
+     inset values win at any nesting depth. */
+  li.block--selected:has(> code[data-language])::after,
+  li.block--selected:has(> pre)::after,
+  li.block--focused:has(> code[data-language])::after,
+  li.block--focused:has(> pre)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> code[data-language])::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> pre)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> code[data-language])::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> pre)::after {
+    border-radius: var(--lexxy-code-block-radius);
+    inset: -4px -4px -4px -39px;
+  }
+
+  /* Wrapped code blocks: apply the same tint as top-level */
+  li.block--selected > code[data-language],
+  li.block--selected > pre,
+  li.block--focused > code[data-language],
+  li.block--focused > pre {
+    box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark) 7%, transparent);
+  }
+
+  /* Tables: use outline for the selection fill (same approach as code
+     blocks) since table cells have opaque backgrounds that hide ::after.
+     Suppress ::after and use a solid outline matching the selection color. */
+  .lexxy-content__table-wrapper {
+    padding: 7px;
+    margin: -6px -6px 10px -7px;
+  }
+
+  /* Tables: suppress the ::after (cells' opaque backgrounds hide it).
+     Padding/margin are always-on so selection doesn't shift content.
+     Only toggle the background color and cell tinting. */
+  .lexxy-content__table-wrapper.block--selected,
+  .lexxy-content__table-wrapper.block--focused {
+    background-color: var(--block-select-bg);
+    border-radius: var(--block-select-radius);
+  }
+
+  .lexxy-content__table-wrapper.block--selected::after,
+  .lexxy-content__table-wrapper.block--focused::after {
+    display: none;
+  }
+
+  .lexxy-content__table-wrapper.block--selected td,
+  .lexxy-content__table-wrapper.block--selected th,
+  .lexxy-content__table-wrapper.block--focused td,
+  .lexxy-content__table-wrapper.block--focused th {
+    background-color: var(--block-select-bg) !important;
+  }
+
+  /* Wrapped tables inside list items: expand the li's ::after on
+     top/right/bottom to match the top-level table spacing. Left
+     side keeps the standard bullet-aligned inset. */
+  /* Table margin handled by the mixed-list rule above (12px). */
+
+  /* Reset the top-level table padding/margin for wrapped tables —
+     the li's ::after handles the selection fill instead. */
+  li > .lexxy-content__table-wrapper {
+    padding: 0;
+    margin: 0;
+  }
+
+  /* Nested variant with :not(.lexxy-nested-listitem) bumps specificity to
+     (0,4,3), matching the highest position-sensitive li rules so the fixed
+     inset values win at any nesting depth. */
+  li.block--selected:has(> .lexxy-content__table-wrapper)::after,
+  li.block--focused:has(> .lexxy-content__table-wrapper)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--selected:has(> .lexxy-content__table-wrapper)::after,
+  :is(li.lexxy-nested-listitem) li:not(.lexxy-nested-listitem).block--focused:has(> .lexxy-content__table-wrapper)::after {
+    border-radius: var(--block-select-radius);
+    inset: -4px -4px -4px -39px;
+  }
+
+  li.block--selected:has(> .lexxy-content__table-wrapper) td,
+  li.block--selected:has(> .lexxy-content__table-wrapper) th,
+  li.block--focused:has(> .lexxy-content__table-wrapper) td,
+  li.block--focused:has(> .lexxy-content__table-wrapper) th {
+    background-color: var(--block-select-bg) !important;
+  }
+
+  figure.horizontal-divider {
+    margin: 10px 0;
+    padding: 4px 0;
+    cursor: pointer;
+  }
+
+  /* Horizontal dividers: fill the figure exactly (padding provides
+     4px above/below the 1px line). The 10px margin keeps 4px visible
+     gaps from neighboring blocks whose ::after extends 6px. */
+  .horizontal-divider.block--selected::after,
+  .horizontal-divider.block--focused::after {
+    min-height: unset;
+    inset: 0 -7px;
+    border-radius: var(--block-select-radius);
+  }
+
+  /* Blockquotes: slightly darken the vertical bar so it stays visible
+     against the selection background (~25% darker than the unselected
+     ink-lighter). Applies to both standalone and list-wrapped quotes. */
+  blockquote.block--selected,
+  blockquote.block--focused,
+  li.block--selected > blockquote,
+  li.block--focused > blockquote {
+    border-inline-start-color: oklch(70% 0 0);
+  }
+
+  /* Standalone blockquote: the ::after (z-index: -1) paints above the
+     element's own border in CSS stacking context order, hiding the bar.
+     Hide the CSS border, extend ::after left by 3px to compensate for
+     the border width, and render the bar as a ::before at z-index: 1. */
+  blockquote.block--selected,
+  blockquote.block--focused {
+    border-inline-start-color: transparent;
+  }
+
+  blockquote.block--selected::after,
+  blockquote.block--focused::after {
+    inset-inline-start: -10px; /* -7px standard + 3px border compensation */
+  }
+
+  blockquote.block--selected::before,
+  blockquote.block--focused::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: -3px; /* align with border-box edge (abs positioning is relative to padding box) */
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: oklch(70% 0 0);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Show wrapped block bullet during block selection and hover */
+  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > pre, > code[data-language], > table, > blockquote, > figure, > .lexxy-content__table-wrapper, > .horizontal-divider) {
+    &.block--selected::before,
+    &.block--focused::before {
+      opacity: 1;
+    }
+  }
+
+  /* Hide the trailing <br> Lexical adds after decorator figures inside list
+     items. Without this, attachments/HRs in lists have an extra blank line. */
+  li:has(> figure[data-lexical-decorator]) > br,
+  li:has(> figure.attachment) > br {
+    display: none;
+  }
+
+  /* Dragged items: lighter shade + faded text instead of element opacity.
+     Element opacity creates separate stacking contexts per element, causing
+     double-layered shadows where parent and wrapper overlap. Uses a fixed
+     base color (not currentColor) to avoid recursive compounding on nested
+     elements where each child would get 30% of the already-faded parent. */
+  /* Dragged items: faded text + lighter selection background.
+     Color is set via inheritance (no * selector) so syntax tokens in code
+     blocks keep their explicit theme colors. Elements with their own color
+     rules (blockquote, links) get explicit overrides below. */
+  .lexxy-dragging,
+  .lexxy-dragging .block--selected,
+  .lexxy-dragging li.lexxy-nested-listitem {
+    --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 5%, var(--lexxy-color-canvas)) !important;
+  }
+  .lexxy-dragging {
+    color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent) !important;
+  }
+
+  /* Elements with their own color rules need explicit fade override */
+  .lexxy-dragging blockquote,
+  .lexxy-dragging a,
+  .lexxy-dragging figcaption,
+  .lexxy-dragging .lexxy-placeholder {
+    color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent) !important;
+  }
+
+  /* Code blocks: ::after overlay dims uniformly while keeping the dark
+     background opaque (no parent blue bleeding through) and preserving
+     syntax highlighting colors underneath. */
+  .lexxy-dragging pre,
+  .lexxy-dragging code[data-language] {
+    position: relative;
+  }
+  .lexxy-dragging pre::after,
+  .lexxy-dragging code[data-language]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: color-mix(in oklch, var(--lexxy-color-canvas, #fff) 40%, transparent);
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* Block drop indicator (Notion-style hierarchy line) -------------------------- */
+
+:where(lexxy-editor) {
+  .lexxy-drop-indicator {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 80ms ease;
+  }
+
+  .lexxy-drop-indicator--visible {
+    opacity: 1;
+  }
+
+  .lexxy-drop-indicator__circle {
+    flex-shrink: 0;
+    inline-size: 5px;
+    block-size: 5px;
+    border-radius: 50%;
+    border: 1.5px solid var(--lexxy-focus-ring-color);
+    background: var(--lexxy-color-surface, #fff);
+    margin-inline-start: -2.5px;
+    margin-inline-end: var(--indicator-gap, 0px);
+  }
+
+  /* Hide the bullet for root-level drops — only show within lists */
+  .lexxy-drop-indicator[data-depth="0"] .lexxy-drop-indicator__circle {
+    display: none;
+  }
+  .lexxy-drop-indicator[data-depth="0"] .lexxy-drop-indicator__line {
+    margin-inline: -1px;
+  }
+
+  /* OL drop indicator: show "#." instead of a circle to indicate
+     numbered list insertion without implying a specific number.
+     Right-align to match the OL counter position. */
+  .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__circle {
+    border: none;
+    border-radius: 0;
+    background: none;
+    inline-size: auto;
+    block-size: auto;
+    margin-inline-start: -11px;
+    margin-inline-end: var(--indicator-gap, 0px);
+    font-size: 0.85em;
+    font-weight: 500;
+    line-height: 0;
+    color: var(--lexxy-focus-ring-color);
+    position: relative;
+    top: 0px;
+  }
+  .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__circle::before {
+    content: "#.";
+  }
+  .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__line {
+    position: relative;
+    top: 4px;
+    left: 1px;
+  }
+
+  .lexxy-drop-indicator__line {
+    flex: 1;
+    block-size: 2px;
+    background: var(--lexxy-focus-ring-color);
+    border-radius: 1px;
+  }
+}
+
+.lexxy-drag-ghost {
+  position: fixed;
+  max-height: 280px;
+  pointer-events: none;
+  z-index: 10000;
+  transform: scale(0.95);
+  transform-origin: top left;
+  border-radius: var(--lexxy-radius, 0.5ch);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 5%, var(--lexxy-color-canvas, #fff));
+  opacity: 0.85;
+  padding: 8px;
+}
+
+/* Drag ghost: match text dimness, background, and code treatment to originals */
+.lexxy-drag-ghost .lexxy-editor__content {
+  color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
+  padding: 0;
+  min-block-size: 0;
+  display: flow-root; /* BFC prevents child margins from collapsing through */
+  /* Clip tall content here (not on the ghost) so the ghost's bottom
+     padding remains visible below the clipped edge. overflow:hidden
+     on the ghost would clip at the padding box, filling the padding. */
+  max-height: calc(280px - 16px);
+  overflow: hidden;
+  border-radius: var(--lexxy-radius, 0.5ch);
+}
+/* Specificity must beat :where(.lexxy-editor__content) > :is(:first-child, .hidden + *):is(.attachment)
+   which resolves to (0,3,1) with !important. Using .lexxy-content.lexxy-editor__content bumps us to (0,4,0). */
+.lexxy-drag-ghost .lexxy-content.lexxy-editor__content > :first-child {
+  margin: 0 !important;
+}
+.lexxy-drag-ghost .lexxy-editor__content blockquote,
+.lexxy-drag-ghost .lexxy-editor__content a {
+  color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
+}
+.lexxy-drag-ghost pre,
+.lexxy-drag-ghost code[data-language] {
+  position: relative;
+}
+.lexxy-drag-ghost pre::after,
+.lexxy-drag-ghost code[data-language]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--lexxy-color-canvas, #fff) 40%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Drag ghost: strip preview attachment chrome (padding, background)
+   so only the ghost's own 8px padding provides the border.
+   File cards and collapsed previews keep their internal padding. */
+.lexxy-drag-ghost .attachment--preview:not(.attachment--collapsed) {
+  padding: 0 !important;
+  background: transparent;
+}
+.lexxy-drag-ghost .attachment--file,
+.lexxy-drag-ghost .attachment--collapsed {
+  background: transparent;
+}
+/* Preview images: the figure's padding/bg is stripped (above), so the
+   image sits directly inside the ghost's 8px padding. Override the JS
+   inline width to shrink-wrap around the image. */
+.lexxy-drag-ghost:has(.attachment--preview:not(.attachment--collapsed)) {
+  width: fit-content !important;
+}
+.lexxy-drag-ghost .attachment--preview img {
+  margin: 0;
+}
+
+/* File cards and collapsed previews: full width with subtle outline */
+.lexxy-drag-ghost .attachment--file,
+.lexxy-drag-ghost .attachment--preview.attachment--collapsed {
+  inline-size: 100%;
+  outline: var(--lexxy-focus-ring-size, 2px) solid color-mix(in oklch, var(--lexxy-focus-ring-color) 50%, transparent);
+  outline-offset: var(--lexxy-focus-ring-offset, -2px);
+  box-shadow: inset 0 0 0 1000px color-mix(in oklch, var(--lexxy-color-accent-dark, #3b82f6) 8%, transparent);
+}
+
+/* Block drag handle & add button --------------------------------------------- */
+
+:where(lexxy-editor) {
+  .lexxy-block-handle,
+  .lexxy-block-add {
+    position: absolute;
+    inline-size: 20px;
+    block-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 100ms ease;
+    border-radius: var(--lexxy-radius);
+    color: var(--lexxy-color-ink-lighter);
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .lexxy-block-handle { cursor: grab; }
+  .lexxy-block-handle:active { cursor: grabbing; }
+  .lexxy-block-add { cursor: pointer; }
+
+  .lexxy-block-handle--visible,
+  .lexxy-block-add--visible {
+    opacity: 0.7;
+  }
+
+  .lexxy-block-handle--visible:hover,
+  .lexxy-block-add--visible:hover {
+    opacity: 1;
+    background: var(--lexxy-color-ink-lightest);
+    color: var(--lexxy-color-ink);
+  }
+}
+
+/* Block actions menu (Cmd+/) ------------------------------------------------ */
+
+lexxy-block-actions {
+  position: fixed;
+  z-index: 10000;
+  outline: none;
+  font-family: var(--lexxy-font-sans, system-ui, sans-serif);
+  font-size: 14px;
+}
+
+.lexxy-block-actions__panel {
+  background: var(--lexxy-color-surface, #fff);
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  padding: 4px;
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.lexxy-block-actions__flyout {
+  position: absolute;
+  left: calc(100% - 4px);
+  z-index: 1;
+}
+
+lexxy-block-actions[hidden] {
+  display: none;
+}
+
+.lexxy-block-actions__divider {
+  height: 1px;
+  background: var(--lexxy-color-ink-lightest, #e5e7eb);
+  margin: 4px 0;
+}
+
+.lexxy-block-actions__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lexxy-color-ink, #1f2937);
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* display: flex on the base rule overrides the browser's default
+   [hidden] { display: none }; restore it for contextual items like
+   Remove Quote that hide/show based on the focused block. */
+.lexxy-block-actions__item[hidden] {
+  display: none;
+}
+
+/* Block actions menu: pointer cursor on all items */
+lexxy-block-actions:not([hidden]),
+lexxy-block-actions:not([hidden]) * {
+  cursor: pointer;
+}
+
+/* Keyboard mode: hide cursor and disable pointer events on menu items.
+   Programmatic .click() from Enter key still works. */
+lexxy-block-actions:not(.lexxy-block-actions--mouse-active),
+lexxy-block-actions:not(.lexxy-block-actions--mouse-active) * {
+  cursor: none !important;
+  pointer-events: none !important;
+}
+
+/* Keyboard mode: hide cursor on the editor too (bleeds through
+   pointer-events: none on the menu). Toggled by JS via class. */
+lexxy-editor.lexxy-editor--keyboard-menu,
+lexxy-editor.lexxy-editor--keyboard-menu * {
+  cursor: none !important;
+}
+
+.lexxy-block-actions__item--focused {
+  background: var(--lexxy-color-ink-lightest, #f3f4f6);
+}
+
+.lexxy-block-actions__item[disabled] {
+  color: var(--lexxy-color-text-subtle, #9ca3af);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.lexxy-block-actions__item[disabled]:hover {
+  background: transparent;
+}
+
+.lexxy-block-actions__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.lexxy-block-actions__icon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.lexxy-block-actions__label {
+  flex: 1;
+}
+
+.lexxy-block-actions__chevron {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: 16px;
+}
+
+.lexxy-block-actions__shortcut {
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  font-size: 12px;
+}
+
+.lexxy-block-actions__flyout[hidden] {
+  display: none;
+}
+
+.lexxy-block-actions__color-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--lexxy-color-ink-lighter, #9ca3af);
+  padding: 8px 10px 2px;
+  letter-spacing: 0.05em;
+}
+
+.lexxy-block-actions__color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--lexxy-color-ink-lightest, #e5e7eb);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Preview modal */
+/* -------------------------------------------------------------------------- */
+
+body.lexxy-preview-modal--open {
+  overflow: hidden;
+}
+
+dialog.lexxy-preview-modal {
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  max-width: none;
+  max-height: none;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+dialog.lexxy-preview-modal::backdrop {
+  background: var(--lexxy-preview-backdrop, rgba(0, 0, 0, 0.7));
+}
+
+.lexxy-preview-modal__dialog {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--lexxy-preview-bg, white);
+  overflow: hidden;
+  outline: none;
+}
+
+@media (min-width: 768px) {
+  .lexxy-preview-modal__dialog {
+    inset: 5vh 2.5vw;
+    border-radius: 0.75rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.lexxy-preview-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--lexxy-preview-header-border, #e5e7eb);
+  flex-shrink: 0;
+  background: var(--lexxy-preview-bg, white);
+}
+
+.lexxy-preview-modal__title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.lexxy-preview-modal__title-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.lexxy-preview-modal__subtitle {
+  color: var(--lexxy-color-text-subtle, #9ca3af);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lexxy-preview-modal__icon {
+  display: grid;
+  place-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--lexxy-radius, 0.375rem);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+  border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+  color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+}
+
+/* Modal icon colors — outside lexxy-editor scope since modal is on document.body */
+:is(.lexxy-preview-modal__icon, .lexxy-preview-modal__generic-icon) {
+  &.attachment--pdf { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.2 27); --lexxy-attachment-icon-text: oklch(30% 0.05 27); }
+  &.attachment--xls, &.attachment--xlsx { --lexxy-attachment-icon-bg: oklch(55% 0.15 160); --lexxy-attachment-icon-border: oklch(55% 0.15 160); --lexxy-attachment-icon-text: white; }
+  &.attachment--csv, &.attachment--numbers { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.15 160); --lexxy-attachment-icon-text: oklch(45% 0.15 160); }
+  &.attachment--doc, &.attachment--docx, &.attachment--pages { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.196 258); --lexxy-attachment-icon-text: oklch(45% 0.196 258); }
+  &.attachment--txt, &.attachment--rtf, &.attachment--md { --lexxy-attachment-icon-bg: oklch(55% 0 0); --lexxy-attachment-icon-border: oklch(55% 0 0); --lexxy-attachment-icon-text: white; }
+  &.attachment--png, &.attachment--jpg, &.attachment--jpeg, &.attachment--gif, &.attachment--webp { --lexxy-attachment-icon-bg: oklch(55% 0.196 258); --lexxy-attachment-icon-border: oklch(55% 0.196 258); --lexxy-attachment-icon-text: white; }
+  &.attachment--mp3, &.attachment--wav, &.attachment--ogg, &.attachment--aac { --lexxy-attachment-icon-bg: oklch(55% 0.15 305); --lexxy-attachment-icon-border: oklch(55% 0.15 305); --lexxy-attachment-icon-text: white; }
+  &.attachment--mp4, &.attachment--mov, &.attachment--webm, &.attachment--avi { --lexxy-attachment-icon-bg: oklch(55% 0.2 27); --lexxy-attachment-icon-border: oklch(55% 0.2 27); --lexxy-attachment-icon-text: white; }
+  &.attachment--psd, &.attachment--ai, &.attachment--sketch, &.attachment--ppt, &.attachment--pptx { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.2 27); --lexxy-attachment-icon-text: oklch(40% 0.15 27); }
+  &.attachment--css, &.attachment--js, &.attachment--ts, &.attachment--rb, &.attachment--json, &.attachment--html { --lexxy-attachment-icon-bg: white; --lexxy-attachment-icon-border: oklch(55% 0.15 305); --lexxy-attachment-icon-text: oklch(40% 0.15 305); }
+}
+
+.lexxy-preview-modal__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--lexxy-preview-title-color, #111827);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lexxy-preview-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.lexxy-preview-modal__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--lexxy-preview-download-color, #374151);
+  background: var(--lexxy-preview-bg, white);
+  border: 1px solid var(--lexxy-preview-download-border, #d1d5db);
+  border-radius: 0.375rem;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--lexxy-color-ink-lightest, #f9fafb);
+  }
+}
+
+.lexxy-preview-modal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem;
+  background: none;
+  border: none;
+  border-radius: 0.375rem;
+  color: var(--lexxy-preview-close-color, #9ca3af);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lexxy-preview-close-hover, #374151);
+    background: var(--lexxy-color-ink-lightest, #f3f4f6);
+  }
+}
+
+.lexxy-preview-modal__content {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--lexxy-preview-content-bg, #f3f4f6);
+}
+
+.lexxy-preview-modal__image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 0.5rem;
+}
+
+.lexxy-preview-modal__iframe {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--lexxy-preview-header-border, #e5e7eb);
+  border-radius: 0.5rem;
+  background: white;
+}
+
+.lexxy-preview-modal__text {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--lexxy-preview-header-border, #e5e7eb);
+  border-radius: 0.5rem;
+  background: white;
+  color: var(--lexxy-color-ink, #111827);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+.lexxy-preview-modal__video {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 0.5rem;
+}
+
+.lexxy-preview-modal__audio {
+  width: 100%;
+  max-width: 32rem;
+}
+
+.lexxy-preview-modal__generic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+.lexxy-preview-modal__generic-icon {
+  display: grid;
+  place-content: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: var(--lexxy-radius, 0.375rem);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background-color: var(--lexxy-attachment-icon-bg, var(--lexxy-color-ink-lightest, #f3f4f6));
+  border: 2px solid var(--lexxy-attachment-icon-border, var(--lexxy-color-ink-lighter, #d1d5db));
+  color: var(--lexxy-attachment-icon-text, var(--lexxy-color-ink-medium, #6b7280));
+}
+
+.lexxy-preview-modal__generic-hint {
+  font-size: 0.875rem;
+  color: var(--lexxy-color-ink-light, #9ca3af);
+}
+
+.lexxy-preview-modal__generic-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--lexxy-preview-download-color, #374151);
+  background: var(--lexxy-preview-bg, white);
+  border: 1px solid var(--lexxy-preview-download-border, #d1d5db);
+  border-radius: 0.375rem;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--lexxy-color-ink-lightest, #f9fafb);
   }
 }

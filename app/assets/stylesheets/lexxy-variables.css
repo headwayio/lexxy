@@ -79,6 +79,18 @@
   --lexxy-focus-ring-offset: -2px;
   --lexxy-focus-ring-size: 2px;
 
+  /* Preview modal */
+  --lexxy-preview-backdrop: rgba(0, 0, 0, 0.7);
+  --lexxy-preview-bg: white;
+  --lexxy-preview-header-border: var(--lexxy-color-ink-lighter);
+  --lexxy-preview-title-color: var(--lexxy-color-ink);
+  --lexxy-preview-content-bg: var(--lexxy-color-ink-lightest);
+  --lexxy-preview-close-color: var(--lexxy-color-ink-light);
+  --lexxy-preview-close-hover: var(--lexxy-color-ink);
+  --lexxy-preview-download-color: var(--lexxy-color-ink-medium);
+  --lexxy-preview-download-border: var(--lexxy-color-ink-lighter);
+  --lexxy-preview-z-index: 10012;
+
   /* Misc */
   --lexxy-toolbar-button-size: 2lh;
   --lexxy-radius: 0.5ch;
