@@ -1,5 +1,4 @@
 require_relative "attachable"
-require_relative "attachment_icon_helper"
 require_relative "attachment_helper"
 
 require "active_storage/blob_with_preview_url"
@@ -41,8 +40,12 @@ module Lexxy
     initializer "lexxy.attachable" do |app|
       app.config.to_prepare do
         ActionText::Attachable.singleton_class.prepend(Lexxy::Attachable)
-        ActionView::Base.include(Lexxy::AttachmentIconHelper)
-        ActionView::Base.include(Lexxy::AttachmentHelper)
+      end
+    end
+
+    initializer "lexxy.helpers" do |app|
+      ActiveSupport.on_load(:action_controller_base) do
+        helper Lexxy::AttachmentHelper
       end
     end
 
@@ -50,6 +53,7 @@ module Lexxy
       if Rails.application.config.respond_to?(:assets)
         app.config.assets.paths << root.join("app/assets/stylesheets")
         app.config.assets.paths << root.join("app/javascript")
+        app.config.assets.paths << root.join("app/assets/images")
       end
     end
 
