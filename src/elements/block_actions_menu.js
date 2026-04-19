@@ -11,9 +11,9 @@ const TURN_INTO_OPTIONS = [
   { command: "setFormatHeadingLarge", label: "Heading 2", icon: ToolbarIcons.h2 },
   { command: "setFormatHeadingMedium", label: "Heading 3", icon: ToolbarIcons.h3 },
   { command: "setFormatHeadingSmall", label: "Heading 4", icon: ToolbarIcons.h4 },
-  { command: "insertUnorderedList", label: "Bullet list", wrapLabel: "Wrap in bullet list", icon: ToolbarIcons.ul },
-  { command: "insertOrderedList", label: "Numbered list", wrapLabel: "Wrap in numbered list", icon: ToolbarIcons.ol },
-  { command: "insertQuoteBlock", label: "Quote", wrapLabel: "Wrap in quote", icon: ToolbarIcons.quote },
+  { command: "insertUnorderedList", label: "Bullet list", wrapLabel: "Wrap in bullet list", unwrapLabel: "Unwrap from bullet list", icon: ToolbarIcons.ul },
+  { command: "insertOrderedList", label: "Numbered list", wrapLabel: "Wrap in numbered list", unwrapLabel: "Unwrap from numbered list", icon: ToolbarIcons.ol },
+  { command: "insertQuoteBlock", label: "Quote", wrapLabel: "Wrap in quote", unwrapLabel: "Unwrap from quote", icon: ToolbarIcons.quote },
   { command: "insertCodeBlock", label: "Code block", icon: ToolbarIcons.code },
 ]
 
@@ -73,7 +73,7 @@ export class BlockActionsMenu extends HTMLElement {
       this.#buildColorSubmenu(colorConfig)
     }
 
-    this.#applyBlockRestrictions(blockRestriction)
+    this.#applyBlockRestrictions(blockRestriction, { listType: unwrapListType, inQuote: canUnwrapFromQuote })
 
     // Contextual top-level actions. Only visible when the focused block
     // actually has a wrapper we can remove — a blockquote wrapping non-text
@@ -117,7 +117,13 @@ export class BlockActionsMenu extends HTMLElement {
   //
   // `wrapCommands` lists the subset of allowed commands that wrap the block
   // rather than replace it — used to pick the "Wrap in …" label variant.
-  #applyBlockRestrictions(restriction) {
+  //
+  // `currentWrap` reports what the focused block is already wrapped in:
+  //   { listType: "bullet" | "number" | null, inQuote: boolean }
+  // When a wrap command's target matches the current wrap, the button is
+  // relabeled to "Unwrap from …" and clicking it unwraps the block from
+  // that wrapper. When the target differs, it stays a wrap-swap.
+  #applyBlockRestrictions(restriction, currentWrap = { listType: null, inQuote: false }) {
     const HEADINGS = [ "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall" ]
     const LISTS = [ "insertUnorderedList", "insertOrderedList" ]
     const WRAP = [ ...LISTS, "insertQuoteBlock" ]
@@ -129,6 +135,10 @@ export class BlockActionsMenu extends HTMLElement {
     }
 
     const rule = restriction ? rules[restriction] : null
+    const unwrapMatches = (command) =>
+      (command === "insertUnorderedList" && currentWrap.listType === "bullet") ||
+      (command === "insertOrderedList"   && currentWrap.listType === "number") ||
+      (command === "insertQuoteBlock"    && currentWrap.inQuote)
 
     for (const button of this.querySelectorAll("[data-action=\"turn-into\"]")) {
       const command = button.dataset.command
@@ -139,8 +149,12 @@ export class BlockActionsMenu extends HTMLElement {
       const option = TURN_INTO_OPTIONS.find(o => o.command === command)
       const label = button.querySelector(".lexxy-block-actions__label")
       if (label && option) {
-        const isWrap = rule?.wrapCommands?.has(command)
-        label.textContent = isWrap && option.wrapLabel ? option.wrapLabel : option.label
+        if (unwrapMatches(command) && option.unwrapLabel) {
+          label.textContent = option.unwrapLabel
+        } else {
+          const isWrap = rule?.wrapCommands?.has(command)
+          label.textContent = isWrap && option.wrapLabel ? option.wrapLabel : option.label
+        }
       }
     }
 
