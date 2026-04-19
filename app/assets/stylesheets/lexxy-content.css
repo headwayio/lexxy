@@ -95,6 +95,26 @@
     }
   }
 
+  /* Wrapped blocks inside list items: zero the outer margin so list
+     rhythm (6px tight / 12px mixed) drives spacing uniformly. Without
+     this, each wrapped block's natural 16px bottom margin collapses
+     with the li's margin-bottom and widens the effective inter-li
+     margin to 16, producing an 8px visible gap (16 − 4 − 4) where
+     every other pair in a mixed list shows 4px. Apply to every block
+     type that has a non-zero natural margin at root level — figure,
+     .attachment, .attachment-gallery, headings, blockquote, pre,
+     code[data-language]. Tables and horizontal-dividers already have
+     their own scoped rules elsewhere. */
+  li > :is(h1, h2, h3, h4, h5, h6),
+  li > blockquote,
+  li > figure,
+  li > .attachment,
+  li > .attachment-gallery,
+  li > pre,
+  li > code[data-language] {
+    margin-block: 0;
+  }
+
   p:empty {
     display: none;
   }
@@ -487,9 +507,9 @@
     border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
     border-radius: var(--lexxy-radius);
     display: flex;
-    gap: 0.75rem;
+    gap: 0.5rem;
     inline-size: 100%;
-    padding: 0.75rem;
+    padding: 0.5rem;
   }
 
   /* Shared "strong name" text style used everywhere a file name appears in a card. */
