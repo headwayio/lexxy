@@ -11,9 +11,9 @@ const TURN_INTO_OPTIONS = [
   { command: "setFormatHeadingLarge", label: "Heading 2", icon: ToolbarIcons.h2 },
   { command: "setFormatHeadingMedium", label: "Heading 3", icon: ToolbarIcons.h3 },
   { command: "setFormatHeadingSmall", label: "Heading 4", icon: ToolbarIcons.h4 },
-  { command: "insertUnorderedList", label: "Bullet list", icon: ToolbarIcons.ul },
-  { command: "insertOrderedList", label: "Numbered list", icon: ToolbarIcons.ol },
-  { command: "insertQuoteBlock", label: "Quote", icon: ToolbarIcons.quote },
+  { command: "insertUnorderedList", label: "Bullet list", wrapLabel: "Wrap in bullet list", icon: ToolbarIcons.ul },
+  { command: "insertOrderedList", label: "Numbered list", wrapLabel: "Wrap in numbered list", icon: ToolbarIcons.ol },
+  { command: "insertQuoteBlock", label: "Quote", wrapLabel: "Wrap in quote", icon: ToolbarIcons.quote },
   { command: "insertCodeBlock", label: "Code block", icon: ToolbarIcons.code },
 ]
 
@@ -126,10 +126,23 @@ export class BlockActionsMenu extends HTMLElement {
 
     const rule = restriction ? rules[restriction] : null
 
+    // decorator (HR, attachment) and table blocks have no text to convert,
+    // so the list/quote commands wrap rather than convert. Relabel those
+    // buttons ("Bullet list" → "Wrap in bullet list") so users know what
+    // the action will do before clicking. Text-content blocks (paragraph,
+    // heading, quote, code) still read as a direct conversion.
+    const isWrapOnly = restriction === "decorator" || restriction === "table"
+
     for (const button of this.querySelectorAll("[data-action=\"turn-into\"]")) {
       const disable = rule ? !rule.commands.has(button.dataset.command) : false
       button.toggleAttribute("disabled", disable)
       button.setAttribute("aria-disabled", String(disable))
+
+      const option = TURN_INTO_OPTIONS.find(o => o.command === button.dataset.command)
+      const label = button.querySelector(".lexxy-block-actions__label")
+      if (label && option) {
+        label.textContent = isWrapOnly && option.wrapLabel ? option.wrapLabel : option.label
+      }
     }
 
     for (const button of this.querySelectorAll("[data-submenu=\"color\"]")) {
