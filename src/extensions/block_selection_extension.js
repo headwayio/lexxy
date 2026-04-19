@@ -1988,17 +1988,41 @@ export class BlockSelectionExtension extends LexxyExtension {
       const { prev, next } = this.#findAdjacentUnselectedBlocks(el)
       const rect = el.getBoundingClientRect()
 
-      // Only extend if the target is non-selected — otherwise the target
-      // has its own highlight and the default insets already space us
-      // correctly (and extending would overlap it).
-      if (prev && !prev.classList.contains(BLOCK_SELECTED_CLASS)) {
-        const prevBottom = prev.getBoundingClientRect().bottom
-        const topInset = Math.max(TARGET_GAP, rect.top - (prevBottom + TARGET_GAP))
+      // Two modes per direction:
+      //   (a) The adjacent block is unselected AND contains no selection.
+      //       Extend fully toward its edge with a 4px gap.
+      //   (b) The adjacent block is selected, or contains a selected
+      //       descendant. That neighbor (or the nearest selected inside
+      //       it) is going to extend toward us from the other side —
+      //       so we each meet halfway with a 4px gap in the middle.
+      // Both branches use the same !important CSS rule; the math
+      // differs only in the target edge and how much of the distance
+      // each leaf claims.
+      const prevSelected = prev && (
+        prev.classList.contains(BLOCK_SELECTED_CLASS)
+          ? prev
+          : [ ...prev.querySelectorAll(`.${BLOCK_SELECTED_CLASS}`) ].pop()
+      )
+      const nextSelected = next && (
+        next.classList.contains(BLOCK_SELECTED_CLASS)
+          ? next
+          : next.querySelector(`.${BLOCK_SELECTED_CLASS}`)
+      )
+
+      if (prev) {
+        const prevBottom = (prevSelected || prev).getBoundingClientRect().bottom
+        const distance = rect.top - prevBottom
+        const topInset = prevSelected
+          ? Math.max(TARGET_GAP, (distance - TARGET_GAP) / 2)
+          : Math.max(TARGET_GAP, distance - TARGET_GAP)
         el.style.setProperty("--leaf-top-inset", `-${topInset}px`)
       }
-      if (next && !next.classList.contains(BLOCK_SELECTED_CLASS)) {
-        const nextTop = next.getBoundingClientRect().top
-        const bottomInset = Math.max(TARGET_GAP, (nextTop - TARGET_GAP) - rect.bottom)
+      if (next) {
+        const nextTop = (nextSelected || next).getBoundingClientRect().top
+        const distance = nextTop - rect.bottom
+        const bottomInset = nextSelected
+          ? Math.max(TARGET_GAP, (distance - TARGET_GAP) / 2)
+          : Math.max(TARGET_GAP, distance - TARGET_GAP)
         el.style.setProperty("--leaf-bottom-inset", `-${bottomInset}px`)
       }
 
