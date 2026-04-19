@@ -85,6 +85,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   #selectionGroupElements = new Set()
   #parentHeightElements = new Set()
   #flushTopElements = new Set()
+  #isolatedLeafElements = new Set()
 
   get enabled() {
     return this.editorElement.supportsRichText
@@ -361,6 +362,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
     this.#syncBulletOffsets()
     this.#syncParentSelectionHeight()
+    this.#syncIsolatedLeafInsets()
   }
 
   #syncSelectionGroupClasses() {
@@ -1950,6 +1952,99 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#parentHeightElements.add(el)
     }
 
+  }
+
+  // Extend the ::after of "isolated" selected LI leaves — leaves whose list
+  // siblings aren't selected and whose ancestor wrappers aren't selected —
+  // so the visible gap to adjacent unselected content reads at the 4px
+  // mixed-list rhythm, regardless of how far structurally the next/prev
+  // visible block sits (wrapper boundaries, trapped margins, outer list
+  // spacing). Without this, a solo-selected leaf inside a wrapper chain
+  // floats with a visible gap much larger than 4px (e.g. ~14px when the
+  // next visible thing is outside the wrapper). With matched-pair selections
+  // the default insets already produce 4px; this only engages when there's
+  // nothing to pair with. Sets two CSS custom properties read by a
+  // dedicated CSS rule; consumes no flow layout.
+  #syncIsolatedLeafInsets() {
+    for (const el of this.#isolatedLeafElements) {
+      el.style.removeProperty("--leaf-top-inset")
+      el.style.removeProperty("--leaf-bottom-inset")
+      el.classList.remove("lexxy-editor__block--isolated-leaf")
+    }
+    this.#isolatedLeafElements.clear()
+
+    const TARGET_GAP = 4
+
+    for (const key of this.#selectedBlockKeys) {
+      const el = this.editor.getElementByKey(key)
+      if (!el || el.tagName !== "LI") continue
+      if (el.classList.contains(NESTED_LISTITEM_CLASS)) continue
+
+      // Isolated: no selected ancestor wrapper AND no selected sibling in
+      // the same list. If either holds, pair rhythm handles the rendering.
+      if (this.#hasSelectedAncestor(el)) continue
+      if (this.#hasSelectedListSibling(el)) continue
+
+      const { prev, next } = this.#findAdjacentUnselectedBlocks(el)
+      const rect = el.getBoundingClientRect()
+
+      // Only extend if the target is non-selected — otherwise the target
+      // has its own highlight and the default insets already space us
+      // correctly (and extending would overlap it).
+      if (prev && !prev.classList.contains(BLOCK_SELECTED_CLASS)) {
+        const prevBottom = prev.getBoundingClientRect().bottom
+        const topInset = Math.max(TARGET_GAP, rect.top - (prevBottom + TARGET_GAP))
+        el.style.setProperty("--leaf-top-inset", `-${topInset}px`)
+      }
+      if (next && !next.classList.contains(BLOCK_SELECTED_CLASS)) {
+        const nextTop = next.getBoundingClientRect().top
+        const bottomInset = Math.max(TARGET_GAP, (nextTop - TARGET_GAP) - rect.bottom)
+        el.style.setProperty("--leaf-bottom-inset", `-${bottomInset}px`)
+      }
+
+      if (el.style.getPropertyValue("--leaf-top-inset") ||
+          el.style.getPropertyValue("--leaf-bottom-inset")) {
+        el.classList.add("lexxy-editor__block--isolated-leaf")
+        this.#isolatedLeafElements.add(el)
+      }
+    }
+  }
+
+  #hasSelectedAncestor(el) {
+    let p = el.parentElement
+    while (p && p !== this.root) {
+      if (p.classList.contains(BLOCK_SELECTED_CLASS)) return true
+      p = p.parentElement
+    }
+    return false
+  }
+
+  #hasSelectedListSibling(el) {
+    if (!el.parentElement) return false
+    for (const sib of el.parentElement.children) {
+      if (sib !== el && sib.classList.contains(BLOCK_SELECTED_CLASS)) return true
+    }
+    return false
+  }
+
+  // Walk out to the first structural sibling on each side, crossing
+  // through ancestor ULs and nested wrappers. This gives the actual
+  // neighboring visible block in document order — the element from
+  // which the visible gap to `el` is measured.
+  #findAdjacentUnselectedBlocks(el) {
+    let node = el
+    let prev = null
+    while (node && node !== this.root) {
+      if (node.previousElementSibling) { prev = node.previousElementSibling; break }
+      node = node.parentElement
+    }
+    node = el
+    let next = null
+    while (node && node !== this.root) {
+      if (node.nextElementSibling) { next = node.nextElementSibling; break }
+      node = node.parentElement
+    }
+    return { prev, next }
   }
 
   // -- Selection state snapshot/restore ---------------------------------------
