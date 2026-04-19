@@ -2008,11 +2008,11 @@ export class BlockSelectionExtension extends LexxyExtension {
     let topReach = null, bottomReach = null
     if (prev) {
       const d = rect.top - prev.getBoundingClientRect().bottom
-      if (d > 0) topReach = Math.max(0, Math.round((d - TARGET_GAP) / 2))
+      if (d > 0) topReach = Math.max(0, (d - TARGET_GAP) / 2)
     }
     if (next) {
       const d = next.getBoundingClientRect().top - rect.bottom
-      if (d > 0) bottomReach = Math.max(0, Math.round((d - TARGET_GAP) / 2))
+      if (d > 0) bottomReach = Math.max(0, (d - TARGET_GAP) / 2)
     }
     return { topReach, bottomReach }
   }
