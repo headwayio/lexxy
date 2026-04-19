@@ -459,14 +459,14 @@ Everything in this section is what a Rails app needs so a human can manually dri
 - `ActiveStorage::Blob#as_json` is patched to include `previewable: true` and a `url` pointing at a resized representation (`ActiveStorage::BlobWithPreviewUrl`). This is the signal the editor uses to decide preview-view vs. file-card rendering for PDFs, videos, etc.
 - `rich_text_area` form helper is installed via `Lexxy::FormHelper` / `FormBuilder`.
 
-### Preview modal is opt-in (and has two separate switches)
+### Preview modal has two separate switches
 
 | Where                                                                         | How to enable                                                                            | Scope                                                                                                                                                                                                  |
 | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Inside the editor (double-click or eye button on an attachment while editing) | `Lexxy.configure({ global: { previewModal: true } })` before any editors connect         | Registers `<lexxy-preview-modal>` and appends one to `document.body`. Without this, the editor's preview button dispatches `lexxy:preview-attachment` but nothing handles it and the click is a no-op. |
+| Inside the editor (double-click or eye button on an attachment while editing) | Enabled by default. Opt out with `Lexxy.configure({ global: { previewModal: false } })` before any editors connect. | Registers `<lexxy-preview-modal>` and appends one to `document.body`. With this off, the editor's preview button dispatches `lexxy:preview-attachment` but nothing handles it and the click is a no-op. |
 | On rendered show pages (eye button on rendered `<action-text-attachment>`)    | `import "lexxy-content-preview"` in `application.js` (and a corresponding importmap pin) | Standalone script that attaches modal behaviour to rendered content. Independent from the editor-side switch — apps can enable one, the other, both, or neither.                                       |
 
-Default is `previewModal: false` for both. For a test app that exercises this PR's full feature set, enable both.
+The editor-side modal is on by default; the show-page modal is opt-in. For a test app that exercises this PR's full feature set, import `lexxy-content-preview`.
 
 ### Minimum Gemfile
 
@@ -504,8 +504,9 @@ import * as ActiveStorage from "@rails/activestorage";
 ActiveStorage.start();
 import "@hotwired/turbo-rails";
 import "lexxy";
-import "lexxy-content-preview"; // show-page modal
-Lexxy.configure({ global: { previewModal: true } }); // editor-side modal
+import "lexxy-content-preview"; // show-page modal (optional)
+// Editor-side modal (`previewModal`) is on by default.
+// Call `Lexxy.configure({ global: { previewModal: false } })` here to opt out.
 ```
 
 ### Stylesheet
@@ -514,7 +515,12 @@ Lexxy.configure({ global: { previewModal: true } }); // editor-side modal
 
 ### Show page template
 
-Lexxy ships `app/views/active_storage/blobs/_blob.html.erb` with rendering for video, audio, GIF, image representations, and generic file cards plus preview + download action buttons. If the host app has its own override for this partial, **delete it** — Lexxy's version is required for the attachment action buttons and consistent markup across the matrix. Rendering stays a normal `<%= @post.body %>`.
+Lexxy ships `app/views/active_storage/blobs/_blob.html.erb` (a dispatcher) plus per-type partials (`_blob_audio`, `_blob_file`, `_blob_image`, `_blob_inline_image`, `_blob_video`) with rendering for video, audio, GIF, image representations, and generic file cards plus preview + download action buttons. Host apps can customize the markup at two grains:
+
+- **Per-type override** (preferred): copy just the partial for the type you want to customize into your app (e.g. `app/views/active_storage/blobs/_blob_image.html.erb`). Rails' view lookup prefers the host app's copy for that type while Lexxy's dispatcher + other per-type partials keep working.
+- **Full override**: supply your own `_blob.html.erb`. You lose Lexxy's dispatcher, per-type partials, and the attachment action buttons unless you render `lexxy_attachment_actions(blob)` yourself — only worth doing when you need wholly custom markup.
+
+For the test app walkthrough below, the path of least resistance is to delete any pre-existing custom `_blob.html.erb` so Lexxy's full chain renders. Rendering stays a normal `<%= @post.body %>`.
 
 ### System dependencies for attachment types
 
