@@ -1,7 +1,7 @@
 # Block Editing: Architecture & Implementation
 
 > Notion-style block selection, movement, drag-and-drop, and formatting for Lexxy.
-> Branch: `block-editing-standalone` — 98 files changed, 17,165 insertions, 387 deletions against `origin/main`.
+> Branch: `block-editing-standalone` — 98 files changed, 17,161 insertions, 387 deletions against `origin/main`.
 
 ## Overview
 
@@ -17,7 +17,7 @@ The design goal is Notion-style block semantics: every visible element (paragrap
 
 | File                                                                                  | Lines  | Purpose                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/extensions/block_selection_extension.js`                                         | 4,535  | Coordinator: selection state, keyboard navigation, block movement, formatting, highlight propagation — delegates drag-and-drop and a few independent concerns to the modules below                                        |
+| `src/extensions/block_selection_extension.js`                                         | 4,525  | Coordinator: selection state, keyboard navigation, block movement, formatting, highlight propagation — delegates drag-and-drop and a few independent concerns to the modules below                                        |
 | `src/editor/block_selection/drag_and_drop/index.js`                                   | 1,973  | Drag-and-drop coordinator: drag handles, drop indicators, drag ghosts, hover detection                                                                                                                                    |
 | `src/editor/block_selection/drag_and_drop/autoscroll.js`                              | 158    | `AutoScroll` class (edge-proximity scroll while dragging)                                                                                                                                                                 |
 | `src/editor/block_selection/drag_and_drop/ghost.js`                                   | 103    | `DragGhost` class (translucent clone of the dragged block)                                                                                                                                                                |
@@ -79,7 +79,7 @@ Based on the analysis above, candidates for moving back to the extension (or spl
 
 ### Extension subsystems
 
-The `BlockSelectionExtension` (4,535 lines in `src/extensions/block_selection_extension.js`) has 13 interconnected subsystems. Independent concerns (drag-and-drop, wrapped-origin tracking, selection history, highlight CSS parsing, bullet color sync) live as sibling modules under `src/editor/block_selection/` — see the inventory above.
+The `BlockSelectionExtension` (4,525 lines in `src/extensions/block_selection_extension.js`) has 13 interconnected subsystems. Independent concerns (drag-and-drop, wrapped-origin tracking, selection history, highlight CSS parsing, bullet color sync) live as sibling modules under `src/editor/block_selection/` — see the inventory above.
 
 #### 1. Mode management
 
