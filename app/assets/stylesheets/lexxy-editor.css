@@ -2045,17 +2045,23 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     bottom: -2px;
   }
 
-  /* Isolated selected leaf: a selected LI whose list-siblings and ancestor
-     wrappers are all unselected. JS (#syncIsolatedLeafInsets) measures the
-     distance to the nearest unselected block above and below (across wrapper
-     boundaries) and sets --leaf-top-inset / --leaf-bottom-inset so the
-     visible gap reads at the 4px mixed-list rhythm. Without this, a solo
-     bullet inside a deeply nested wrapper floats with much-larger gaps.
-     !important to beat the position-sensitive rules (first-child, last-child,
-     mixed-list ::after inset) that target the same li.selected::after. */
-  li.lexxy-editor__block--selected.lexxy-editor__block--isolated-leaf::after {
-    top: var(--leaf-top-inset, -2px) !important;
-    bottom: var(--leaf-bottom-inset, -2px) !important;
+  /* Leaf reach overrides: JS (#syncLeafInsets) measures each selected
+     block's distance to its nearest document-order neighbor (descending
+     into wrappers to the adjacent content leaf) and sets
+     --leaf-top-inset / --leaf-bottom-inset as halfway-to-neighbor values.
+     Both sides of any pair extend equally, meeting at a 4px gap; a solo
+     selected block extends to the midpoint between itself and its
+     unselected neighbor. Covers LIs AND attachments/galleries.
+     Attribute selector ensures we only override the specific direction
+     the JS actually set (so an element with only --leaf-top-inset keeps
+     its default bottom inset from other rules). !important beats the
+     position-sensitive first-child / last-child / mixed-list / attachment
+     inset rules that would otherwise win on specificity. */
+  .lexxy-editor__block--selected.lexxy-editor__block--isolated-leaf[style*="--leaf-top-inset"]::after {
+    top: var(--leaf-top-inset) !important;
+  }
+  .lexxy-editor__block--selected.lexxy-editor__block--isolated-leaf[style*="--leaf-bottom-inset"]::after {
+    bottom: var(--leaf-bottom-inset) !important;
   }
 
   /* Contiguous selection groups (list items only — root blocks always have
