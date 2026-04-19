@@ -318,9 +318,9 @@
     border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
     border-radius: var(--lexxy-radius);
     display: flex;
-    gap: 0.75rem;
+    gap: 0.5rem;
     inline-size: 100%;
-    padding: 0.75rem;
+    padding: 0.5rem;
     position: relative;
 
     &, & * {
@@ -491,9 +491,9 @@
     border: 1px solid var(--lexxy-color-ink-lighter, #e5e7eb);
     border-radius: var(--lexxy-radius);
     display: flex;
-    gap: 0.75rem;
+    gap: 0.5rem;
     inline-size: 100%;
-    padding: 0.75rem;
+    padding: 0.5rem;
     position: relative;
 
     &, & * {
@@ -924,9 +924,22 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     }
   }
 
-  /* Block editing: structural wrappers and wrapped blocks hide their markers */
+  /* Block editing: structural wrappers and wrapped blocks hide their markers.
+     Match the regular bullet margin-top (6px) so the wrapper's content
+     (e.g. a nested attachment/heading) sits at the same visual rhythm as
+     sibling text bullets — otherwise the wrapper feels glued to the
+     preceding item.
+
+     `display: flow-root` establishes a block formatting context so that
+     any margins on wrapped descendants (figures, headings, blockquotes
+     etc.) stay inside the wrapper instead of collapsing up through the
+     empty ancestor chain and inflating the outer list's rhythm. Any
+     trapped margin shows up as additional wrapper height; the parent's
+     ::after highlight (see --parent-selection-height in JS) covers it. */
   li.lexxy-nested-listitem {
     list-style-type: none;
+    display: flow-root;
+    margin-top: 6px;
 
     &::marker {
       content: none;
@@ -2015,12 +2028,16 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   /* Structural wrappers get highlighted only when their preceding sibling
      is selected — this means the parent item is part of the selection, so
      all children should be too. Prevents ancestor wrappers from lighting
-     up when only a deeply nested item is selected. */
+     up when only a deeply nested item is selected.
+
+     The wrapper's 6px margin-top is preserved here: the parent's ::after
+     extends down to cover the full wrapper area (including the gap and
+     any trapped child margins), so we don't need to tighten the flow
+     layout on selection — the highlight takes care of visual continuity. */
   .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) {
     --block-select-bg: color-mix(in oklch, var(--lexxy-color-accent-dark) 14%, var(--lexxy-color-canvas));
     position: relative;
     z-index: 0; /* stacking context so ::after z-index: -1 stays visible */
-    margin-top: 0;
   }
 
   /* Structural wrapper ::after is suppressed — the parent's ::after covers
@@ -2058,6 +2075,16 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
     bottom: auto;
     border-bottom-left-radius: var(--block-select-radius);
     border-bottom-right-radius: var(--block-select-radius);
+  }
+
+  /* …but if the wrapper is followed by another selected regular li at the
+     same level (same outer-list group), flatten the parent's bottom corners
+     so it reads as part of a continuous highlight band, not a self-contained
+     card above an unrelated next item. Specificity bumped via the extra
+     `+ li.selected` clause in :has so this override wins. */
+  li.lexxy-editor__block--selected:has(+ li.lexxy-nested-listitem + li.lexxy-editor__block--selected)::after {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 
   /* The parent item above the wrapper should also use the uniform shade
@@ -2110,16 +2137,6 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   }
   li.lexxy-editor__block--selected > .attachment.lexxy-editor__block--selected::after {
     display: none;
-  }
-
-  /* Wrapped block selector used across multiple rules below. */
-
-  /* Zero inner element margins to prevent collapse-through on all wrapped
-     block lis. The li's own margin handles spacing. */
-  li:has(> h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > figure, > .horizontal-divider, > pre, > code[data-language]) {
-    > h1, > h2, > h3, > h4, > h5, > h6, > blockquote, > pre, > code[data-language] {
-      margin-block: 0;
-    }
   }
 
   /* Mixed lists: any ul/ol containing at least one wrapped block.
