@@ -1291,28 +1291,43 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
 
         if ($isListItemNode(node)) {
-          if (isListCommand) {
-            // List-to-list: change the item's list type AND unwrap if wrapped
-            if (node.setListItemType) node.setListItemType(listType)
-            const wrappedChild = node.getChildren().find(c =>
-              $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
-            )
-            if (wrappedChild) {
-              for (const child of [ ...wrappedChild.getChildren() ]) {
-                node.append(child)
-              }
-              wrappedChild.remove()
+          const wrappedChild = node.getChildren().find(c =>
+            ($isElementNode(c) || $isDecoratorNode(c))
+              && !$isListNode(c) && !$isParagraphNode(c)
+          )
+          const parentList = node.getParent()
+
+          if (isListCommand && wrappedChild && $isListNode(parentList)) {
+            // Wrapped non-text block in a list + list command:
+            //   same type → unwrap the list wrapper, leave the wrapped block
+            //     at root (or parent) level. Preserves the inner block's type.
+            //   different type → swap the parent list's type (UL ↔ OL).
+            if (parentList.getListType() === listType) {
+              parentList.insertBefore(wrappedChild)
+              parentList.remove()
               this.#wrappedOrigins.untrack(node.getKey())
+              newSelectedKeys.add(wrappedChild.getKey())
+              replacedKeys.add(key)
+            } else {
+              parentList.setListType(listType)
+              newSelectedKeys.add(node.getKey())
             }
+          } else if (isListCommand) {
+            // Plain text list item: change item's list type in place.
+            if (node.setListItemType) node.setListItemType(listType)
             newSelectedKeys.add(node.getKey())
+          } else if (wrappedChild && command === "insertQuoteBlock" && $isListNode(parentList)) {
+            // Wrapped non-text block in a list + quote command: swap the
+            // list wrapper for a quote wrapper. Keeps the inner block intact.
+            const quote = $createQuoteNode()
+            parentList.replace(quote)
+            quote.append(wrappedChild)
+            this.#wrappedOrigins.untrack(node.getKey())
+            newSelectedKeys.add(quote.getKey())
+            replacedKeys.add(key)
           } else if (command === "setFormatParagraph") {
-            // Wrapped → paragraph: unwrap back to regular list item content
-            const children = node.getChildren()
-            const wrappedChild = children.find(c =>
-              $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
-            )
+            // Wrapped → paragraph: unwrap back to regular list item content.
             if (wrappedChild) {
-              // Move wrapped content's children into the list item directly
               for (const child of [ ...wrappedChild.getChildren() ]) {
                 node.append(child)
               }
@@ -1334,12 +1349,33 @@ export class BlockSelectionExtension extends LexxyExtension {
           // (Code blocks are excluded here — they go through the standard
           // dispatch path below since they DO have selectable text content.)
           if (isListCommand) {
-            // Idempotent: if already inside a list item of the same type,
-            // don't double-wrap. Just surface the existing list item as the
-            // selection target.
+            // Decorator + list command. Behavior depends on what wraps it:
+            //   already in a list of the same type → unwrap (return to root)
+            //   already in a list of the other type → swap UL↔OL in place
+            //   already in a blockquote → swap quote wrapper for list wrapper
+            //   otherwise → wrap in new list + listItem
             const parent = node.getParent()
-            if ($isListItemNode(parent) && $isListNode(parent.getParent()) && parent.getParent().getListType() === listType) {
-              newSelectedKeys.add(parent.getKey())
+            if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
+              const parentList = parent.getParent()
+              if (parentList.getListType() === listType) {
+                parentList.insertBefore(node)
+                parentList.remove()
+                this.#wrappedOrigins.untrack(parent.getKey())
+                newSelectedKeys.add(node.getKey())
+                replacedKeys.add(key)
+              } else {
+                parentList.setListType(listType)
+                newSelectedKeys.add(parent.getKey())
+                replacedKeys.add(key)
+              }
+            } else if ($isQuoteNode(parent)) {
+              const list = $createListNode(listType)
+              const listItem = $createListItemNode()
+              list.append(listItem)
+              parent.replace(list)
+              listItem.append(node)
+              this.#wrappedOrigins.trackUser(listItem.getKey())
+              newSelectedKeys.add(listItem.getKey())
               replacedKeys.add(key)
             } else {
               const list = $createListNode(listType)
@@ -1352,10 +1388,22 @@ export class BlockSelectionExtension extends LexxyExtension {
               replacedKeys.add(key)
             }
           } else if (command === "insertQuoteBlock") {
-            // Idempotent: if already inside a blockquote, don't nest another.
+            // Decorator + quote command. Behavior:
+            //   already in a blockquote → unwrap (return to root)
+            //   already in a list (wrapped LI) → swap list wrapper for quote
+            //   otherwise → wrap in quote
             const parent = node.getParent()
             if ($isQuoteNode(parent)) {
-              newSelectedKeys.add(parent.getKey())
+              parent.replace(node)
+              newSelectedKeys.add(node.getKey())
+              replacedKeys.add(key)
+            } else if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
+              const parentList = parent.getParent()
+              const quote = $createQuoteNode()
+              parentList.replace(quote)
+              quote.append(node)
+              this.#wrappedOrigins.untrack(parent.getKey())
+              newSelectedKeys.add(quote.getKey())
               replacedKeys.add(key)
             } else {
               const quote = $createQuoteNode()
@@ -1369,45 +1417,82 @@ export class BlockSelectionExtension extends LexxyExtension {
             newSelectedKeys.add(node.getKey())
           }
         } else if (isListCommand) {
-          // Non-list block → list: wrap in a new ListNode + ListItemNode.
-          //
-          // For paragraphs, the text nodes move directly into the list item
-          // (paragraphs don't survive as meaningful wrappers — `<li><p>`
-          // collapses to a plain bullet visually).
-          //
-          // For everything else (heading, blockquote, code, table, decorator
-          // handled in the earlier branch), the block itself becomes the
-          // wrapped child of the list item. This preserves the block's type
-          // AND — because wrapped list items can carry nested children via
-          // structural wrappers — makes the block a valid nest target.
-          // Clicking Turn into Bullet a second time unwraps the block
-          // (existing $isListItemNode branch handles that).
+          // Non-list block → list. Behavior varies by the block's context:
+          //   inside a blockquote (node's parent is Quote): swap quote for
+          //     list wrapper (preserves the inner block).
+          //   node IS a QuoteNode wrapping non-text blocks: swap the quote
+          //     for a list; each wrapped child becomes a list item.
+          //   paragraph: text nodes move directly into the list item
+          //     (`<li><p>` collapses to a plain bullet visually).
+          //   otherwise (heading, code): the block itself becomes the
+          //     wrapped child of the list item. Preserves block type AND —
+          //     because wrapped list items can carry nested children via
+          //     structural wrappers — makes the block a valid nest target.
           //
           // Adjacent same-type lists merge during reconciliation, so
           // consecutive converted items end up in one list.
-          const list = $createListNode(listType)
-          const listItem = $createListItemNode()
-          list.append(listItem)
-          if ($isParagraphNode(node)) {
+          const quoteParent = $isQuoteNode(node.getParent()) ? node.getParent() : null
+          if (quoteParent) {
+            const list = $createListNode(listType)
+            const listItem = $createListItemNode()
+            list.append(listItem)
+            quoteParent.replace(list)
+            listItem.append(node)
+            this.#wrappedOrigins.trackUser(listItem.getKey())
+            newSelectedKeys.add(listItem.getKey())
+            replacedKeys.add(key)
+          } else if ($isQuoteNode(node)) {
+            // Quote of wrapped content → list of wrapped items. Each child
+            // block (code, heading, decorator) becomes its own wrapped LI.
+            const list = $createListNode(listType)
+            const children = [ ...node.getChildren() ]
+            for (const child of children) {
+              const li = $createListItemNode()
+              li.append(child)
+              list.append(li)
+              this.#wrappedOrigins.trackUser(li.getKey())
+            }
+            node.replace(list)
+            const firstLi = list.getFirstChild()
+            if (firstLi) newSelectedKeys.add(firstLi.getKey())
+            replacedKeys.add(key)
+          } else if ($isParagraphNode(node)) {
+            const list = $createListNode(listType)
+            const listItem = $createListItemNode()
+            list.append(listItem)
             for (const child of [ ...node.getChildren() ]) {
               listItem.append(child)
             }
             node.replace(list)
+            newSelectedKeys.add(listItem.getKey())
+            replacedKeys.add(key)
           } else {
+            const list = $createListNode(listType)
+            const listItem = $createListItemNode()
+            list.append(listItem)
             node.replace(list)
             listItem.append(node)
             this.#wrappedOrigins.trackUser(listItem.getKey())
+            newSelectedKeys.add(listItem.getKey())
+            replacedKeys.add(key)
           }
-          newSelectedKeys.add(listItem.getKey())
-          replacedKeys.add(key)
         } else if (command === "insertQuoteBlock" && $isCodeNode(node)) {
-          // Code block → quote: wrap rather than replace. Replacing would
-          // drop the code formatting (Turn into Text / Headings already
-          // cover that explicit conversion path). Idempotent: if already
-          // inside a blockquote, surface the parent quote as the selection.
+          // Code block + quote command. Behavior mirrors the decorator path:
+          //   already in a blockquote → unwrap (return to root)
+          //   already in a list (wrapped LI) → swap list for quote
+          //   otherwise → wrap in a new blockquote (preserves code formatting)
           const parent = node.getParent()
           if ($isQuoteNode(parent)) {
-            newSelectedKeys.add(parent.getKey())
+            parent.replace(node)
+            newSelectedKeys.add(node.getKey())
+            replacedKeys.add(key)
+          } else if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
+            const parentList = parent.getParent()
+            const quote = $createQuoteNode()
+            parentList.replace(quote)
+            quote.append(node)
+            this.#wrappedOrigins.untrack(parent.getKey())
+            newSelectedKeys.add(quote.getKey())
             replacedKeys.add(key)
           } else {
             const quote = $createQuoteNode()
