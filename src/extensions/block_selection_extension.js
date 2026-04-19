@@ -385,20 +385,14 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (this.#isInMixedList(el)) continue
 
       // Check if this LI has an adjacent selected sibling (either direction).
-      // Skip structural wrappers when looking for neighbors, and don't join
-      // a group with a parent that has an active parent fill (its children
-      // are selected inside a structural wrapper).
+      // Skip structural wrappers when looking for neighbors so the full run
+      // of text bullets (including ones with nested wrapped content) forms a
+      // single continuous highlight band. The parent-fill above a wrapper is
+      // visually part of the same list-group — flat-connect with it, don't
+      // treat it as its own card.
       let prev = el.previousElementSibling
       if (prev?.classList.contains("lexxy-nested-listitem")) {
-        const parentItem = prev.previousElementSibling
-        // If the parent has selected children in the wrapper, don't join
-        // its group — the parent fill provides its own visual boundary.
-        if (parentItem?.classList.contains(BLOCK_SELECTED_CLASS) &&
-            prev.querySelector(`.${BLOCK_SELECTED_CLASS}`)) {
-          prev = null
-        } else {
-          prev = parentItem
-        }
+        prev = prev.previousElementSibling
       }
       let next = el.nextElementSibling
       if (next?.classList.contains("lexxy-nested-listitem")) next = next.nextElementSibling
@@ -457,27 +451,24 @@ export class BlockSelectionExtension extends LexxyExtension {
     return next?.classList.contains(BLOCK_SELECTED_CLASS) && next.classList.contains("lexxy-editor__block--select-mid")
   }
 
-  // Check if a DOM LI element is inside a mixed list (one containing wrapped
-  // blocks like headings, code, tables). Also treats lists as mixed when they
-  // contain structural wrappers with mixed content (parent/child groups with
-  // wrapped blocks). Mixed lists use 4px gaps which are too wide for the
-  // flat-edge contiguous group look.
+  // Check if a DOM LI element is inside a mixed list — one whose DIRECT
+  // children include wrapped blocks as siblings to text bullets. Mixed
+  // lists use 12px margins / 4px gaps which are too wide for flat-edge
+  // contiguous group merging, so items keep full radius.
+  //
+  // Wrapped content inside a structural wrapper does NOT make the outer
+  // list mixed: the wrapper is visually incorporated into its parent
+  // bullet's highlight, and the outer text bullets still use the tight
+  // 6px rhythm. This mirrors the CSS classification at
+  // `:is(ul, ol):has(> li > h1, …)` which only matches direct wrapped
+  // children.
   #isInMixedList(el) {
     const list = el.parentElement
     if (!list || (list.tagName !== "UL" && list.tagName !== "OL")) return false
-    // Direct wrapped block children
-    if (list.querySelector(
+    return !!list.querySelector(
       ":scope > li > h1, :scope > li > h2, :scope > li > h3, :scope > li > h4, :scope > li > h5, :scope > li > h6, " +
       ":scope > li > blockquote, :scope > li > figure, :scope > li > .horizontal-divider, " +
       ":scope > li > pre, :scope > li > code[data-language], :scope > li > .lexxy-content__table-wrapper"
-    )) return true
-    // Structural wrappers containing mixed content
-    return !!list.querySelector(
-      ":scope > li.lexxy-nested-listitem h1, :scope > li.lexxy-nested-listitem h2, " +
-      ":scope > li.lexxy-nested-listitem h3, :scope > li.lexxy-nested-listitem h4, " +
-      ":scope > li.lexxy-nested-listitem h5, :scope > li.lexxy-nested-listitem h6, " +
-      ":scope > li.lexxy-nested-listitem blockquote, :scope > li.lexxy-nested-listitem pre, " +
-      ":scope > li.lexxy-nested-listitem code[data-language], :scope > li.lexxy-nested-listitem .lexxy-content__table-wrapper"
     )
   }
 
@@ -686,6 +677,12 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   #handleKeydown(event) {
     if (!this.editor) return
+
+    // Listener is on document in capture phase (see #registerDirectKeydownHandler),
+    // so it fires before a focused <dialog>'s native Esc handler. When a
+    // preview modal (or any host-app dialog) is open, let its own Esc close
+    // it — don't intercept keys here.
+    if (document.querySelector("dialog[open]")) return
 
     // Esc clears a NodeSelection (e.g. clicked attachment showing blue outline)
     // even when the editor isn't focused. Lexical's KEY_ESCAPE_COMMAND only
@@ -1921,20 +1918,29 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Use the last SELECTED child's bottom, not the full wrapper bottom.
       // This shrinks the rectangle as children are deselected one at a time.
       //
-      // To match what the child's own ::after would produce, read the child's
-      // computed ::after bottom inset. For opaque-background blocks (code,
-      // tables), also account for their outline/border-radius visual extent
-      // since their ::after is suppressed by the parent fill.
+      // Keep bottomExt at the list-rhythm value (2 mid / 6 last / 4 deeply
+      // nested) set above. The child's own ::after inset (which may be -4px
+      // or -7px for attachments) would bloat the parent rectangle past the
+      // next sibling's highlight-top and eat the 2px gap — and since the
+      // child's ::after is suppressed by the parent fill (see the CSS rule
+      // at line ~2042), there's nothing to "cover" anyway.
+      //
+      // Exception: when the last selected child IS the wrapper's last li,
+      // use wrapper.bottom instead. The wrapper is a BFC (display: flow-root)
+      // so any margin-bottom on the deepest wrapped content (figure's 16px,
+      // heading's 16px, etc.) is trapped inside and shows up as wrapper
+      // height — getBoundingClientRect on the child itself doesn't include
+      // that trapped margin, so using it would leave the trapped space
+      // unhighlighted below the child.
       const selectedChildren = wrapper.querySelectorAll(`.${BLOCK_SELECTED_CLASS}`)
       let bottom
       if (selectedChildren.length > 0) {
         const lastChild = selectedChildren[selectedChildren.length - 1]
-        const afterStyle = getComputedStyle(lastChild, "::after")
-        const afterBottom = parseFloat(afterStyle.bottom)
-        if (!isNaN(afterBottom) && afterBottom < 0) {
-          bottomExt = Math.max(bottomExt, Math.abs(afterBottom))
-        }
-        bottom = lastChild.getBoundingClientRect().bottom
+        const allLisInWrapper = wrapper.querySelectorAll("li")
+        const isLastInWrapper = allLisInWrapper[allLisInWrapper.length - 1] === lastChild
+        bottom = isLastInWrapper
+          ? wrapper.getBoundingClientRect().bottom
+          : lastChild.getBoundingClientRect().bottom
       } else {
         bottom = wrapper.getBoundingClientRect().bottom
       }
@@ -2010,7 +2016,40 @@ export class BlockSelectionExtension extends LexxyExtension {
         })
 
         if (anyOutsideList || anyInRootList) {
-          // Case (a): root-level mixed group — resolve to root-level elements
+          // Case (a): root-level mixed group — resolve to root-level elements.
+          //
+          // If only SOME items of a root-level list are selected, first
+          // extract them into a new standalone list so unselected siblings
+          // don't get dragged along. Group list items by their parent list,
+          // and for each list with a partial selection, split off the
+          // selected items into a new sibling list in the same document
+          // position. Then resolve to the right root-level node.
+          const groupKeys = new Set(group.map(g => g.node.getKey()))
+          const listToItems = new Map() // rootList -> selected ListItemNodes
+          for (const { node } of group) {
+            if (!$isListItemNode(node)) continue
+            const parent = node.getParent()
+            if ($isListNode(parent) && !$isListItemNode(parent.getParent())) {
+              if (!listToItems.has(parent)) listToItems.set(parent, [])
+              listToItems.get(parent).push(node)
+            }
+          }
+
+          // Remap: for partially-selected lists, split off the selected items.
+          const listRemap = new Map() // originalList -> list to resolve to
+          for (const [ list, items ] of listToItems) {
+            const realChildren = list.getChildren().filter(c => $isListItemNode(c) && !$isStructuralWrapper(c))
+            const allSelected = realChildren.every(c => groupKeys.has(c.getKey()))
+            if (allSelected) {
+              listRemap.set(list, list)
+              continue
+            }
+            const splitList = $createListNode(list.getListType())
+            for (const item of items) splitList.append(item)
+            list.insertAfter(splitList)
+            listRemap.set(list, splitList)
+          }
+
           const resolved = []
           const seen = new Set()
           for (const { node } of group) {
@@ -2018,7 +2057,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             if ($isListItemNode(node)) {
               const parent = node.getParent()
               if ($isListNode(parent) && !$isListItemNode(parent.getParent())) {
-                rootEl = parent
+                rootEl = listRemap.get(parent) || parent
               }
             }
             const key = rootEl.getKey()
@@ -2132,7 +2171,19 @@ export class BlockSelectionExtension extends LexxyExtension {
   #moveRootLevelGroup(resolved, originalGroup, direction) {
     const isUp = direction === "up"
     const edgeNode = isUp ? resolved[0].node : resolved[resolved.length - 1].node
-    const target = isUp ? edgeNode.getPreviousSibling() : edgeNode.getNextSibling()
+    let target = isUp ? edgeNode.getPreviousSibling() : edgeNode.getNextSibling()
+
+    // Skip empty separator paragraphs (Lexical's ProvisionalParagraphNode sits
+    // between adjacent decorators — figures, HRs, etc.). Without this, when the
+    // edge of the group is a decorator, the group moves past a single invisible
+    // separator each press and visually appears frozen. Matches the single-item
+    // skip in #moveTopLevelBlock and the same-parent group skip in
+    // #moveGroupAtomically (line ~2061).
+    while (target && $isParagraphNode(target) && target.getTextContentSize() === 0) {
+      const beyond = isUp ? target.getPreviousSibling() : target.getNextSibling()
+      if (!beyond) break
+      target = beyond
+    }
 
     if (!target) return // at document boundary
 
@@ -3067,8 +3118,12 @@ export class BlockSelectionExtension extends LexxyExtension {
 
         node.remove()
       } else {
-        // Non-list block entering a list: wrap in a ListItemNode and nest
-        // under the first/last real item for immediate depth-first entry.
+        // Non-list block entering a list: wrap in a ListItemNode and insert
+        // as a sibling at the list's top level (next to the first/last real
+        // item). A subsequent movement in the same direction will then nest
+        // via the normal #moveListItem path. This two-phase entry matches
+        // the multi-block group path (#moveGroupIntoList) and avoids
+        // yanking the user one nesting level deep on a single keypress.
         const oldKey = node.getKey()
         const listItem = $createListItemNode()
         listItem.append(node)
@@ -3078,7 +3133,11 @@ export class BlockSelectionExtension extends LexxyExtension {
           : this.#findLastRealItem(sibling)
 
         if (targetItem) {
-          this.#nestListItemUnderSibling(listItem, targetItem, sibling, isDown)
+          if (isDown) {
+            targetItem.insertBefore(listItem)
+          } else {
+            targetItem.insertAfter(listItem)
+          }
         } else {
           sibling.append(listItem)
         }

@@ -49,22 +49,24 @@ test.describe("Wrapped block origin: user vs movement", () => {
   })
 
   test("movement-wrapped heading auto-unwraps when arrowed back past the list", async ({ editor, page }) => {
-    // A standalone heading directly above an existing list. The user
-    // arrow-moves it down — it drifts into the list as a movement-wrapped
-    // item nested under "Target". Then a second Cmd+Shift+ArrowDown
-    // promotes it one level (sibling of Target). A third exits past the
-    // bottom of the list. Because origin is "movement", on exit it must
-    // extract back to a standalone heading rather than become a wrapped
-    // sibling list — the user wants their pre-drift shape back.
+    // A standalone heading directly above an existing list. Two-phase entry:
+    // first Cmd+Shift+ArrowDown makes it a sibling of Target at the top of
+    // the list. Second press nests it under Target. Third press promotes to
+    // sibling after Target. Fourth press exits past the bottom of the list.
+    // Because origin is "movement", on exit it must extract back to a
+    // standalone heading rather than become a wrapped sibling list — the
+    // user wants their pre-drift shape back.
     await editor.setValue("<h2>Drift heading</h2><ul><li>Target</li></ul>")
     await editor.select("Drift heading")
     await page.keyboard.press("Escape")
 
-    // Drift in
+    // Enter as sibling of Target (top of list).
     await page.keyboard.press(`${modifier}+Shift+ArrowDown`)
-    // Promote out of nested list
+    // Nest under Target.
     await page.keyboard.press(`${modifier}+Shift+ArrowDown`)
-    // Exit past the bottom
+    // Promote to sibling after Target.
+    await page.keyboard.press(`${modifier}+Shift+ArrowDown`)
+    // Exit past the bottom.
     await page.keyboard.press(`${modifier}+Shift+ArrowDown`)
 
     await assertBlockHtml(editor, "<ul><li>Target</li></ul><h2>Drift heading</h2>")
@@ -117,16 +119,17 @@ test.describe("Wrapped block origin: user vs movement", () => {
   })
 
   test("Shift+Tab on a movement-wrapped item at root depth unwraps it to standalone", async ({ editor, page }) => {
-    // Drift in, promote one level so the item lives at root depth of its
-    // list, then Shift+Tab to outdent. Behavior parity with user-wrapped:
-    // both origins unwrap via Shift+Tab — only arrow-movement differs.
+    // A block entering a list via arrow movement lands as a sibling at the
+    // list's top level (two-phase entry: first press = sibling, second press
+    // = nest). So one Cmd+Shift+Down puts the heading at root depth of the
+    // list; Shift+Tab then outdents to standalone. Behavior parity with
+    // user-wrapped: both origins unwrap via Shift+Tab — only arrow-movement
+    // differs (movement-wrapped also auto-unwraps on arrow-back).
     await editor.setValue("<h2>Drift heading</h2><ul><li>Target</li></ul>")
     await editor.select("Drift heading")
     await page.keyboard.press("Escape")
 
-    // Drift into the list.
-    await page.keyboard.press(`${modifier}+Shift+ArrowDown`)
-    // Promote one level — heading is now a sibling of Target.
+    // Drift into the list as a sibling of Target (root depth of the list).
     await page.keyboard.press(`${modifier}+Shift+ArrowDown`)
     // Shift+Tab outdents to standalone.
     await page.keyboard.press("Shift+Tab")
