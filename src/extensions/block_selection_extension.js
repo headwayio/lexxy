@@ -1147,11 +1147,8 @@ export class BlockSelectionExtension extends LexxyExtension {
         break
 
       case "remove-quote":
-        this.#removeQuoteWrapper()
-        break
-
       case "remove-list":
-        this.#removeListWrapper()
+        this.#extractContentToRoot()
         break
 
       case "duplicate":
@@ -4299,19 +4296,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
   }
 
-  // Menu-driven "Remove Quote" action. Looks up the focused block, finds
-  // the nearest enclosing QuoteNode (the block itself, or a list-item
-  // parent), and unwraps it.
   // Menu-driven "Remove Quote" and "Remove Bullet"/"Remove Numbered" actions
-  // both ultimately mean "get this content out of every wrapper it's in and
-  // leave it at root level." The two entry points show different labels for
-  // discoverability (the user who sees a blockquote bar expects a Remove
-  // Quote, the user who sees a bullet expects Remove Bullet), but both
-  // strip the full wrapper chain — any combination of blockquotes and list
-  // items — until the content lives at root.
-  #removeQuoteWrapper() { this.#extractContentToRoot() }
-  #removeListWrapper() { this.#extractContentToRoot() }
-
+  // both land here. The two entry points show different labels for
+  // discoverability (a user who sees a blockquote bar expects Remove Quote,
+  // a user who sees a bullet expects Remove Bullet), but both strip the
+  // full wrapper chain — any combination of blockquotes and list items —
+  // until the content lives at root.
   #extractContentToRoot() {
     const scrollY = window.scrollY
     this.#selectionHistory.push()
