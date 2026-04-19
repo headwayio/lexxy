@@ -1,7 +1,7 @@
 # Block Editing: Architecture & Implementation
 
 > Notion-style block selection, movement, drag-and-drop, and formatting for Lexxy.
-> Branch: `block-editing-standalone` — 98 files changed, 17,080 insertions, 387 deletions against `origin/main`.
+> Branch: `block-editing-standalone` — 98 files changed, 17,165 insertions, 387 deletions against `origin/main`.
 
 ## Overview
 
@@ -17,7 +17,7 @@ The design goal is Notion-style block semantics: every visible element (paragrap
 
 | File                                                                                  | Lines  | Purpose                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/extensions/block_selection_extension.js`                                         | 4,457  | Coordinator: selection state, keyboard navigation, block movement, formatting, highlight propagation — delegates drag-and-drop and a few independent concerns to the modules below                                        |
+| `src/extensions/block_selection_extension.js`                                         | 4,535  | Coordinator: selection state, keyboard navigation, block movement, formatting, highlight propagation — delegates drag-and-drop and a few independent concerns to the modules below                                        |
 | `src/editor/block_selection/drag_and_drop/index.js`                                   | 1,973  | Drag-and-drop coordinator: drag handles, drop indicators, drag ghosts, hover detection                                                                                                                                    |
 | `src/editor/block_selection/drag_and_drop/autoscroll.js`                              | 158    | `AutoScroll` class (edge-proximity scroll while dragging)                                                                                                                                                                 |
 | `src/editor/block_selection/drag_and_drop/ghost.js`                                   | 103    | `DragGhost` class (translucent clone of the dragged block)                                                                                                                                                                |
@@ -79,7 +79,7 @@ Based on the analysis above, candidates for moving back to the extension (or spl
 
 ### Extension subsystems
 
-The `BlockSelectionExtension` (4,457 lines in `src/extensions/block_selection_extension.js`) has 13 interconnected subsystems. Independent concerns (drag-and-drop, wrapped-origin tracking, selection history, highlight CSS parsing, bullet color sync) live as sibling modules under `src/editor/block_selection/` — see the inventory above.
+The `BlockSelectionExtension` (4,535 lines in `src/extensions/block_selection_extension.js`) has 13 interconnected subsystems. Independent concerns (drag-and-drop, wrapped-origin tracking, selection history, highlight CSS parsing, bullet color sync) live as sibling modules under `src/editor/block_selection/` — see the inventory above.
 
 #### 1. Mode management
 
@@ -101,7 +101,7 @@ Dual-mode system: `"edit"` (normal text editing) and `"block-select"` (block-lev
 
 `#syncSelectionGroupClasses()` identifies contiguous runs of selected items and applies `block--select-first`, `block--select-mid`, `block--select-last` for flattened-edge group styling.
 
-`#syncLeafInsets()` writes per-block `--leaf-top-inset` / `--leaf-bottom-inset` CSS variables computed by `#findAdjacentBlocks()` and `#computeLeafReach()`. Each selected leaf's `::after` reaches halfway to its nearest visible neighbor (skipping `.hidden` provisional separator paragraphs). Adjacent selected leaves compute from the same box-distance on both sides, producing an exact 4px gap between highlights — independent of how many leaves are selected.
+`#syncLeafInsets()` writes per-block `--leaf-top-inset` / `--leaf-bottom-inset` CSS variables computed by `#findAdjacentBlocks()` and `#computeLeafReach()`. Each selected leaf's `::after` reaches halfway to its nearest visible neighbor (skipping `.hidden` provisional separator paragraphs). The target visible gap is resolved per-pair by `#targetGapBetween()`: 2px for plain-text LIs sharing the same parent list (tight Notion rhythm — Tango↔Uniform at the outer OL), 4px otherwise (mixed-list rhythm — Papa↔Quebec inside a wrapper's inner ul). Cross-wrapper pairs default to 4px but switch to 2px when the wrapper's outer-level owner is itself in a parent-takeover state, so the unified parent-takeover highlight lands 2px above the next plain-text sibling. Both sides of any adjacent selected pair run through the same classifier, guaranteeing the two reaches agree on the target.
 
 `#syncParentSelectionHeight()` sets `--parent-selection-height` on parent items so the parent's `::after` extends to cover all nested children as a unified highlight. The bottom uses the last child's computed `bottomReach` so the parent-takeover highlight ends exactly where that last child's individual highlight would have — heights stay stable as the selection grows from leaf → group → parent.
 
@@ -244,7 +244,7 @@ Selection highlighting uses `::after` pseudo-elements at `z-index: -1` as the pr
 
 **Layout-shift-free selection**: Selection CSS must never toggle flow properties (margin, padding, height). Only `::after` geometry and background/color respond to `.selected`. Wrapper list items (`lexxy-nested-listitem`) establish a block formatting context via `display: flow-root` so nested wrapped-block margins stay trapped inside the wrapper rather than collapsing up through empty ancestors and inflating the outer list.
 
-**Halfway-reach invariant for isolated leaves**: Every selected `li` / `figure.attachment` / `.attachment-gallery` gets `--leaf-top-inset` and `--leaf-bottom-inset` pre-computed as halfway-to-neighbor. Adjacent selected pairs always meet at a 4px gap; solo selections reach to the midpoint on each side. `.hidden` provisional paragraphs (Lexical's decorator separators) are skipped during adjacency walks so inter-decorator pairs reach each other directly instead of landing on invisible separators.
+**Halfway-reach invariant for isolated leaves**: Every selected `li` / `figure.attachment` / `.attachment-gallery` gets `--leaf-top-inset` and `--leaf-bottom-inset` pre-computed as halfway-to-neighbor. The target visible gap is pair-classified: 2px for plain-text LIs in the same parent list (tight rhythm), 4px for mixed-list and cross-wrapper pairs, except a cross-wrapper pair whose outer-level owner is itself parent-taken-over is re-classified as owner↔outer-sibling and pulls tight to 2px. Solo selections reach to the midpoint on each side. `.hidden` provisional paragraphs (Lexical's decorator separators) are skipped during adjacency walks so inter-decorator pairs reach each other directly instead of landing on invisible separators.
 
 **List bullet redesign**: Browser default markers were replaced with `::before` pseudo-elements using radial-gradient bullets and CSS counter numbers. This was necessary because block selection's left-gutter highlight extends beyond the bullet position, and browser markers can't be styled to integrate with the highlight fill.
 
