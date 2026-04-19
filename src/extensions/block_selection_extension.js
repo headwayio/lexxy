@@ -72,6 +72,13 @@ export class BlockSelectionExtension extends LexxyExtension {
   // WrappedOriginTracker. Lazy-initialized in connectedCallback since the
   // tracker needs the editor reference.
   #wrappedOrigins = null
+  // Keys of blocks that were released from a movement-wrapped list-item
+  // during the current block-select session (e.g. a code block auto-
+  // unwrapped when a mixed-containment group exited a list). The mixed-
+  // containment normalize step must NOT re-wrap these — otherwise every
+  // subsequent press in the same direction would toggle wrap/exit and the
+  // group could never escape the list. Cleared when the selection resets.
+  #movementUnwrappedKeys = new Set()
   #blockActionsMenu = null
   #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
   #selectionHistory = new SelectionHistory({
@@ -214,6 +221,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#mode = "edit"
     this.root?.classList.remove(BLOCK_SELECTION_ACTIVE_CLASS)
     this.#savedHighlightStyles.clear() // commit whatever colors are applied
+    this.#movementUnwrappedKeys.clear()
     this.#clearAllSelections()
   }
 
@@ -227,6 +235,10 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (extend || (this.#selectedBlockKeys.size > 0 && !this.#selectedBlockKeys.has(nodeKey))) {
       this.#savedHighlightStyles.clear()
     }
+    // Starting a new selection (non-extending) resets movement-unwrap
+    // tracking. Subsequent mixed-containment moves get a fresh wrap/exit
+    // cycle — a new selection means a new movement session.
+    if (!extend) this.#movementUnwrappedKeys.clear()
     if (!extend) {
       this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
       this.#selectedBlockKeys.clear()
@@ -2207,6 +2219,22 @@ export class BlockSelectionExtension extends LexxyExtension {
       const multiParent = group.some(g => !g.node.getParent()?.is(firstParent))
 
       if (multiParent) {
+        // Mixed-containment normalization: if some group items are inside a
+        // root-level list and others are outside any list, the first move
+        // wraps all non-list items into that list (inserted adjacent to
+        // their list-member neighbors in document order) WITHOUT advancing
+        // positions. The newly-wrapped items are tracked as movement-
+        // wrapped so exiting the list in either direction auto-unwraps
+        // them. After wrapping, the group is same-parent and subsequent
+        // moves go through the standard same-list dispatch.
+        //
+        // Matches how single-item moves from root into an adjacent list
+        // work: the wrap/enter is its own atomic action.
+        if (this.#canNormalizeMixedGroupByWrapping(group)) {
+          this.#normalizeMixedGroupByWrapping(group)
+          return
+        }
+
         // Check if any item is NOT inside a list (root-level mixed group)
         const anyOutsideList = group.some(g => !$isListNode(g.node.getParent()))
         // Check if any item is in a root-level standalone list
@@ -2363,6 +2391,83 @@ export class BlockSelectionExtension extends LexxyExtension {
     // DOWN → become first children of target's nested list
     // UP → become last children of target's nested list
     this.#nestGroupUnderSibling(group, target, direction)
+  }
+
+  // Can the group be normalized by wrapping non-list items into an adjacent
+  // root-level list? True when:
+  // - at least one group item is a child of a root-level list (no nesting)
+  // - at least one group item is at document root, outside any list
+  // - all list members share the same root list L
+  // - all outside items are siblings of L at document root
+  // Direction-agnostic: wrapping doesn't progress the group, so the same
+  // normalization runs for Cmd+Shift+Up and Cmd+Shift+Down.
+  #canNormalizeMixedGroupByWrapping(group) {
+    const listItems = []
+    const outsideItems = []
+    for (const g of group) {
+      const parent = g.node.getParent()
+      if ($isListNode(parent) && !$isListItemNode(parent.getParent())) {
+        listItems.push(g)
+      } else if (parent && !$isListNode(parent) && !$isListItemNode(parent)) {
+        outsideItems.push(g)
+      } else {
+        return false
+      }
+    }
+    if (listItems.length === 0 || outsideItems.length === 0) return false
+
+    const rootList = listItems[0].node.getParent()
+    if (!listItems.every(g => g.node.getParent()?.is(rootList))) return false
+
+    const rootParent = rootList.getParent()
+    if (!rootParent || !outsideItems.every(g => g.node.getParent()?.is(rootParent))) return false
+
+    // If any outside item was just released from a movement-wrap this
+    // session, skip normalize so the group can keep moving at root level.
+    // Without this the group would re-wrap on every press after an exit.
+    if (outsideItems.some(g => this.#movementUnwrappedKeys.has(g.node.getKey()))) return false
+
+    return true
+  }
+
+  // Wrap each outside item as a movement-tracked ListItemNode and splice it
+  // into the list alongside its list-member neighbors, preserving document
+  // order. This is the first-press "normalize" action: positions don't
+  // advance. A second press will find a same-parent group and go through
+  // the standard dispatch. Wrapped items are tracked as movement-wrapped
+  // so exiting the list in either direction auto-unwraps them.
+  #normalizeMixedGroupByWrapping(group) {
+    const listItems = []
+    const outsideItems = []
+    for (const g of group) {
+      const parent = g.node.getParent()
+      if ($isListNode(parent) && !$isListItemNode(parent.getParent())) listItems.push(g)
+      else outsideItems.push(g)
+    }
+    const firstListItem = listItems[0].node
+    const lastListItem = listItems[listItems.length - 1].node
+    const rootListIdx = firstListItem.getParent().getIndexWithinParent()
+
+    for (const { node: outNode } of outsideItems) {
+      const oldKey = outNode.getKey()
+      const wasBeforeList = outNode.getIndexWithinParent() < rootListIdx
+      const listItem = $createListItemNode()
+      outNode.remove()
+      listItem.append(outNode)
+      if (wasBeforeList) {
+        firstListItem.insertBefore(listItem)
+      } else {
+        lastListItem.insertAfter(listItem)
+      }
+      const newKey = listItem.getKey()
+      this.#wrappedOrigins.trackMovement(newKey)
+      if (this.#selectedBlockKeys.has(oldKey)) {
+        this.#selectedBlockKeys.delete(oldKey)
+        this.#selectedBlockKeys.add(newKey)
+      }
+      if (this.#focusKey === oldKey) this.#focusKey = newKey
+      if (this.#anchorKey === oldKey) this.#anchorKey = newKey
+    }
   }
 
   // Move a group of root-level elements (resolved from a mixed-parent group).
@@ -3389,7 +3494,9 @@ export class BlockSelectionExtension extends LexxyExtension {
   // Update selection tracking when a wrapper ListItemNode is unwrapped
   // back to its standalone content node.
   #updateKeyAfterUnwrap(oldKey, newKey) {
+    const wasMovementWrapped = this.#wrappedOrigins.hasMovementKey(oldKey)
     this.#wrappedOrigins.untrack(oldKey)
+    if (wasMovementWrapped) this.#movementUnwrappedKeys.add(newKey)
     if (this.#selectedBlockKeys.has(oldKey)) {
       this.#selectedBlockKeys.delete(oldKey)
       this.#selectedBlockKeys.add(newKey)
