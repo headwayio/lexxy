@@ -44,6 +44,14 @@ export class WrappedOriginTracker {
     this.#movementKeys.delete(key)
   }
 
+  // True iff `key` is currently in the movement-wrapped set (direct key
+  // match only; no DOM attribute or content-heuristic fallback). Call
+  // before untrack() when you need to know whether an unwrap is
+  // "releasing" a movement-wrapped item.
+  hasMovementKey(key) {
+    return this.#movementKeys.has(key)
+  }
+
   isUser(listItemNode) {
     const key = listItemNode.getKey()
     if (this.#userKeys.has(key)) return true
