@@ -1,7 +1,7 @@
 # Block Editing: Architecture & Implementation
 
 > Notion-style block selection, movement, drag-and-drop, and formatting for Lexxy.
-> Branch: `block-editing-standalone` — 97 files changed, 16,757 insertions, 386 deletions against `origin/main`.
+> Branch: `block-editing-standalone` — 98 files changed, 17,080 insertions, 387 deletions against `origin/main`.
 
 ## Overview
 
@@ -17,7 +17,7 @@ The design goal is Notion-style block semantics: every visible element (paragrap
 
 | File                                                                                  | Lines  | Purpose                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/extensions/block_selection_extension.js`                                         | 4,273  | Coordinator: selection state, keyboard navigation, block movement, formatting, highlight propagation — delegates drag-and-drop and a few independent concerns to the modules below                                        |
+| `src/extensions/block_selection_extension.js`                                         | 4,457  | Coordinator: selection state, keyboard navigation, block movement, formatting, highlight propagation — delegates drag-and-drop and a few independent concerns to the modules below                                        |
 | `src/editor/block_selection/drag_and_drop/index.js`                                   | 1,973  | Drag-and-drop coordinator: drag handles, drop indicators, drag ghosts, hover detection                                                                                                                                    |
 | `src/editor/block_selection/drag_and_drop/autoscroll.js`                              | 158    | `AutoScroll` class (edge-proximity scroll while dragging)                                                                                                                                                                 |
 | `src/editor/block_selection/drag_and_drop/ghost.js`                                   | 103    | `DragGhost` class (translucent clone of the dragged block)                                                                                                                                                                |
@@ -59,8 +59,8 @@ The design goal is Notion-style block semantics: every visible element (paragrap
 | `src/config/lexxy.js`                      | +6     | Added `markdown: true` to default config.                                                                                                                                                                                                                            | **Yes.** Enables list-heading shortcuts but is a config default, not structural.                                                                                                                                                                  |
 | `src/helpers/lexical_helper.js`            | +6     | Added `getListItemNode()` utility.                                                                                                                                                                                                                                   | **Could be.** Small helper, but useful beyond block editing.                                                                                                                                                                                      |
 | `src/extensions/highlight_extension.js`    | +27    | Mark padding sync (`data-pad-start`/`data-pad-end` on `<mark>` elements). Corresponding CSS rules added to `lexxy-content.css`.                                                                                                                                      | **Yes.** Visual polish for highlights, independent of block editing.                                                                                                                                                                              |
-| `app/assets/stylesheets/lexxy-editor.css`  | +1,961 | All block selection visual styling.                                                                                                                                                                                                                                  | **No.** Editor-level CSS must ship with the editor, not be injected by an extension.                                                                                                                                                              |
-| `app/assets/stylesheets/lexxy-content.css` | +411   | Custom bullet rendering (radial-gradient markers), list margin/padding restructuring, code block spacing, attachment icon sizing.                                                                                                                                    | **Partially.** The list bullet redesign (replacing browser markers with `::before` pseudo-elements) was necessary to enable block selection's left-gutter highlighting. The code block and attachment changes are independent improvements.       |
+| `app/assets/stylesheets/lexxy-editor.css`  | +2,005 | All block selection visual styling.                                                                                                                                                                                                                                  | **No.** Editor-level CSS must ship with the editor, not be injected by an extension.                                                                                                                                                              |
+| `app/assets/stylesheets/lexxy-content.css` | +431   | Custom bullet rendering (radial-gradient markers), list margin/padding restructuring, code block spacing, attachment icon sizing.                                                                                                                                    | **Partially.** The list bullet redesign (replacing browser markers with `::before` pseudo-elements) was necessary to enable block selection's left-gutter highlighting. The code block and attachment changes are independent improvements.       |
 
 ### Changes that could potentially be kept in the extension
 
@@ -79,7 +79,7 @@ Based on the analysis above, candidates for moving back to the extension (or spl
 
 ### Extension subsystems
 
-The `BlockSelectionExtension` (4,273 lines in `src/extensions/block_selection_extension.js`) has 13 interconnected subsystems. Independent concerns (drag-and-drop, wrapped-origin tracking, selection history, highlight CSS parsing, bullet color sync) live as sibling modules under `src/editor/block_selection/` — see the inventory above.
+The `BlockSelectionExtension` (4,457 lines in `src/extensions/block_selection_extension.js`) has 13 interconnected subsystems. Independent concerns (drag-and-drop, wrapped-origin tracking, selection history, highlight CSS parsing, bullet color sync) live as sibling modules under `src/editor/block_selection/` — see the inventory above.
 
 #### 1. Mode management
 
@@ -101,7 +101,9 @@ Dual-mode system: `"edit"` (normal text editing) and `"block-select"` (block-lev
 
 `#syncSelectionGroupClasses()` identifies contiguous runs of selected items and applies `block--select-first`, `block--select-mid`, `block--select-last` for flattened-edge group styling.
 
-`#syncParentSelectionHeight()` sets `--parent-selection-height` CSS variable on parent items so the parent's `::after` pseudo-element can extend to cover all nested children as a unified highlight.
+`#syncLeafInsets()` writes per-block `--leaf-top-inset` / `--leaf-bottom-inset` CSS variables computed by `#findAdjacentBlocks()` and `#computeLeafReach()`. Each selected leaf's `::after` reaches halfway to its nearest visible neighbor (skipping `.hidden` provisional separator paragraphs). Adjacent selected leaves compute from the same box-distance on both sides, producing an exact 4px gap between highlights — independent of how many leaves are selected.
+
+`#syncParentSelectionHeight()` sets `--parent-selection-height` on parent items so the parent's `::after` extends to cover all nested children as a unified highlight. The bottom uses the last child's computed `bottomReach` so the parent-takeover highlight ends exactly where that last child's individual highlight would have — heights stay stable as the selection grows from leaf → group → parent.
 
 #### 4. Keyboard handling
 
@@ -240,6 +242,10 @@ Selection highlighting uses `::after` pseudo-elements at `z-index: -1` as the pr
 
 **Parent fill**: When a parent item and its children are all selected, the parent's `::after` extends to cover the entire subtree via `--parent-selection-height` CSS variable. Children's individual `::after` elements are hidden to avoid double-painting.
 
+**Layout-shift-free selection**: Selection CSS must never toggle flow properties (margin, padding, height). Only `::after` geometry and background/color respond to `.selected`. Wrapper list items (`lexxy-nested-listitem`) establish a block formatting context via `display: flow-root` so nested wrapped-block margins stay trapped inside the wrapper rather than collapsing up through empty ancestors and inflating the outer list.
+
+**Halfway-reach invariant for isolated leaves**: Every selected `li` / `figure.attachment` / `.attachment-gallery` gets `--leaf-top-inset` and `--leaf-bottom-inset` pre-computed as halfway-to-neighbor. Adjacent selected pairs always meet at a 4px gap; solo selections reach to the midpoint on each side. `.hidden` provisional paragraphs (Lexical's decorator separators) are skipped during adjacency walks so inter-decorator pairs reach each other directly instead of landing on invisible separators.
+
 **List bullet redesign**: Browser default markers were replaced with `::before` pseudo-elements using radial-gradient bullets and CSS counter numbers. This was necessary because block selection's left-gutter highlight extends beyond the bullet position, and browser markers can't be styled to integrate with the highlight fill.
 
 **Code block hover controls**: The copy button and language picker are hidden while block-select mode is active or a drag is in progress, so they don't paint on top of the block highlight or interfere with the drop target.
@@ -249,6 +255,7 @@ Selection highlighting uses `::after` pseudo-elements at `z-index: -1` as the pr
 - **Adjacent-list merge**: Lexical silently merges adjacent `ListNode`s of the same type during DOM reconciliation. Any operation that places two same-type lists next to each other will have them merged. Prevent by: (a) batching items into a single list, (b) keeping a ParagraphNode separator between lists.
 - **Copy-on-write keys**: Lexical may change node keys during `editor.update()`. `#resyncWrappedKeys` handles some cases but stale keys can persist after group operations that create/destroy nodes.
 - **CSS `:has()` nesting**: Browsers silently ignore nested `:has()` selectors. `ul:has(> li:has(> h2))` is dropped — must flatten to `ul:has(> li > h2)`.
+- **Provisional paragraphs between decorators**: Lexical inserts empty `<p class="hidden">` separator paragraphs between adjacent `DecoratorNode`s so the cursor can land between them. Any adjacency math over editor DOM must skip these or it measures to an invisible box (with a `-5.5px` compensation margin) and computes the wrong neighbor distance.
 
 ### Public API additions
 
