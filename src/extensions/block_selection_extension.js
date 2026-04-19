@@ -1299,14 +1299,11 @@ export class BlockSelectionExtension extends LexxyExtension {
 
           if (isListCommand && wrappedChild && $isListNode(parentList)) {
             // Wrapped non-text block in a list + list command:
-            //   same type → unwrap the list wrapper, leave the wrapped block
-            //     at root (or parent) level. Preserves the inner block's type.
+            //   same type → peel the wrapped LI out to root, splitting the
+            //     parent list so sibling items keep their positions.
             //   different type → swap the parent list's type (UL ↔ OL).
             if (parentList.getListType() === listType) {
-              parentList.insertBefore(wrappedChild)
-              parentList.remove()
-              this.#wrappedOrigins.untrack(node.getKey())
-              newSelectedKeys.add(wrappedChild.getKey())
+              this.#unwrapWrappedLiToRootInPlace(node)
               replacedKeys.add(key)
             } else {
               parentList.setListType(listType)
@@ -1358,10 +1355,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
               const parentList = parent.getParent()
               if (parentList.getListType() === listType) {
-                parentList.insertBefore(node)
-                parentList.remove()
-                this.#wrappedOrigins.untrack(parent.getKey())
-                newSelectedKeys.add(node.getKey())
+                this.#unwrapWrappedLiToRootInPlace(parent)
                 replacedKeys.add(key)
               } else {
                 parentList.setListType(listType)
@@ -4449,6 +4443,28 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Remove the now-empty structural wrapper
     ownWrapper.remove()
+  }
+
+  // Peel a wrapped list-item fully to root: outdent through every nested
+  // list level, then let #extractWrappedItemsInPlace split the root-level
+  // list around the item so siblings keep their positions. Used by the
+  // Turn-into "unwrap" paths so Wrap-in-X on an already-wrapped block
+  // lands at the same vertical position as the original wrapped item.
+  #unwrapWrappedLiToRootInPlace(liNode) {
+    let li = liNode
+    let guard = 50
+    while (guard-- > 0) {
+      const parent = li.getParent()
+      if (!$isListNode(parent)) return
+      const grandparent = parent.getParent()
+      if (!grandparent || !$isListItemNode(grandparent)) break
+      if (!this.#outdentWrappedBlock(li)) break
+      const refreshed = $getNodeByKey(li.getKey())
+      if (!refreshed || !$isListItemNode(refreshed)) return
+      li = refreshed
+    }
+    const wrapper = this.#getOwnStructuralWrapper(li)
+    this.#extractWrappedItemsInPlace([ { node: li, wrapper } ])
   }
 
   // Extract wrapped items from their lists in place. Each wrapped item is
