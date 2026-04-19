@@ -1934,12 +1934,13 @@ export class BlockSelectionExtension extends LexxyExtension {
 
   }
 
-  // Compute each selected LI leaf's ::after top/bottom as halfway-to-neighbor
+  // Compute each selected leaf's ::after top/bottom as halfway-to-neighbor
   // (pre-determined from DOM layout, not dependent on which neighbors are
   // selected). The result: the leaf's highlight size is stable as selection
-  // grows — when its neighbor is selected too, the two meet at a 4px gap
-  // (each claimed half); when the neighbor is unselected, the leaf extends
-  // to the midpoint between boxes (visible gap = (distance + 4) / 2). The
+  // grows — when its neighbor is selected too, the two meet at the context's
+  // target gap (2px for plain-text lists, 4px for mixed lists and non-list
+  // blocks); when the neighbor is unselected, the leaf extends to the
+  // midpoint between boxes (visible gap = (distance + targetGap) / 2). The
   // trade-off: slightly larger visible gap to unselected neighbors, in
   // exchange for consistent heights. Parent-takeover highlight (via
   // --parent-selection-height) re-uses this same reach math so it lands
@@ -1995,26 +1996,103 @@ export class BlockSelectionExtension extends LexxyExtension {
   //   on the side we're measuring from.
   // - Distance is the raw pixel gap between the two boxes (trapped margins
   //   from BFCs are included in the wrapper's box height, so they count).
-  // - Reach = (distance - TARGET_GAP) / 2. Both sides compute from the
-  //   same distance, so when both extend, they meet at TARGET_GAP. When
+  // - Reach = (distance - targetGap) / 2. Both sides compute from the
+  //   same distance, so when both extend, they meet at targetGap. When
   //   only one side has a highlight, visible gap = distance - reach
-  //   = (distance + TARGET_GAP) / 2.
+  //   = (distance + targetGap) / 2.
+  // - targetGap is resolved per-pair by #targetGapBetween: 2px when both
+  //   sides are plain-text LIs sharing the same parent list (tight
+  //   Notion-style rhythm, works even inside a mixed list when the two
+  //   adjacent items happen to both be plain text), 4px otherwise.
   // Returns {topReach, bottomReach} — either may be null if no neighbor
   // exists in that direction or if the distance is non-positive.
   #computeLeafReach(el) {
-    const TARGET_GAP = 4
     const { prev, next } = this.#findAdjacentBlocks(el)
     const rect = el.getBoundingClientRect()
     let topReach = null, bottomReach = null
     if (prev) {
       const d = rect.top - prev.getBoundingClientRect().bottom
-      if (d > 0) topReach = Math.max(0, (d - TARGET_GAP) / 2)
+      if (d > 0) {
+        const target = this.#targetGapBetween(prev, el)
+        topReach = Math.max(0, (d - target) / 2)
+      }
     }
     if (next) {
       const d = next.getBoundingClientRect().top - rect.bottom
-      if (d > 0) bottomReach = Math.max(0, (d - TARGET_GAP) / 2)
+      if (d > 0) {
+        const target = this.#targetGapBetween(el, next)
+        bottomReach = Math.max(0, (d - target) / 2)
+      }
     }
     return { topReach, bottomReach }
+  }
+
+  // Target visible gap between two adjacent selected blocks.
+  // - Same parent list: the pair shares a rhythm. Plain-text → plain-text
+  //   = 2px (tight Notion rhythm), anything else = 4px (mixed rhythm).
+  //   Captures Papa↔Quebec inside a wrapper's inner ul (wrapped → 4) and
+  //   Tango↔Uniform at the outer OL (both plain → 2).
+  // - Different parents: the pair crosses a structural wrapper boundary.
+  //   Defaults to 4px (preserves wrapped-leaf rhythm when an individual
+  //   deep leaf meets the next outer sibling). Special case: if the
+  //   wrapper's outer-level owner is itself parent-taken-over (owner
+  //   selected AND wrapper has selected descendants, forming a unified
+  //   highlight), the effective pair becomes owner↔outer-sibling — if
+  //   both are plain-text lis in the same outer list, use 2px. This is
+  //   what makes Oscar's parent-takeover bottom land 2px above Tango.
+  #targetGapBetween(a, b) {
+    if (a?.parentElement === b?.parentElement) {
+      return this.#isPlainTextLi(a) && this.#isPlainTextLi(b) ? 2 : 4
+    }
+    const wrapper = a?.closest?.(`li.${NESTED_LISTITEM_CLASS}`)
+                 ?? b?.closest?.(`li.${NESTED_LISTITEM_CLASS}`)
+    if (wrapper && this.#isOwnerParentTakenOver(wrapper)) {
+      const owner = this.#wrapperOwner(wrapper)
+      const outerSide = a?.closest?.(`li.${NESTED_LISTITEM_CLASS}`) === wrapper ? b : a
+      if (this.#isPlainTextLi(owner) && this.#isPlainTextLi(outerSide)
+          && owner.parentElement === outerSide.parentElement) {
+        return 2
+      }
+    }
+    return 4
+  }
+
+  // The outer-level content LI that "owns" a structural wrapper — i.e., the
+  // LI that precedes the wrapper in the outer list. Skips hidden elements
+  // and consecutive wrappers so deeply-nested structures resolve upward.
+  #wrapperOwner(wrapper) {
+    let owner = wrapper?.previousElementSibling
+    while (owner) {
+      const skippable = owner.classList?.contains(NESTED_LISTITEM_CLASS)
+        || owner.classList?.contains("hidden")
+        || owner.hidden
+      if (!skippable && owner.tagName === "LI") return owner
+      owner = owner.previousElementSibling
+    }
+    return null
+  }
+
+  // True iff the wrapper's content owner is currently in a parent-takeover
+  // state: the owner is selected AND the wrapper has at least one selected
+  // descendant. This is the same condition #syncParentSelectionHeight uses
+  // to decide whether to set --parent-selection-height on the owner, so
+  // classifying a pair by this condition keeps the two sides of the pair
+  // (lastChild.bottomReach and Tango.topReach) agreed on the same target.
+  #isOwnerParentTakenOver(wrapper) {
+    const owner = this.#wrapperOwner(wrapper)
+    if (!owner) return false
+    if (!owner.classList.contains(BLOCK_SELECTED_CLASS)) return false
+    return !!wrapper.querySelector(`.${BLOCK_SELECTED_CLASS}`)
+  }
+
+  #isPlainTextLi(el) {
+    if (el?.tagName !== "LI") return false
+    if (el.classList.contains(NESTED_LISTITEM_CLASS)) return false
+    return !el.querySelector(
+      ":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, " +
+      ":scope > blockquote, :scope > figure, :scope > .horizontal-divider, " +
+      ":scope > pre, :scope > code[data-language], :scope > .lexxy-content__table-wrapper"
+    )
   }
 
   #hasSelectedAncestor(el) {
