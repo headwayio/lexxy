@@ -1954,8 +1954,8 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     for (const key of this.#selectedBlockKeys) {
       const el = this.editor.getElementByKey(key)
-      if (!el || el.tagName !== "LI") continue
-      if (el.classList.contains(NESTED_LISTITEM_CLASS)) continue
+      if (!el) continue
+      if (!this.#isLeafCandidate(el)) continue
 
       // Skip leaves whose highlight is covered by an ancestor's parent-
       // selection-height (::after is display:none via CSS); setting insets
@@ -1971,6 +1971,22 @@ export class BlockSelectionExtension extends LexxyExtension {
         this.#isolatedLeafElements.add(el)
       }
     }
+  }
+
+  // Elements the leaf-reach system governs. Excludes structural wrappers
+  // (handled via parent-selection-height), horizontal-divider (fixed inset
+  // pinned to its box), and table-wrapper (uses background-color on box,
+  // ::after is display:none). Includes list items and attachment figures
+  // since those use ::after for the highlight and benefit from uniform
+  // 4px-meet behavior with their neighbors.
+  #isLeafCandidate(el) {
+    if (el.classList.contains(NESTED_LISTITEM_CLASS)) return false
+    if (el.classList.contains("horizontal-divider")) return false
+    if (el.classList.contains("lexxy-content__table-wrapper")) return false
+    if (el.tagName === "LI") return true
+    if (el.tagName === "FIGURE" && el.classList.contains("attachment")) return true
+    if (el.classList.contains("attachment-gallery")) return true
+    return false
   }
 
   // Halfway-to-neighbor reach for a block in document order.
