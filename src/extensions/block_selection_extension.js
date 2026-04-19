@@ -361,8 +361,8 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
     this.#syncBulletOffsets()
+    this.#syncLeafInsets()
     this.#syncParentSelectionHeight()
-    this.#syncIsolatedLeafInsets()
   }
 
   #syncSelectionGroupClasses() {
@@ -1904,68 +1904,47 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
 
-      // Deeply nested parents use 30px uniform pitch (bottomExt=4).
-      // Flat-level parents depend on position: last group in the list
-      // gets 6 (62px, matching flat last-child), middle groups get 2
-      // (58px) so there's a 2px gap between adjacent groups.
-      let bottomExt = 4
-      if (!isDeeplyNested) {
-        const isLastInList = !wrapper.nextElementSibling ||
-          wrapper === wrapper.parentElement.lastElementChild
-        bottomExt = isLastInList ? 6 : 2
-      }
-
       const parentRect = el.getBoundingClientRect()
 
-      // Use the last SELECTED child's bottom, not the full wrapper bottom.
-      // This shrinks the rectangle as children are deselected one at a time.
+      // Parent ::after bottom lands at the same spot the last-selected
+      // descendant's individual highlight-bottom would: the descendant's
+      // box.bottom + the descendant's computed bottomReach (halfway to
+      // its next structural block in document order, including anything
+      // past the wrapper). That way the parent-takeover highlight stays
+      // in-sync with the leaf-reach system — switching between "parent
+      // selected + deep child selected" and "only the deep child
+      // selected" doesn't shift where the bottom edge of the fill lands.
       //
-      // Keep bottomExt at the list-rhythm value (2 mid / 6 last / 4 deeply
-      // nested) set above. The child's own ::after inset (which may be -4px
-      // or -7px for attachments) would bloat the parent rectangle past the
-      // next sibling's highlight-top and eat the 2px gap — and since the
-      // child's ::after is suppressed by the parent fill (see the CSS rule
-      // at line ~2042), there's nothing to "cover" anyway.
-      //
-      // Exception: when the last selected child IS the wrapper's last li,
-      // use wrapper.bottom instead. The wrapper is a BFC (display: flow-root)
-      // so any margin-bottom on the deepest wrapped content (figure's 16px,
-      // heading's 16px, etc.) is trapped inside and shows up as wrapper
-      // height — getBoundingClientRect on the child itself doesn't include
-      // that trapped margin, so using it would leave the trapped space
-      // unhighlighted below the child.
+      // Fallback to wrapper.bottom + 4 when no descendant is selected
+      // (shouldn't happen given the :has check above, but be defensive).
       const selectedChildren = wrapper.querySelectorAll(`.${BLOCK_SELECTED_CLASS}`)
       let bottom
       if (selectedChildren.length > 0) {
         const lastChild = selectedChildren[selectedChildren.length - 1]
-        const allLisInWrapper = wrapper.querySelectorAll("li")
-        const isLastInWrapper = allLisInWrapper[allLisInWrapper.length - 1] === lastChild
-        bottom = isLastInWrapper
-          ? wrapper.getBoundingClientRect().bottom
-          : lastChild.getBoundingClientRect().bottom
+        const { bottomReach } = this.#computeLeafReach(lastChild)
+        bottom = lastChild.getBoundingClientRect().bottom + (bottomReach ?? 4)
       } else {
-        bottom = wrapper.getBoundingClientRect().bottom
+        bottom = wrapper.getBoundingClientRect().bottom + 4
       }
 
-      const height = (bottom - parentRect.top) + topExt + bottomExt
+      const height = (bottom - parentRect.top) + topExt
       el.style.setProperty("--parent-selection-height", `${height}px`)
       this.#parentHeightElements.add(el)
     }
 
   }
 
-  // Extend the ::after of "isolated" selected LI leaves — leaves whose list
-  // siblings aren't selected and whose ancestor wrappers aren't selected —
-  // so the visible gap to adjacent unselected content reads at the 4px
-  // mixed-list rhythm, regardless of how far structurally the next/prev
-  // visible block sits (wrapper boundaries, trapped margins, outer list
-  // spacing). Without this, a solo-selected leaf inside a wrapper chain
-  // floats with a visible gap much larger than 4px (e.g. ~14px when the
-  // next visible thing is outside the wrapper). With matched-pair selections
-  // the default insets already produce 4px; this only engages when there's
-  // nothing to pair with. Sets two CSS custom properties read by a
-  // dedicated CSS rule; consumes no flow layout.
-  #syncIsolatedLeafInsets() {
+  // Compute each selected LI leaf's ::after top/bottom as halfway-to-neighbor
+  // (pre-determined from DOM layout, not dependent on which neighbors are
+  // selected). The result: the leaf's highlight size is stable as selection
+  // grows — when its neighbor is selected too, the two meet at a 4px gap
+  // (each claimed half); when the neighbor is unselected, the leaf extends
+  // to the midpoint between boxes (visible gap = (distance + 4) / 2). The
+  // trade-off: slightly larger visible gap to unselected neighbors, in
+  // exchange for consistent heights. Parent-takeover highlight (via
+  // --parent-selection-height) re-uses this same reach math so it lands
+  // exactly where the last child's individual highlight would.
+  #syncLeafInsets() {
     for (const el of this.#isolatedLeafElements) {
       el.style.removeProperty("--leaf-top-inset")
       el.style.removeProperty("--leaf-bottom-inset")
@@ -1973,65 +1952,53 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
     this.#isolatedLeafElements.clear()
 
-    const TARGET_GAP = 4
-
     for (const key of this.#selectedBlockKeys) {
       const el = this.editor.getElementByKey(key)
       if (!el || el.tagName !== "LI") continue
       if (el.classList.contains(NESTED_LISTITEM_CLASS)) continue
 
-      // Isolated: no selected ancestor wrapper AND no selected sibling in
-      // the same list. If either holds, pair rhythm handles the rendering.
+      // Skip leaves whose highlight is covered by an ancestor's parent-
+      // selection-height (::after is display:none via CSS); setting insets
+      // would be wasted work.
       if (this.#hasSelectedAncestor(el)) continue
-      if (this.#hasSelectedListSibling(el)) continue
 
-      const { prev, next } = this.#findAdjacentUnselectedBlocks(el)
-      const rect = el.getBoundingClientRect()
+      const { topReach, bottomReach } = this.#computeLeafReach(el)
+      if (topReach !== null) el.style.setProperty("--leaf-top-inset", `-${topReach}px`)
+      if (bottomReach !== null) el.style.setProperty("--leaf-bottom-inset", `-${bottomReach}px`)
 
-      // Two modes per direction:
-      //   (a) The adjacent block is unselected AND contains no selection.
-      //       Extend fully toward its edge with a 4px gap.
-      //   (b) The adjacent block is selected, or contains a selected
-      //       descendant. That neighbor (or the nearest selected inside
-      //       it) is going to extend toward us from the other side —
-      //       so we each meet halfway with a 4px gap in the middle.
-      // Both branches use the same !important CSS rule; the math
-      // differs only in the target edge and how much of the distance
-      // each leaf claims.
-      const prevSelected = prev && (
-        prev.classList.contains(BLOCK_SELECTED_CLASS)
-          ? prev
-          : [ ...prev.querySelectorAll(`.${BLOCK_SELECTED_CLASS}`) ].pop()
-      )
-      const nextSelected = next && (
-        next.classList.contains(BLOCK_SELECTED_CLASS)
-          ? next
-          : next.querySelector(`.${BLOCK_SELECTED_CLASS}`)
-      )
-
-      if (prev) {
-        const prevBottom = (prevSelected || prev).getBoundingClientRect().bottom
-        const distance = rect.top - prevBottom
-        const topInset = prevSelected
-          ? Math.max(TARGET_GAP, (distance - TARGET_GAP) / 2)
-          : Math.max(TARGET_GAP, distance - TARGET_GAP)
-        el.style.setProperty("--leaf-top-inset", `-${topInset}px`)
-      }
-      if (next) {
-        const nextTop = (nextSelected || next).getBoundingClientRect().top
-        const distance = nextTop - rect.bottom
-        const bottomInset = nextSelected
-          ? Math.max(TARGET_GAP, (distance - TARGET_GAP) / 2)
-          : Math.max(TARGET_GAP, distance - TARGET_GAP)
-        el.style.setProperty("--leaf-bottom-inset", `-${bottomInset}px`)
-      }
-
-      if (el.style.getPropertyValue("--leaf-top-inset") ||
-          el.style.getPropertyValue("--leaf-bottom-inset")) {
+      if (topReach !== null || bottomReach !== null) {
         el.classList.add("lexxy-editor__block--isolated-leaf")
         this.#isolatedLeafElements.add(el)
       }
     }
+  }
+
+  // Halfway-to-neighbor reach for a block in document order.
+  // - Adjacent blocks are found by walking out to the nearest structural
+  //   sibling, descending into wrapper li's to the nearest actual leaf
+  //   on the side we're measuring from.
+  // - Distance is the raw pixel gap between the two boxes (trapped margins
+  //   from BFCs are included in the wrapper's box height, so they count).
+  // - Reach = (distance - TARGET_GAP) / 2. Both sides compute from the
+  //   same distance, so when both extend, they meet at TARGET_GAP. When
+  //   only one side has a highlight, visible gap = distance - reach
+  //   = (distance + TARGET_GAP) / 2.
+  // Returns {topReach, bottomReach} — either may be null if no neighbor
+  // exists in that direction or if the distance is non-positive.
+  #computeLeafReach(el) {
+    const TARGET_GAP = 4
+    const { prev, next } = this.#findAdjacentBlocks(el)
+    const rect = el.getBoundingClientRect()
+    let topReach = null, bottomReach = null
+    if (prev) {
+      const d = rect.top - prev.getBoundingClientRect().bottom
+      if (d > 0) topReach = Math.max(0, Math.round((d - TARGET_GAP) / 2))
+    }
+    if (next) {
+      const d = next.getBoundingClientRect().top - rect.bottom
+      if (d > 0) bottomReach = Math.max(0, Math.round((d - TARGET_GAP) / 2))
+    }
+    return { topReach, bottomReach }
   }
 
   #hasSelectedAncestor(el) {
@@ -2043,19 +2010,13 @@ export class BlockSelectionExtension extends LexxyExtension {
     return false
   }
 
-  #hasSelectedListSibling(el) {
-    if (!el.parentElement) return false
-    for (const sib of el.parentElement.children) {
-      if (sib !== el && sib.classList.contains(BLOCK_SELECTED_CLASS)) return true
-    }
-    return false
-  }
-
-  // Walk out to the first structural sibling on each side, crossing
-  // through ancestor ULs and nested wrappers. This gives the actual
-  // neighboring visible block in document order — the element from
-  // which the visible gap to `el` is measured.
-  #findAdjacentUnselectedBlocks(el) {
+  // Walk out to the nearest structural sibling in each direction, then
+  // descend into nested-listitem wrappers to reach the actual leaf on
+  // the side facing `el`. This makes the distance calculation measure
+  // between two real content edges, not between `el` and a wrapper's
+  // outer box (which would give wrong spacing when the wrapper holds
+  // content much deeper than its top or bottom edge).
+  #findAdjacentBlocks(el) {
     let node = el
     let prev = null
     while (node && node !== this.root) {
@@ -2068,7 +2029,28 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (node.nextElementSibling) { next = node.nextElementSibling; break }
       node = node.parentElement
     }
-    return { prev, next }
+    return {
+      prev: prev ? this.#descendToLastLeaf(prev) : null,
+      next: next ? this.#descendToFirstLeaf(next) : null,
+    }
+  }
+
+  #descendToLastLeaf(el) {
+    while (el && el.classList.contains(NESTED_LISTITEM_CLASS)) {
+      const innerLis = el.querySelectorAll(":scope > ul > li, :scope > ol > li")
+      if (!innerLis.length) break
+      el = innerLis[innerLis.length - 1]
+    }
+    return el
+  }
+
+  #descendToFirstLeaf(el) {
+    while (el && el.classList.contains(NESTED_LISTITEM_CLASS)) {
+      const firstLi = el.querySelector(":scope > ul > li, :scope > ol > li")
+      if (!firstLi) break
+      el = firstLi
+    }
+    return el
   }
 
   // -- Selection state snapshot/restore ---------------------------------------
