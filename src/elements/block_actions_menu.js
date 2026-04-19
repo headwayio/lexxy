@@ -105,43 +105,42 @@ export class BlockActionsMenu extends HTMLElement {
   // counterpart — what's meaningful for the content doesn't change based on
   // whether it currently lives inside a list item.
   //
-  //   code:      Text + Headings only, no color
-  //              (lists/quote would drop code formatting; color conflicts
-  //              with syntax highlighting)
+  //   code:      Text + Headings convert; Lists/Quote wrap (preserving
+  //              code formatting); no color (color conflicts with syntax
+  //              highlighting).
   //   table:     No turn-into (every conversion wipes cell data), color allowed
-  //   decorator: Bullet/Number/Quote only, no color
+  //   decorator: Bullet/Number/Quote only, all wrap; no color
   //              (HR or attachment — no text to convert to Text/Headings/Code;
   //              color has nothing to apply to)
   //   null:      everything enabled (paragraph, heading, quote, and their
   //              wrapped-in-li counterparts)
+  //
+  // `wrapCommands` lists the subset of allowed commands that wrap the block
+  // rather than replace it — used to pick the "Wrap in …" label variant.
   #applyBlockRestrictions(restriction) {
     const HEADINGS = [ "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall" ]
     const LISTS = [ "insertUnorderedList", "insertOrderedList" ]
+    const WRAP = [ ...LISTS, "insertQuoteBlock" ]
 
     const rules = {
-      code:      { commands: new Set([ "setFormatParagraph", ...HEADINGS ]), color: false },
-      table:     { commands: new Set(), color: true },
-      decorator: { commands: new Set([ ...LISTS, "insertQuoteBlock" ]), color: false },
+      code:      { commands: new Set([ "setFormatParagraph", ...HEADINGS, ...WRAP ]), wrapCommands: new Set(WRAP), color: false },
+      table:     { commands: new Set(), wrapCommands: new Set(), color: true },
+      decorator: { commands: new Set(WRAP), wrapCommands: new Set(WRAP), color: false },
     }
 
     const rule = restriction ? rules[restriction] : null
 
-    // decorator (HR, attachment) and table blocks have no text to convert,
-    // so the list/quote commands wrap rather than convert. Relabel those
-    // buttons ("Bullet list" → "Wrap in bullet list") so users know what
-    // the action will do before clicking. Text-content blocks (paragraph,
-    // heading, quote, code) still read as a direct conversion.
-    const isWrapOnly = restriction === "decorator" || restriction === "table"
-
     for (const button of this.querySelectorAll("[data-action=\"turn-into\"]")) {
-      const disable = rule ? !rule.commands.has(button.dataset.command) : false
+      const command = button.dataset.command
+      const disable = rule ? !rule.commands.has(command) : false
       button.toggleAttribute("disabled", disable)
       button.setAttribute("aria-disabled", String(disable))
 
-      const option = TURN_INTO_OPTIONS.find(o => o.command === button.dataset.command)
+      const option = TURN_INTO_OPTIONS.find(o => o.command === command)
       const label = button.querySelector(".lexxy-block-actions__label")
       if (label && option) {
-        label.textContent = isWrapOnly && option.wrapLabel ? option.wrapLabel : option.label
+        const isWrap = rule?.wrapCommands?.has(command)
+        label.textContent = isWrap && option.wrapLabel ? option.wrapLabel : option.label
       }
     }
 

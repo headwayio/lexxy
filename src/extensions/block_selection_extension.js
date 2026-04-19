@@ -1095,8 +1095,9 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
       // Wrapped versions of a content type get the same turn-into options as
       // their unwrapped counterparts — the restriction reflects what's
-      // meaningful for the content (code loses formatting if converted to
-      // list/quote, tables lose cells, decorators have no text to convert).
+      // meaningful for the content (code allows Text/Headings as conversions
+      // and Lists/Quote as wraps; tables lose cells on conversion; decorators
+      // have no text so Lists/Quote are wraps).
       if ($isCodeNode(node)) {
         blockRestriction = "code"
       } else if ($isWrappedTableNode(node)) {
@@ -1392,6 +1393,22 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
           newSelectedKeys.add(listItem.getKey())
           replacedKeys.add(key)
+        } else if (command === "insertQuoteBlock" && $isCodeNode(node)) {
+          // Code block → quote: wrap rather than replace. Replacing would
+          // drop the code formatting (Turn into Text / Headings already
+          // cover that explicit conversion path). Idempotent: if already
+          // inside a blockquote, surface the parent quote as the selection.
+          const parent = node.getParent()
+          if ($isQuoteNode(parent)) {
+            newSelectedKeys.add(parent.getKey())
+            replacedKeys.add(key)
+          } else {
+            const quote = $createQuoteNode()
+            node.replace(quote)
+            quote.append(node)
+            newSelectedKeys.add(quote.getKey())
+            replacedKeys.add(key)
+          }
         } else if (command === "insertQuoteBlock" && $isQuoteNode(node)
                    && node.getChildren().every(c =>
                      ($isElementNode(c) || $isDecoratorNode(c))
