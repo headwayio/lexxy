@@ -2026,23 +2026,31 @@ export class BlockSelectionExtension extends LexxyExtension {
     return false
   }
 
-  // Walk out to the nearest structural sibling in each direction, then
-  // descend into nested-listitem wrappers to reach the actual leaf on
-  // the side facing `el`. This makes the distance calculation measure
-  // between two real content edges, not between `el` and a wrapper's
-  // outer box (which would give wrong spacing when the wrapper holds
-  // content much deeper than its top or bottom edge).
+  // Walk out to the nearest VISIBLE structural sibling in each direction,
+  // then descend into nested-listitem wrappers to reach the actual leaf on
+  // the side facing `el`. Skips elements marked .hidden — these are
+  // Lexical's provisional separator paragraphs between decorator nodes
+  // and do not contribute a real visual boundary for the gap math; using
+  // one as the reach target would measure against a zero-/near-zero-
+  // height invisible box, giving asymmetric extensions between two
+  // adjacent selected decorators.
   #findAdjacentBlocks(el) {
+    function isSkippable(n) { return n?.classList.contains("hidden") }
+
     let node = el
     let prev = null
     while (node && node !== this.root) {
-      if (node.previousElementSibling) { prev = node.previousElementSibling; break }
+      let sib = node.previousElementSibling
+      while (sib && isSkippable(sib)) sib = sib.previousElementSibling
+      if (sib) { prev = sib; break }
       node = node.parentElement
     }
     node = el
     let next = null
     while (node && node !== this.root) {
-      if (node.nextElementSibling) { next = node.nextElementSibling; break }
+      let sib = node.nextElementSibling
+      while (sib && isSkippable(sib)) sib = sib.nextElementSibling
+      if (sib) { next = sib; break }
       node = node.parentElement
     }
     return {
