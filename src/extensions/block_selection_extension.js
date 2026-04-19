@@ -1179,6 +1179,8 @@ export class BlockSelectionExtension extends LexxyExtension {
   #applyColorToSelectedBlocks(styleProp, value) {
     const scrollY = window.scrollY
 
+    this.#selectionHistory.push()
+
     this.editor.update(() => {
       const keys = [ ...this.#selectedBlockKeys ]
       for (const key of keys) {
@@ -1206,6 +1208,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #applyInlineFormat(format) {
+    this.#selectionHistory.push()
     this.#withTemporarySelection(() => {
       this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)
     })
@@ -1260,6 +1263,10 @@ export class BlockSelectionExtension extends LexxyExtension {
     const scrollY = window.scrollY
     const isListCommand = command === "insertUnorderedList" || command === "insertOrderedList"
     const listType = command === "insertUnorderedList" ? "bullet" : "number"
+
+    // Snapshot block-select state before the editor update so Cmd+Z
+    // restores the original selection (not just the pre-conversion DOM).
+    this.#selectionHistory.push()
 
     this.editor.update(() => {
       const newSelectedKeys = new Set()
@@ -1540,6 +1547,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #handleDuplicate() {
+    this.#selectionHistory.push()
     this.editor.update(() => {
       const allKeys = this.#getDocumentOrderBlockKeys()
       const keyIdx = new Map(allKeys.map((k, i) => [ k, i ]))
