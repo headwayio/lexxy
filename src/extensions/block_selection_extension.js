@@ -2626,6 +2626,14 @@ export class BlockSelectionExtension extends LexxyExtension {
             if ($isListNode(neighbor) && neighbor.getListType() === firstParent.getListType()) {
               // Adjacent same-type list: enter it instead of swapping
               this.#moveGroupIntoList(group, neighbor, direction)
+            } else if ($isQuoteNode(neighbor)) {
+              // Adjacent quote: enter it. Merges the whole list into the
+              // quote's edge list (or moves the list in as a new child if
+              // there's no matching list). Without this, an entire-list
+              // move would swap past the quote on top-entry (down from
+              // above), skipping the quote entirely — inconsistent with
+              // single-block and partial-group quote entry.
+              this.#enterGroupIntoQuote(group, firstParent, neighbor, direction)
             } else {
               // Swap list with the adjacent root-level element
               firstParent.remove()
