@@ -3012,6 +3012,8 @@ export class BlockSelectionExtension extends LexxyExtension {
     if ($isQuoteNode(listParent)) {
       const listType = currentList.getListType()
       const newList = $createListNode(listType)
+      if (isUp) currentList.insertBefore(newList)
+      else currentList.insertAfter(newList)
       for (const { node, wrapper } of group) {
         node.remove()
         newList.append(node)
@@ -3020,8 +3022,6 @@ export class BlockSelectionExtension extends LexxyExtension {
           newList.append(wrapper)
         }
       }
-      if (isUp) currentList.insertBefore(newList)
-      else currentList.insertAfter(newList)
       this.#cleanupEmptyList(currentList)
       return
     }
