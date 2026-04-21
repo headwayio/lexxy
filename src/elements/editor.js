@@ -21,6 +21,7 @@ import { createElement, dispatch, generateDomId, parseHtml } from "../helpers/ht
 import { isAttachmentSpacerTextNode } from "../helpers/lexical_helper"
 import { sanitize, setSanitizerConfig } from "../helpers/sanitization_helper"
 import { ListenerBin, registerEventListener } from "../helpers/listener_helper"
+import { syncWrapperMarkers } from "../editor/list_wrapper_markers"
 import LexicalToolbar from "./toolbar"
 import Configuration from "../editor/configuration"
 import Contents from "../editor/contents"
@@ -448,6 +449,7 @@ export class LexicalEditorElement extends HTMLElement {
       this.#internalFormValue = this.value
       this.#toggleEmptyStatus()
       this.#setValidity()
+      syncWrapperMarkers(this.editorContentElement)
       this.#dispatchAttributesChange()
     }))
   }

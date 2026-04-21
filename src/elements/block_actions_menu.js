@@ -100,61 +100,96 @@ export class BlockActionsMenu extends HTMLElement {
     this.#addScrollResizeListeners()
   }
 
-  // Per-content-type turn-into and color restrictions. The wrapped-in-a-list
-  // variant of each content type uses the same rule as its standalone
-  // counterpart — what's meaningful for the content doesn't change based on
-  // whether it currently lives inside a list item.
+  // Two independent axes determine what shows and how it's labeled:
   //
-  //   code:      Text + Headings convert; Lists/Quote wrap (preserving
-  //              code formatting); no color (color conflicts with syntax
-  //              highlighting).
-  //   table:     No turn-into (every conversion wipes cell data), color allowed
-  //   decorator: Bullet/Number/Quote only, all wrap; no color
-  //              (HR or attachment — no text to convert to Text/Headings/Code;
-  //              color has nothing to apply to)
-  //   null:      everything enabled (paragraph, heading, quote, and their
-  //              wrapped-in-li counterparts)
+  //   Content-shape restriction (controls turn-into enablement + color):
+  //     code:      Text + Headings convert; no color
+  //     table:     No turn-into (every conversion wipes cell data); color
+  //     decorator: No turn-into (no text to convert to); no color
+  //     null:      All turn-into enabled; color allowed
   //
-  // `wrapCommands` lists the subset of allowed commands that wrap the block
-  // rather than replace it — used to pick the "Wrap in …" label variant.
+  //   Wrap state (controls wrap-command label + enablement, independent of
+  //   content shape):
+  //     listType: "bullet" | "number" | null — type of the nearest
+  //               enclosing list, if any
+  //     inQuote:  true if the focused block has a blockquote ancestor
   //
-  // `currentWrap` reports what the focused block is already wrapped in:
-  //   { listType: "bullet" | "number" | null, inQuote: boolean }
-  // When a wrap command's target matches the current wrap, the button is
-  // relabeled to "Unwrap from …" and clicking it unwraps the block from
-  // that wrapper. When the target differs, it stays a wrap-swap.
+  // Per-command label rule:
+  //     Current wrapper matches target       → "Unwrap from X"
+  //     Different list type (UL in OL etc.)  → plain label (type swap)
+  //     No wrapper on the block              → "Wrap in X"
+  //     Would create nested wrapper          → hide (no double-wrap)
   #applyBlockRestrictions(restriction, currentWrap = { listType: null, inQuote: false }) {
     const HEADINGS = [ "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall" ]
-    const LISTS = [ "insertUnorderedList", "insertOrderedList" ]
-    const WRAP = [ ...LISTS, "insertQuoteBlock" ]
 
-    const rules = {
-      code:      { commands: new Set([ "setFormatParagraph", ...HEADINGS, ...WRAP ]), wrapCommands: new Set(WRAP), color: false },
-      table:     { commands: new Set(), wrapCommands: new Set(), color: true },
-      decorator: { commands: new Set(WRAP), wrapCommands: new Set(WRAP), color: false },
+    // Turn-into (non-wrap) commands allowed per content shape. Wrap commands
+    // are gated separately by the per-command matrix below — they're not in
+    // these sets because content shape doesn't determine whether you can
+    // wrap something.
+    const turnIntoAllowed = {
+      code:      new Set([ "setFormatParagraph", ...HEADINGS ]),
+      table:     new Set(),
+      decorator: new Set(),
     }
 
-    const rule = restriction ? rules[restriction] : null
-    const unwrapMatches = (command) =>
-      (command === "insertUnorderedList" && currentWrap.listType === "bullet") ||
-      (command === "insertOrderedList"   && currentWrap.listType === "number") ||
-      (command === "insertQuoteBlock"    && currentWrap.inQuote)
+    const inList = currentWrap.listType !== null
+    const inQuote = currentWrap.inQuote
+
+    // Per-wrap-command decision: one of "wrap", "unwrap", "swap", or "hide".
+    //   wrap   → "Wrap in X" label, enabled, command wraps the block
+    //   unwrap → "Unwrap from X" label, enabled, command removes that wrapper
+    //   swap   → plain "Bullet list"/"Numbered list" label, enabled, command
+    //            swaps list type in place (only meaningful for text LIs)
+    //   hide   → button hidden (would create a nested double-wrap the user
+    //            hasn't asked for)
+    function wrapDecision(command) {
+      if (command === "insertUnorderedList") {
+        if (currentWrap.listType === "bullet") return "unwrap"
+        if (currentWrap.listType === "number") return "swap"
+        if (inQuote) return "hide"
+        return "wrap"
+      }
+      if (command === "insertOrderedList") {
+        if (currentWrap.listType === "number") return "unwrap"
+        if (currentWrap.listType === "bullet") return "swap"
+        if (inQuote) return "hide"
+        return "wrap"
+      }
+      if (command === "insertQuoteBlock") {
+        if (inQuote) return "unwrap"
+        if (inList) return "hide"
+        return "wrap"
+      }
+      return null
+    }
+
+    const rule = restriction ? { allowed: turnIntoAllowed[restriction], color: restriction === "table" } : null
 
     for (const button of this.querySelectorAll("[data-action=\"turn-into\"]")) {
       const command = button.dataset.command
-      const disable = rule ? !rule.commands.has(command) : false
-      button.toggleAttribute("disabled", disable)
-      button.setAttribute("aria-disabled", String(disable))
-
       const option = TURN_INTO_OPTIONS.find(o => o.command === command)
       const label = button.querySelector(".lexxy-block-actions__label")
-      if (label && option) {
-        if (unwrapMatches(command) && option.unwrapLabel) {
-          label.textContent = option.unwrapLabel
-        } else {
-          const isWrap = rule?.wrapCommands?.has(command)
-          label.textContent = isWrap && option.wrapLabel ? option.wrapLabel : option.label
+      const decision = wrapDecision(command)
+      const isWrapCommand = decision !== null
+
+      if (isWrapCommand) {
+        button.hidden = decision === "hide"
+        // Wrap commands are always enabled regardless of content shape —
+        // every block can be wrapped in a list or quote.
+        button.toggleAttribute("disabled", false)
+        button.setAttribute("aria-disabled", "false")
+        if (label && option) {
+          if (decision === "unwrap" && option.unwrapLabel) label.textContent = option.unwrapLabel
+          else if (decision === "wrap" && option.wrapLabel) label.textContent = option.wrapLabel
+          else label.textContent = option.label
         }
+      } else {
+        // Turn-into command (Text/Heading/Code). Gated by content shape.
+        button.hidden = false
+        const disable = rule ? !rule.allowed.has(command) : false
+        button.toggleAttribute("disabled", disable)
+        button.setAttribute("aria-disabled", String(disable))
+        if (label && option) label.textContent = option.label
       }
     }
 
