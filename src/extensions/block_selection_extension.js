@@ -2001,6 +2001,57 @@ export class BlockSelectionExtension extends LexxyExtension {
     })
   }
 
+  // Mutate `group` in place: if all LIs of a list appear in the group AND
+  // that list's parent matches another group member's parent (the two are
+  // siblings at the same container level), replace the LIs with the list
+  // itself as a single atomic group member. Keeps group order stable by
+  // document position — the list slots in at its own position within the
+  // shared parent's children.
+  #collapseFullySelectedListsInGroup(group, selectedKeys) {
+    const selectedSet = new Set(selectedKeys)
+    // Bucket LIs by their parent list
+    const byList = new Map()
+    for (const entry of group) {
+      const parent = entry.node.getParent()
+      if ($isListItemNode(entry.node) && $isListNode(parent)) {
+        if (!byList.has(parent)) byList.set(parent, [])
+        byList.get(parent).push(entry)
+      }
+    }
+    // Set of container-level parents (non-list) already represented in the
+    // group — these are quote/root containers that could host a list as a
+    // peer member.
+    const containerParents = new Set(
+      group
+        .filter(g => !$isListNode(g.node.getParent()))
+        .map(g => g.node.getParent())
+        .filter(Boolean)
+    )
+    let mutated = false
+    for (const [ list, entries ] of byList) {
+      const listParent = list.getParent()
+      if (!listParent || !containerParents.has(listParent)) continue
+      const realChildren = list.getChildren().filter(c => $isListItemNode(c) && !$isStructuralWrapper(c))
+      const allSelected = realChildren.every(c => selectedSet.has(c.getKey()))
+      if (!allSelected) continue
+      // Remove the LI entries from group, insert the list at the position
+      // of the first removed entry.
+      const firstIdx = group.indexOf(entries[0])
+      for (const e of entries) {
+        const idx = group.indexOf(e)
+        if (idx >= 0) group.splice(idx, 1)
+      }
+      group.splice(Math.min(firstIdx, group.length), 0, { node: list, wrapper: null })
+      mutated = true
+    }
+    if (mutated) {
+      // Re-sort group by document order to keep downstream walks stable.
+      const docOrder = this.#getDocumentOrderBlockKeys()
+      const idx = new Map(docOrder.map((k, i) => [ k, i ]))
+      group.sort((a, b) => (idx.get(a.node.getKey()) ?? 0) - (idx.get(b.node.getKey()) ?? 0))
+    }
+  }
+
   #filterToRootKeys(selectedKeys) {
     const keySet = new Set(selectedKeys)
     const rootKeys = []
@@ -2420,6 +2471,14 @@ export class BlockSelectionExtension extends LexxyExtension {
     // standalone blocks), or (b) items at different nesting depths within the
     // same list hierarchy.
     if (group.length > 1) {
+      // Collapse fully-selected lists to their parent list node when the
+      // group mixes Quote-direct children (paragraphs, headings, …) with
+      // LIs of a list that sits alongside them. Treats the list as a
+      // single atomic member so the group shares a parent and the
+      // standard same-parent dispatch can handle the move. No-op when
+      // only some of a list's LIs are selected.
+      this.#collapseFullySelectedListsInGroup(group, rootKeys)
+
       const firstParent = group[0].node.getParent()
       const multiParent = group.some(g => !g.node.getParent()?.is(firstParent))
 
