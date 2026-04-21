@@ -3561,14 +3561,26 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
       this.#cleanupEmptyList(currentList)
     } else {
-      // No adjacent same-type list in the quote — move the whole list in.
-      currentList.remove()
-      if (isUp) quote.append(currentList)
-      else {
+      // No adjacent same-type list in the quote — create a new list inside
+      // the quote and move only the group's items into it. Appending the
+      // whole currentList into the quote would cycle the tree whenever the
+      // quote is a descendant of currentList (target-redirect at line 3163
+      // picks out a quote that's nested inside one of currentList's own LIs),
+      // sending Lexical's reconciler into infinite recursion.
+      const newList = $createListNode(listType)
+      if (isUp) {
+        quote.append(newList)
+      } else {
         const first = quote.getFirstChild()
-        if (first) first.insertBefore(currentList)
-        else quote.append(currentList)
+        if (first) first.insertBefore(newList)
+        else quote.append(newList)
       }
+      for (const { node, wrapper } of group) {
+        node.remove()
+        newList.append(node)
+        if (wrapper) { wrapper.remove(); newList.append(wrapper) }
+      }
+      this.#cleanupEmptyList(currentList)
     }
   }
 
