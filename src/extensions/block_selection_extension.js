@@ -2594,6 +2594,29 @@ export class BlockSelectionExtension extends LexxyExtension {
       const multiParent = group.some(g => !g.node.getParent()?.is(firstParent))
 
       if (multiParent) {
+        // Bail if the group can't physically move in this direction. The
+        // normalize-and-move strategies below (canNormalize, Case (a)
+        // split, Case (b) depth normalize) all mutate the tree expecting
+        // the subsequent move to be useful. If no move is possible (e.g.
+        // the first group item is the document's first block for UP),
+        // those normalizations become silent document restructurings the
+        // user didn't ask for. Check once, upfront.
+        //
+        // "Can move" here: the edge item OR any of its ancestors has a
+        // sibling in the requested direction. This catches both
+        // within-list moves (LI has a sibling LI) and cross-container
+        // moves (the list/wrapper has a sibling at the root).
+        const docOrder = this.#getDocumentOrderBlockKeys()
+        const docIdx = new Map(docOrder.map((k, i) => [ k, i ]))
+        const ordered = [ ...group ].sort((a, b) => (docIdx.get(a.node.getKey()) ?? 0) - (docIdx.get(b.node.getKey()) ?? 0))
+        const edgeItem = isUp ? ordered[0].node : ordered[ordered.length - 1].node
+        let canMove = false
+        for (let n = edgeItem; n && n.getParent(); n = n.getParent()) {
+          const sib = isUp ? n.getPreviousSibling() : n.getNextSibling()
+          if (sib) { canMove = true; break }
+        }
+        if (!canMove && !this.#commonQuoteAncestor(group)) return
+
         // Mixed-parent group entirely inside a single Quote — i.e. some
         // items are LIs in the quote's list and others are direct quote
         // children (paragraphs, headings). Normalizing within the quote
@@ -2654,6 +2677,13 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
 
           // Remap: for partially-selected lists, split off the selected items.
+          // Preserve document position: if the selected items sit at the
+          // FRONT of the list (first real child is selected), insert the
+          // splitList BEFORE the source list so the split-off items keep
+          // their original position relative to the list's surroundings.
+          // Otherwise (middle or back selection) insert AFTER. Without
+          // this, a front-of-list partial selection would silently jump
+          // past unselected trailing items during a no-op move attempt.
           const listRemap = new Map() // originalList -> list to resolve to
           for (const [ list, items ] of listToItems) {
             const realChildren = list.getChildren().filter(c => $isListItemNode(c) && !$isStructuralWrapper(c))
@@ -2662,9 +2692,11 @@ export class BlockSelectionExtension extends LexxyExtension {
               listRemap.set(list, list)
               continue
             }
+            const selectedIsAtFront = realChildren[0] && groupKeys.has(realChildren[0].getKey())
             const splitList = $createListNode(list.getListType())
             for (const item of items) splitList.append(item)
-            list.insertAfter(splitList)
+            if (selectedIsAtFront) list.insertBefore(splitList)
+            else list.insertAfter(splitList)
             listRemap.set(list, splitList)
           }
 
