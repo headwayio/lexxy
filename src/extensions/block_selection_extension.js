@@ -547,21 +547,28 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!$isListItemNode(child)) continue
 
       if ($isStructuralWrapper(child)) {
-        // Skip structural wrappers — recurse into their nested lists directly
+        // Skip structural wrappers — recurse into their nested children
+        // directly. Children are typically nested lists but can also be
+        // Quotes (Notion-style quote containers nested inside a list).
         for (const grandchild of child.getChildren()) {
           if ($isListNode(grandchild)) {
             this.#collectListItemKeys(grandchild, keys)
+          } else if ($isQuoteNode(grandchild)) {
+            keys.push(grandchild.getKey())
+            this.#collectQuoteInnerKeys(grandchild, keys)
           }
         }
       } else {
         // Content item — add its key and recurse into any nested lists
-        // (standard Lexical model where children are inside the item).
-        // Block-model structural wrappers are handled by the loop when
-        // they're reached as the next child — no next-sibling check needed.
+        // or quotes (standard Lexical model where children are inside
+        // the item).
         keys.push(child.getKey())
         for (const grandchild of child.getChildren()) {
           if ($isListNode(grandchild)) {
             this.#collectListItemKeys(grandchild, keys)
+          } else if ($isQuoteNode(grandchild)) {
+            keys.push(grandchild.getKey())
+            this.#collectQuoteInnerKeys(grandchild, keys)
           }
         }
       }
@@ -598,6 +605,19 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     })
     return result
+  }
+
+  // A list is "truly root-level" for group-movement purposes when it's not
+  // wrapped in any container (list-item nesting OR a Quote). Pre-existing
+  // code used the weaker check `!isListItemNode(list.getParent())`, which
+  // treats a list-inside-a-quote as "root" — wrong for the Notion-style
+  // quote-as-container model, where a list inside a quote should behave
+  // like a nested list (promote to the quote level, then exit at the
+  // quote boundary).
+  #isListRootLevel(list) {
+    if (!list || !$isListNode(list)) return false
+    const parent = list.getParent()
+    return !!parent && !$isListItemNode(parent) && !$isQuoteNode(parent)
   }
 
   // Block keys suitable for arrow-key navigation — excludes ListNode
@@ -2420,13 +2440,16 @@ export class BlockSelectionExtension extends LexxyExtension {
           return
         }
 
-        // Check if any item is NOT inside a list (root-level mixed group)
-        const anyOutsideList = group.some(g => !$isListNode(g.node.getParent()))
-        // Check if any item is in a root-level standalone list
-        const anyInRootList = group.some(g => {
+        // Check if any item is NOT inside a list (root-level mixed group).
+        // "Outside a list" means the parent isn't a ListNode AND isn't a
+        // Quote (a quote is a wrapper we handle elsewhere, not a root-level
+        // sibling of a list).
+        const anyOutsideList = group.some(g => {
           const p = g.node.getParent()
-          return $isListNode(p) && !$isListItemNode(p.getParent())
+          return !$isListNode(p) && !$isQuoteNode(p)
         })
+        // Check if any item is in a root-level standalone list.
+        const anyInRootList = group.some(g => this.#isListRootLevel(g.node.getParent()))
 
         if (anyOutsideList || anyInRootList) {
           // Case (a): root-level mixed group — resolve to root-level elements.
@@ -2442,7 +2465,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           for (const { node } of group) {
             if (!$isListItemNode(node)) continue
             const parent = node.getParent()
-            if ($isListNode(parent) && !$isListItemNode(parent.getParent())) {
+            if (this.#isListRootLevel(parent)) {
               if (!listToItems.has(parent)) listToItems.set(parent, [])
               listToItems.get(parent).push(node)
             }
@@ -2469,7 +2492,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             let rootEl = node
             if ($isListItemNode(node)) {
               const parent = node.getParent()
-              if ($isListNode(parent) && !$isListItemNode(parent.getParent())) {
+              if (this.#isListRootLevel(parent)) {
                 rootEl = listRemap.get(parent) || parent
               }
             }
@@ -2523,8 +2546,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         // the list is at root level, move the list itself as a unit rather
         // than exiting — exit would re-wrap items in a new standalone list,
         // causing an infinite exit loop via Lexical's adjacent-list merge.
-        const listParent = firstParent.getParent()
-        if (!$isListItemNode(listParent) && this.#groupSpansEntireList(group, firstParent)) {
+        if (this.#isListRootLevel(firstParent) && this.#groupSpansEntireList(group, firstParent)) {
           const neighbor = isUp ? firstParent.getPreviousSibling() : firstParent.getNextSibling()
           if (neighbor) {
             if ($isListNode(neighbor) && neighbor.getListType() === firstParent.getListType()) {
@@ -2633,9 +2655,9 @@ export class BlockSelectionExtension extends LexxyExtension {
     const outsideItems = []
     for (const g of group) {
       const parent = g.node.getParent()
-      if ($isListNode(parent) && !$isListItemNode(parent.getParent())) {
+      if (this.#isListRootLevel(parent)) {
         listItems.push(g)
-      } else if (parent && !$isListNode(parent) && !$isListItemNode(parent)) {
+      } else if (parent && !$isListNode(parent) && !$isListItemNode(parent) && !$isQuoteNode(parent)) {
         outsideItems.push(g)
       } else {
         return false
@@ -2667,8 +2689,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     const listItems = []
     const outsideItems = []
     for (const g of group) {
-      const parent = g.node.getParent()
-      if ($isListNode(parent) && !$isListItemNode(parent.getParent())) listItems.push(g)
+      if (this.#isListRootLevel(g.node.getParent())) listItems.push(g)
       else outsideItems.push(g)
     }
     const firstListItem = listItems[0].node
@@ -2806,6 +2827,16 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     const listParent = currentList.getParent()
 
+    // List inside a quote: group at the list boundary exits BOTH the list
+    // and the quote in one press. The group's LIs get wrapped in a new
+    // list placed just before/after the quote in the quote's container.
+    // One press = one meaningful move. Avoids leaving orphan LIs inside
+    // a quote that would need manual cleanup.
+    if ($isQuoteNode(listParent)) {
+      this.#exitGroupOutOfQuote(group, currentList, listParent, direction)
+      return
+    }
+
     // Root-level list: exit the list entirely
     if (!$isListItemNode(listParent)) {
       this.#exitGroupFromList(group, currentList, direction)
@@ -2815,6 +2846,36 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Nested list: promote to parent list level (one level per move,
     // matching single-item depth-first traversal behavior)
     this.#promoteGroupOneLevel(group, currentList, direction)
+  }
+
+  // Exit a group from its containing list AND its containing quote in a
+  // single move. Wraps the group's ListItemNodes in a new sibling list
+  // positioned before/after the quote at the quote's container level.
+  // Used when Cmd+Shift+Up/Down on a group pushes past the list boundary
+  // inside a Quote: one press moves the group out of both the list and
+  // the quote.
+  #exitGroupOutOfQuote(group, currentList, quote, direction) {
+    const isUp = direction === "up"
+    const listType = currentList.getListType()
+    const newList = $createListNode(listType)
+    for (const { node, wrapper } of group) {
+      node.remove()
+      newList.append(node)
+      if (wrapper) {
+        wrapper.remove()
+        newList.append(wrapper)
+      }
+    }
+    if (isUp) {
+      quote.insertBefore(newList)
+    } else {
+      quote.insertAfter(newList)
+    }
+    this.#cleanupEmptyList(currentList)
+    // If the quote is now empty, remove it so we don't leave a stub.
+    if (quote.getChildrenSize() === 0) {
+      quote.remove()
+    }
   }
 
   // Exit a group from its list to root level using the cursor approach.
@@ -2943,6 +3004,27 @@ export class BlockSelectionExtension extends LexxyExtension {
   #promoteGroupOneLevel(group, currentList, direction) {
     const isUp = direction === "up"
     const listParent = currentList.getParent()
+
+    // List inside a Quote: Lexical (and HTML) doesn't allow LIs to be
+    // direct children of a Quote. Wrap the promoted items in a new list
+    // inserted next to the current list inside the quote instead, so the
+    // items remain valid list items in their new position.
+    if ($isQuoteNode(listParent)) {
+      const listType = currentList.getListType()
+      const newList = $createListNode(listType)
+      for (const { node, wrapper } of group) {
+        node.remove()
+        newList.append(node)
+        if (wrapper) {
+          wrapper.remove()
+          newList.append(wrapper)
+        }
+      }
+      if (isUp) currentList.insertBefore(newList)
+      else currentList.insertAfter(newList)
+      this.#cleanupEmptyList(currentList)
+      return
+    }
 
     // Determine insert anchor at the parent level
     let insertAnchor
