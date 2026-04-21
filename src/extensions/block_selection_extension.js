@@ -2001,6 +2001,117 @@ export class BlockSelectionExtension extends LexxyExtension {
     })
   }
 
+  // Returns the shared enclosing QuoteNode if every group item is inside
+  // the same quote (and at least one item is NOT itself the quote). Used
+  // to detect the "mixed-parent group trapped inside a quote" case so we
+  // can exit the whole group out of the quote instead of shuffling its
+  // items around internally.
+  #commonQuoteAncestor(group) {
+    let commonKey = null
+    for (const { node } of group) {
+      let ancestorKey = null
+      for (let p = node.getParent(); p; p = p.getParent()) {
+        if ($isQuoteNode(p)) { ancestorKey = p.getKey(); break }
+      }
+      if (!ancestorKey) return null
+      if (commonKey === null) commonKey = ancestorKey
+      else if (commonKey !== ancestorKey) return null
+    }
+    return commonKey ? $getNodeByKey(commonKey) : null
+  }
+
+  // Exit a mixed-parent group from its enclosing Quote. Places each group
+  // item (in document order) just before/after the quote at the quote's
+  // container level. Items that were in a list inside the quote get
+  // extracted first (their list stays inside the quote with the remaining
+  // items; the extracted LIs become their own list outside). Non-list
+  // items (paragraphs, headings, …) just move out directly.
+  #exitMixedGroupFromQuote(group, quote, direction) {
+    const isUp = direction === "up"
+    const quoteParent = quote.getParent()
+    if (!quoteParent) return
+
+    // Sort by document order to preserve relative positions on exit.
+    const docOrder = this.#getDocumentOrderBlockKeys()
+    const idx = new Map(docOrder.map((k, i) => [ k, i ]))
+    const ordered = [ ...group ].sort((a, b) => (idx.get(a.node.getKey()) ?? 0) - (idx.get(b.node.getKey()) ?? 0))
+
+    // Group LIs by their parent list so we can exit list items while
+    // keeping the quote's list intact for unselected siblings.
+    const liByList = new Map()
+    for (const entry of ordered) {
+      if ($isListItemNode(entry.node)) {
+        const list = entry.node.getParent()
+        if ($isListNode(list)) {
+          if (!liByList.has(list)) liByList.set(list, [])
+          liByList.get(list).push(entry)
+        }
+      }
+    }
+
+    // Extract LIs into new lists (one per source list) and replace each
+    // LI in the ordered sequence with a reference to the new list. Only
+    // the FIRST LI of each source list is kept in `ordered` — it now
+    // represents the whole extracted list.
+    const listRemap = new Map() // sourceList -> extractedList
+    const replacedLiKeys = new Set()
+    for (const [ sourceList, entries ] of liByList) {
+      const extracted = $createListNode(sourceList.getListType())
+      for (const e of entries) {
+        e.node.remove()
+        extracted.append(e.node)
+        replacedLiKeys.add(e.node.getKey())
+      }
+      listRemap.set(sourceList, extracted)
+    }
+
+    // Build the exit sequence: replace the first LI of each source list
+    // with the extracted list node, drop subsequent LIs from that list.
+    const exitSequence = []
+    const seenListRemaps = new Set()
+    for (const entry of ordered) {
+      if ($isListItemNode(entry.node)) {
+        // This node was removed and placed into an extracted list above;
+        // emit the extracted list once, at the first occurrence.
+        const list = entry.node.getParent()
+        if (list && listRemap.has(list) && !seenListRemaps.has(list)) {
+          exitSequence.push({ node: listRemap.get(list), wrapper: null })
+          seenListRemaps.add(list)
+        }
+      } else {
+        entry.node.remove()
+        exitSequence.push(entry)
+      }
+    }
+    // Account for lists whose parent was already removed from the tree by
+    // Lexical's auto-cleanup (source list now orphaned) — emit them too.
+    for (const [ sourceList, extracted ] of listRemap) {
+      if (!seenListRemaps.has(sourceList)) {
+        exitSequence.push({ node: extracted, wrapper: null })
+      }
+    }
+
+    // Insert all exit items as siblings of the quote, in document order.
+    if (isUp) {
+      for (const { node } of exitSequence) {
+        quote.insertBefore(node)
+      }
+    } else {
+      let after = quote
+      for (const { node } of exitSequence) {
+        after.insertAfter(node)
+        after = node
+      }
+    }
+
+    // Clean up any now-empty source lists inside the quote.
+    for (const sourceList of liByList.keys()) {
+      this.#cleanupEmptyList(sourceList)
+    }
+    // If the quote itself is now empty, remove it.
+    if (quote.getChildrenSize() === 0) quote.remove()
+  }
+
   // Mutate `group` in place: if all LIs of a list appear in the group AND
   // that list's parent matches another group member's parent (the two are
   // siblings at the same container level), replace the LIs with the list
@@ -2483,6 +2594,18 @@ export class BlockSelectionExtension extends LexxyExtension {
       const multiParent = group.some(g => !g.node.getParent()?.is(firstParent))
 
       if (multiParent) {
+        // Mixed-parent group entirely inside a single Quote — i.e. some
+        // items are LIs in the quote's list and others are direct quote
+        // children (paragraphs, headings). Normalizing within the quote
+        // would keep the items trapped at different levels; instead exit
+        // the whole group out of the quote as siblings of the quote, in
+        // document order. Preserves selection across the exit.
+        const commonQuote = this.#commonQuoteAncestor(group)
+        if (commonQuote) {
+          this.#exitMixedGroupFromQuote(group, commonQuote, direction)
+          return
+        }
+
         // Mixed-containment normalization: if some group items are inside a
         // root-level list and others are outside any list, the first move
         // wraps all non-list items into that list (inserted adjacent to
