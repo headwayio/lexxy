@@ -1,6 +1,7 @@
 import LexxyExtension from "./lexxy_extension"
 import {
   $createParagraphNode,
+  $createTextNode,
   $getNodeByKey,
   $getRoot,
   $getSelection,
@@ -39,6 +40,8 @@ import { extractHighlightFromCSS, mergeHighlightIntoCSS, removeHighlightFromCSS 
 import { SelectionHistory } from "../editor/block_selection/selection_history"
 import { WrappedOriginTracker } from "../editor/block_selection/wrapped_origin"
 import { registerBulletMarkerColorSync } from "../editor/block_selection/bullet_color_sync"
+import { $generateNodesFromDOM } from "@lexical/html"
+import { parseHtml } from "../helpers/html_helper"
 
 // Block selection extension — gives the editor a second, block-level
 // selection mode that sits above Lexical's range selection. The extension
@@ -990,6 +993,32 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
         break
 
+      case "c":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#copySelectedBlocks()
+        }
+        break
+
+      case "x":
+        // Cmd+Shift+X (strikethrough) is handled above the block-select guard,
+        // so here we only see Cmd+X without shift — the cut shortcut.
+        if ((event.metaKey || event.ctrlKey) && !event.shiftKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#cutSelectedBlocks()
+        }
+        break
+
+      case "v":
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          this.#pasteBlocksFromClipboard()
+        }
+        break
+
       case "b":
         if (event.metaKey || event.ctrlKey) {
           event.preventDefault()
@@ -1789,6 +1818,397 @@ export class BlockSelectionExtension extends LexxyExtension {
     }, { tag: HISTORY_MERGE_TAG })
 
     this.#syncAndRefocus()
+  }
+
+  // -- Clipboard (block-select copy/cut/paste) --------------------------------
+  //
+  // Block-select mode runs with Lexical's selection set to null, so the
+  // browser won't dispatch native copy/cut/paste events on the focused
+  // contenteditable (empty document Selection → no clipboard event). Instead
+  // we intercept Cmd+C / Cmd+X / Cmd+V in the block-select keydown switch
+  // and drive the system clipboard through navigator.clipboard.
+  //
+  // Round-trip within Lexxy uses a Lexical-JSON payload base64-encoded into
+  // a <div data-lexxy-blocks> wrapper around the HTML — the same pattern
+  // Notion/Google Docs use. External apps ignore the data attribute and
+  // get the inner HTML (and a plain-text fallback) directly.
+
+  async #copySelectedBlocks() {
+    if (this.#selectedBlockKeys.size === 0) return
+    const payload = this.#buildClipboardPayload()
+    if (!payload) return
+    await this.#writeClipboardPayload(payload)
+  }
+
+  async #cutSelectedBlocks() {
+    if (this.#selectedBlockKeys.size === 0) return
+    const payload = this.#buildClipboardPayload()
+    if (!payload) return
+    await this.#writeClipboardPayload(payload)
+    this.#handleDelete()
+  }
+
+  async #pasteBlocksFromClipboard() {
+    const { html, text } = await this.#readClipboardPayload()
+    if (!html && !text) return
+
+    const lexxyJson = html ? this.#extractLexxyJsonFromHtml(html) : null
+    if (lexxyJson) {
+      this.#insertBlocksFromJson(lexxyJson)
+    } else if (html) {
+      this.#insertBlocksFromHtml(html)
+    } else if (text) {
+      this.#insertBlocksFromPlainText(text)
+    }
+  }
+
+  async #writeClipboardPayload({ html, text }) {
+    if (!navigator.clipboard) return
+
+    try {
+      if (typeof window.ClipboardItem !== "undefined" && navigator.clipboard.write) {
+        const item = new window.ClipboardItem({
+          "text/html": new Blob([ html ], { type: "text/html" }),
+          "text/plain": new Blob([ text ], { type: "text/plain" })
+        })
+        await navigator.clipboard.write([ item ])
+        return
+      }
+    } catch (_) { /* fall through to text-only write */ }
+
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch (_) { /* clipboard write denied; nothing more we can do */ }
+  }
+
+  async #readClipboardPayload() {
+    if (!navigator.clipboard) return { html: null, text: null }
+
+    try {
+      if (navigator.clipboard.read) {
+        const items = await navigator.clipboard.read()
+        let html = null
+        let text = null
+        for (const item of items) {
+          if (!html && item.types.includes("text/html")) {
+            html = await (await item.getType("text/html")).text()
+          }
+          if (!text && item.types.includes("text/plain")) {
+            text = await (await item.getType("text/plain")).text()
+          }
+        }
+        return { html, text }
+      }
+    } catch (_) { /* fall through to text-only read */ }
+
+    try {
+      const text = await navigator.clipboard.readText()
+      return { html: null, text }
+    } catch (_) {
+      return { html: null, text: null }
+    }
+  }
+
+  #extractLexxyJsonFromHtml(html) {
+    const doc = parseHtml(html)
+    const container = doc.querySelector("[data-lexxy-blocks]")
+    const encoded = container?.getAttribute("data-lexxy-blocks")
+    if (!encoded) return null
+    try {
+      return decodeURIComponent(escape(window.atob(encoded)))
+    } catch (_) {
+      return null
+    }
+  }
+
+  // Serialize the selected root blocks (and any structural wrappers carrying
+  // their children) into an HTML/text pair. The Lexical JSON for lossless
+  // in-Lexxy round-trip is base64-embedded in a <div data-lexxy-blocks>
+  // wrapper — external apps ignore the data attribute, Lexxy's paste
+  // handler extracts and decodes it.
+  //
+  // Consecutive selected ListItemNodes sharing a parent ListNode are wrapped
+  // in a synthetic ListNode so each top-level entry is a valid root-level
+  // node (ListItems by themselves can't sit at the document root).
+  #buildClipboardPayload() {
+    const entries = []
+
+    this.editor.getEditorState().read(() => {
+      const allKeys = this.#getDocumentOrderBlockKeys()
+      const keyIdx = new Map(allKeys.map((k, i) => [ k, i ]))
+      const rootKeys = this.#filterToRootKeys([ ...this.#selectedBlockKeys ])
+      rootKeys.sort((a, b) => (keyIdx.get(a) ?? 0) - (keyIdx.get(b) ?? 0))
+
+      let currentListGroup = null // { parentKey, entry: { node, wrapper }, htmlParts, textParts, container }
+
+      function flushListGroup() {
+        if (!currentListGroup) return
+        const { entry, container, textParts } = currentListGroup
+        entries.push({
+          json: entry,
+          html: container.outerHTML,
+          text: textParts.filter(Boolean).join("\n")
+        })
+        currentListGroup = null
+      }
+
+      for (const key of rootKeys) {
+        const node = $getNodeByKey(key)
+        if (!node) continue
+
+        const wrapper = this.#getOwnStructuralWrapper(node)
+        const parent = node.getParent()
+
+        if ($isListItemNode(node) && $isListNode(parent)) {
+          // Group into the parent list. Start a fresh group when the parent
+          // list changes so sibling lists stay separate.
+          const parentKey = parent.getKey()
+          if (!currentListGroup || currentListGroup.parentKey !== parentKey) {
+            flushListGroup()
+            const listJson = parent.exportJSON()
+            listJson.children = []
+            const parentEl = this.editor.getElementByKey(parentKey)
+            const container = parentEl
+              ? parentEl.cloneNode(false)
+              : document.createElement(parent.getListType() === "number" ? "ol" : "ul")
+            currentListGroup = {
+              parentKey,
+              entry: { node: listJson, wrapper: null },
+              container,
+              textParts: []
+            }
+          }
+          currentListGroup.entry.node.children.push(this.#exportNodeWithChildren(node))
+          const nodeEl = this.editor.getElementByKey(key)
+          if (nodeEl) {
+            currentListGroup.container.appendChild(nodeEl.cloneNode(true))
+            currentListGroup.textParts.push(nodeEl.innerText || nodeEl.textContent || "")
+          }
+          if (wrapper) {
+            currentListGroup.entry.node.children.push(this.#exportNodeWithChildren(wrapper))
+            const wrapperEl = this.editor.getElementByKey(wrapper.getKey())
+            if (wrapperEl) {
+              currentListGroup.container.appendChild(wrapperEl.cloneNode(true))
+              currentListGroup.textParts.push(wrapperEl.innerText || wrapperEl.textContent || "")
+            }
+          }
+          continue
+        }
+
+        flushListGroup()
+
+        const nodeEl = this.editor.getElementByKey(key)
+        const htmlParts = []
+        const textParts = []
+        if (nodeEl) {
+          htmlParts.push(nodeEl.outerHTML)
+          textParts.push(nodeEl.innerText || nodeEl.textContent || "")
+        }
+        if (wrapper) {
+          const wrapperEl = this.editor.getElementByKey(wrapper.getKey())
+          if (wrapperEl) {
+            htmlParts.push(wrapperEl.outerHTML)
+            textParts.push(wrapperEl.innerText || wrapperEl.textContent || "")
+          }
+        }
+        entries.push({
+          json: {
+            node: this.#exportNodeWithChildren(node),
+            wrapper: wrapper ? this.#exportNodeWithChildren(wrapper) : null
+          },
+          html: htmlParts.join(""),
+          text: textParts.filter(Boolean).join("\n")
+        })
+      }
+
+      flushListGroup()
+    })
+
+    if (entries.length === 0) return null
+
+    const nodesJson = JSON.stringify({ version: 1, nodes: entries.map(e => e.json) })
+    const encoded = window.btoa(unescape(encodeURIComponent(nodesJson)))
+    const html = `<div data-lexxy-blocks="${encoded}">${entries.map(e => e.html).join("")}</div>`
+    const text = entries.map(e => e.text).filter(Boolean).join("\n\n")
+
+    return { html, text }
+  }
+
+  // Insert a previously serialized block payload at the current selection
+  // position. Mirrors #handleDuplicate's placement logic: after the last
+  // selected block (plus its wrapper); falls back to deleteNeighbors after
+  // a cut, then to the document end.
+  #insertBlocksFromJson(jsonString) {
+    let parsed
+    try { parsed = JSON.parse(jsonString) } catch (_) { return }
+    if (!parsed || !Array.isArray(parsed.nodes) || parsed.nodes.length === 0) return
+
+    this.#selectionHistory.push()
+    this.editor.update(() => {
+      const insertAfter = this.#resolveBlockPasteInsertionPoint()
+      if (!insertAfter) return
+
+      let cursor = insertAfter
+      const newKeys = []
+
+      function collectSelectableKeys(n, out) {
+        if ($isListNode(n)) {
+          n.getChildren().forEach(child => collectSelectableKeys(child, out))
+          return
+        }
+        if ($isListItemNode(n) && $isStructuralWrapper(n)) {
+          n.getChildren().forEach(child => collectSelectableKeys(child, out))
+          return
+        }
+        out.push(n.getKey())
+      }
+
+      for (const entry of parsed.nodes) {
+        const clone = $parseSerializedNode(entry.node)
+        const wrapperClone = entry.wrapper ? $parseSerializedNode(entry.wrapper) : null
+        try {
+          cursor.insertAfter(clone)
+          if (wrapperClone) clone.insertAfter(wrapperClone)
+          cursor = wrapperClone || clone
+        } catch (_) {
+          const root = $getRoot()
+          root.append(clone)
+          if (wrapperClone) clone.insertAfter(wrapperClone)
+          cursor = wrapperClone || clone
+        }
+        collectSelectableKeys(clone, newKeys)
+        if (wrapperClone) collectSelectableKeys(wrapperClone, newKeys)
+      }
+
+      if (newKeys.length > 0) {
+        this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
+        this.#selectedBlockKeys = new Set(newKeys)
+        this.#anchorKey = newKeys[0]
+        this.#focusKey = newKeys[newKeys.length - 1]
+        this.#deleteNeighbors = null
+      }
+    }, { tag: HISTORY_PUSH_TAG })
+
+    this.#syncAndRefocus()
+  }
+
+  #insertBlocksFromHtml(html) {
+    this.#selectionHistory.push()
+    this.editor.update(() => {
+      const insertAfter = this.#resolveBlockPasteInsertionPoint()
+      if (!insertAfter) return
+
+      // If the HTML was written by our own copy handler, the blocks live
+      // inside a <div data-lexxy-blocks>; unwrap so $generateNodesFromDOM
+      // sees them as siblings at the body root. Without this, the whole
+      // selection comes through as a single wrapping ElementNode (or just
+      // the first child, depending on Lexical's DOM-to-node mapping).
+      const doc = parseHtml(html)
+      const container = doc.querySelector("[data-lexxy-blocks]")
+      if (container) {
+        const body = doc.body
+        body.innerHTML = ""
+        while (container.firstChild) body.appendChild(container.firstChild)
+      }
+
+      const nodes = $generateNodesFromDOM(this.editor, doc)
+      let cursor = insertAfter
+      const newKeys = []
+      function collectSelectableKeys(n, out) {
+        if ($isListNode(n)) {
+          n.getChildren().forEach(child => collectSelectableKeys(child, out))
+          return
+        }
+        if ($isListItemNode(n) && $isStructuralWrapper(n)) {
+          n.getChildren().forEach(child => collectSelectableKeys(child, out))
+          return
+        }
+        out.push(n.getKey())
+      }
+      for (const node of nodes) {
+        try {
+          cursor.insertAfter(node)
+          cursor = node
+          collectSelectableKeys(node, newKeys)
+        } catch (_) { /* skip nodes that can't sit at root level */ }
+      }
+
+      if (newKeys.length > 0) {
+        this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
+        this.#selectedBlockKeys = new Set(newKeys)
+        this.#anchorKey = newKeys[0]
+        this.#focusKey = newKeys[newKeys.length - 1]
+        this.#deleteNeighbors = null
+      }
+    }, { tag: HISTORY_PUSH_TAG })
+
+    this.#syncAndRefocus()
+  }
+
+  #insertBlocksFromPlainText(text) {
+    const lines = text.split(/\r?\n/).filter(line => line.length > 0)
+    if (lines.length === 0) return
+
+    this.#selectionHistory.push()
+    this.editor.update(() => {
+      const insertAfter = this.#resolveBlockPasteInsertionPoint()
+      if (!insertAfter) return
+
+      let cursor = insertAfter
+      const newKeys = []
+      for (const line of lines) {
+        const paragraph = $createParagraphNode()
+        const textNode = $createTextNode(line)
+        paragraph.append(textNode)
+        cursor.insertAfter(paragraph)
+        cursor = paragraph
+        newKeys.push(paragraph.getKey())
+      }
+
+      if (newKeys.length > 0) {
+        this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
+        this.#selectedBlockKeys = new Set(newKeys)
+        this.#anchorKey = newKeys[0]
+        this.#focusKey = newKeys[newKeys.length - 1]
+        this.#deleteNeighbors = null
+      }
+    }, { tag: HISTORY_PUSH_TAG })
+
+    this.#syncAndRefocus()
+  }
+
+  // Find the node that new blocks should be inserted after. Must run inside
+  // an editor.update/read scope.
+  #resolveBlockPasteInsertionPoint() {
+    const root = $getRoot()
+
+    if (this.#selectedBlockKeys.size > 0) {
+      const allKeys = this.#getDocumentOrderBlockKeys()
+      const keyIdx = new Map(allKeys.map((k, i) => [ k, i ]))
+      const rootKeys = this.#filterToRootKeys([ ...this.#selectedBlockKeys ])
+      rootKeys.sort((a, b) => (keyIdx.get(a) ?? 0) - (keyIdx.get(b) ?? 0))
+      const lastKey = rootKeys[rootKeys.length - 1]
+      const lastNode = $getNodeByKey(lastKey)
+      if (lastNode) {
+        const wrapper = this.#getOwnStructuralWrapper(lastNode)
+        return wrapper || lastNode
+      }
+    }
+
+    if (this.#deleteNeighbors) {
+      const prev = this.#deleteNeighbors.prev && $getNodeByKey(this.#deleteNeighbors.prev)
+      if (prev) {
+        const wrapper = this.#getOwnStructuralWrapper(prev)
+        return wrapper || prev
+      }
+      const next = this.#deleteNeighbors.next && $getNodeByKey(this.#deleteNeighbors.next)
+      if (next) {
+        const prevSibling = next.getPreviousSibling()
+        if (prevSibling) return prevSibling
+      }
+    }
+
+    return root.getLastChild()
   }
 
   // Recursively serialize a node and its children. Lexical's exportJSON()
