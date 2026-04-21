@@ -322,11 +322,21 @@ export class BlockSelectionExtension extends LexxyExtension {
     const start = Math.min(fromIndex, toIndex)
     const end = Math.max(fromIndex, toIndex)
 
+    // Quotes are atomic for shift-extension when the anchor/focus aren't
+    // inside them. Exclude any block whose containing quote isn't shared
+    // with an endpoint so a quote looks like a single atomic unit in the
+    // range — its inner children don't light up individually.
+    const fromQuote = this.#containingQuoteKey(fromKey)
+    const toQuote = this.#containingQuoteKey(toKey)
+
     this.#previousSelectedKeys = new Set(this.#selectedBlockKeys)
     this.#selectedBlockKeys.clear()
 
     for (let i = start; i <= end; i++) {
-      this.#selectedBlockKeys.add(allBlocks[i])
+      const k = allBlocks[i]
+      const enclosing = this.#containingQuoteKey(k)
+      if (enclosing && enclosing !== fromQuote && enclosing !== toQuote) continue
+      this.#selectedBlockKeys.add(k)
     }
 
     this.#syncSelectionClasses()
@@ -503,6 +513,28 @@ export class BlockSelectionExtension extends LexxyExtension {
       if ($isListNode(child)) {
         keys.push(child.getKey())
         this.#collectListItemKeys(child, keys)
+      } else if ($isQuoteNode(child)) {
+        // Notion-style quote-as-container: the quote itself is a block,
+        // AND its non-paragraph children (lists, headings, code, figures,
+        // tables, nested quotes) are individually navigable. Paragraphs
+        // inside a quote are treated as the quote's body text, not
+        // separate blocks — matches how paragraphs are handled elsewhere.
+        keys.push(child.getKey())
+        this.#collectQuoteInnerKeys(child, keys)
+      } else {
+        keys.push(child.getKey())
+      }
+    }
+  }
+
+  #collectQuoteInnerKeys(quoteNode, keys) {
+    for (const child of quoteNode.getChildren()) {
+      if ($isListNode(child)) {
+        keys.push(child.getKey())
+        this.#collectListItemKeys(child, keys)
+      } else if ($isQuoteNode(child)) {
+        keys.push(child.getKey())
+        this.#collectQuoteInnerKeys(child, keys)
       } else {
         keys.push(child.getKey())
       }
@@ -549,6 +581,23 @@ export class BlockSelectionExtension extends LexxyExtension {
     const index = allKeys.indexOf(currentKey)
     if (index <= 0) return null
     return allKeys[index - 1]
+  }
+
+  // Returns the key of the nearest enclosing QuoteNode for `nodeKey`, or
+  // null if the node isn't inside a quote. Used by shift-extension logic
+  // so quotes act as atomic units in range selection: extending FROM
+  // outside SKIPS the quote's inner blocks; extending FROM inside walks
+  // them normally.
+  #containingQuoteKey(nodeKey) {
+    let result = null
+    this.editor.getEditorState().read(() => {
+      const node = $getNodeByKey(nodeKey)
+      if (!node) return
+      for (let p = node.getParent(); p; p = p.getParent()) {
+        if ($isQuoteNode(p)) { result = p.getKey(); return }
+      }
+    })
+    return result
   }
 
   // Block keys suitable for arrow-key navigation — excludes ListNode
@@ -798,6 +847,18 @@ export class BlockSelectionExtension extends LexxyExtension {
               if (beforeParent) prevKey = beforeParent
             }
           }
+          // Shift-extension treats quotes atomically: if prevKey lands
+          // INSIDE a quote the anchor isn't in, jump to the quote's own
+          // key instead of stepping into its last descendant.
+          if (prevKey && event.shiftKey) {
+            const anchorQuote = this.#containingQuoteKey(this.#anchorKey)
+            let guard = 20
+            while (prevKey && guard-- > 0) {
+              const q = this.#containingQuoteKey(prevKey)
+              if (!q || q === anchorQuote) break
+              prevKey = q
+            }
+          }
           if (prevKey) {
             this.#selectBlock(prevKey, event.shiftKey)
             this.#scrollBlockIntoView(prevKey)
@@ -837,6 +898,25 @@ export class BlockSelectionExtension extends LexxyExtension {
             if (!this.#selectedBlockKeys.has(nextKey)) {
               const lastDesc = this.#getLastDescendantKey(nextKey)
               if (lastDesc) nextKey = lastDesc
+            }
+          }
+          // Shift-extension treats quotes atomically: if nextKey lands
+          // INSIDE a quote the anchor isn't in, skip forward past the
+          // entire quote subtree.
+          if (nextKey && event.shiftKey) {
+            const anchorQuote = this.#containingQuoteKey(this.#anchorKey)
+            let guard = 50
+            while (nextKey && guard-- > 0) {
+              const q = this.#containingQuoteKey(nextKey)
+              if (!q || q === anchorQuote) break
+              // Walk forward until we land outside quote q.
+              let candidate = this.#getNextBlockKey(nextKey, navKeys)
+              while (candidate) {
+                if (this.#containingQuoteKey(candidate) !== q) break
+                candidate = this.#getNextBlockKey(candidate, navKeys)
+              }
+              if (!candidate) { nextKey = null; break }
+              nextKey = candidate
             }
           }
           if (nextKey) {
@@ -1067,50 +1147,60 @@ export class BlockSelectionExtension extends LexxyExtension {
     let canUnwrapFromQuote = false
     let unwrapListType = null
     this.editor.getEditorState().read(() => {
-      let node = $getNodeByKey(this.#focusKey)
+      const node = $getNodeByKey(this.#focusKey)
       if (!node) return
-      // Drill through any container that wraps a single non-text block
-      // (list item with a wrapped heading/quote/code/decorator, or
-      // blockquote wrapping a decorator/code). The restriction applies to
-      // the *content* being wrapped — not the container — so the user sees
-      // the same options regardless of how many layers currently surround
-      // the content.
-      //
-      // While drilling, note whether we passed through a QuoteNode or a
-      // ListItemNode. If the final content isn't text, we offer explicit
-      // "Remove Quote" / "Remove Bullet|Numbered" actions — these wrappers
-      // have no Turn into Text path out for decorators (HRs, attachments),
-      // so users need a discoverable way to extract just the wrapper.
-      let sawQuote = false
-      let sawListItem = null // the ListItemNode we last saw
-      while ($isListItemNode(node) || $isQuoteNode(node)) {
-        if ($isQuoteNode(node)) sawQuote = true
-        if ($isListItemNode(node)) sawListItem = node
-        const child = node.getChildren().find(c =>
+
+      // Walk UP to the outermost LI/Quote in the chain. Gives us a stable
+      // anchor to drill back down from, so the detection works whether
+      // focus lands on the wrapper or on the inner content.
+      let outermost = node
+      for (let cursor = node.getParent(); cursor; cursor = cursor.getParent()) {
+        if ($isListItemNode(cursor) || $isQuoteNode(cursor)) outermost = cursor
+        else break
+      }
+
+      // Drill back down through LI/Quote layers to find the innermost
+      // non-wrapper content. If we don't descend past `outermost`, the
+      // chain is a plain text LI or plain text blockquote (no wrapped
+      // content) — wrap flags stay off below.
+      let inner = outermost
+      while ($isListItemNode(inner) || $isQuoteNode(inner)) {
+        const child = inner.getChildren().find(c =>
           ($isElementNode(c) || $isDecoratorNode(c))
           && !$isListNode(c) && !$isParagraphNode(c)
         )
         if (!child) break
-        node = child
+        inner = child
       }
-      // Wrapped versions of a content type get the same turn-into options as
-      // their unwrapped counterparts — the restriction reflects what's
-      // meaningful for the content (code allows Text/Headings as conversions
-      // and Lists/Quote as wraps; tables lose cells on conversion; decorators
-      // have no text so Lists/Quote are wraps).
-      if ($isCodeNode(node)) {
+
+      // Content-shape restriction gates turn-into commands (Text/Heading/
+      // Code). Wrap commands are not gated here.
+      if ($isCodeNode(inner)) {
         blockRestriction = "code"
-      } else if ($isWrappedTableNode(node)) {
+      } else if ($isWrappedTableNode(inner)) {
         blockRestriction = "table"
-      } else if ($isDecoratorNode(node)) {
+      } else if ($isDecoratorNode(inner)) {
         blockRestriction = "decorator"
       }
 
-      // Contextual actions for wrappers around non-text content.
-      if (blockRestriction !== null) {
-        canUnwrapFromQuote = sawQuote
-        if (sawListItem) {
-          const list = sawListItem.getParent()
+      // Wrap flags: arm only when the wrapper chain actually wraps non-text
+      // content. If drill-down didn't descend past the outermost wrapper,
+      // `inner === outermost` and the chain is a plain text LI or plain
+      // text blockquote at root — neither is "wrapping" anything, so no
+      // "Unwrap from …" / "Remove …" affordance is offered (users convert
+      // via Turn into → Text instead).
+      //
+      // When BOTH wrappers are present, the top-level "Remove X" button
+      // reports the outermost wrapper only — the handler
+      // (#extractContentToRoot) strips the entire chain regardless of which
+      // label was clicked, so showing two buttons that do the same thing
+      // is a UX trap. `outermost` (above) already identifies the outer
+      // wrapper; use it to pick one, and hide the other.
+      if (inner !== outermost) {
+        if ($isQuoteNode(outermost)) {
+          canUnwrapFromQuote = true
+        } else if ($isListItemNode(outermost)) {
+          const list = outermost.getParent()
           if ($isListNode(list)) unwrapListType = list.getListType()
         }
       }
@@ -1120,7 +1210,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       anchorElement: focusedEl,
       editorElement: this.editorElement,
       onAction: (action) => this.#handleBlockAction(action),
-      onClose: () => this.root?.focus(),
+      onClose: () => this.root?.focus({ preventScroll: true }),
       blockRestriction,
       canUnwrapFromQuote,
       unwrapListType
@@ -1271,8 +1361,14 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.editor.update(() => {
       const newSelectedKeys = new Set()
       const replacedKeys = new Set()
+      // Snapshot keys before the loop. Some branches (toggle-unwrap via
+      // #unwrapWrappedLiToRootInPlace / #wrapLiInQuoteInPlace) call
+      // #updateKeyAfterUnwrap which mutates this.#selectedBlockKeys mid-
+      // loop — without a snapshot, the new post-extract key gets iterated
+      // next and re-wrapped through the non-list-block branch below.
+      const initialKeys = [ ...this.#selectedBlockKeys ]
 
-      for (const key of this.#selectedBlockKeys) {
+      for (const key of initialKeys) {
         const node = $getNodeByKey(key)
         if (!node) continue
 
@@ -1313,14 +1409,15 @@ export class BlockSelectionExtension extends LexxyExtension {
             // Plain text list item: change item's list type in place.
             if (node.setListItemType) node.setListItemType(listType)
             newSelectedKeys.add(node.getKey())
-          } else if (wrappedChild && command === "insertQuoteBlock" && $isListNode(parentList)) {
-            // Wrapped non-text block in a list + quote command: swap the
-            // list wrapper for a quote wrapper. Keeps the inner block intact.
-            const quote = $createQuoteNode()
-            parentList.replace(quote)
-            quote.append(wrappedChild)
-            this.#wrappedOrigins.untrack(node.getKey())
-            newSelectedKeys.add(quote.getKey())
+          } else if (command === "insertQuoteBlock" && $isListNode(parentList)) {
+            // LI + quote command: wrap the LI (text or wrapped) inside a
+            // blockquote while keeping it as an LI. Splits the parent list
+            // around the target so siblings stay in their original list.
+            // Works for plain text LIs (bullet + quote bar side-by-side)
+            // and for wrapped-content LIs (preserves the inner heading/
+            // code/decorator/etc.).
+            const quote = this.#wrapLiInQuoteInPlace(node)
+            if (quote) newSelectedKeys.add(quote.getKey())
             replacedKeys.add(key)
           } else if (command === "setFormatParagraph") {
             // Wrapped → paragraph: unwrap back to regular list item content.
@@ -1392,12 +1489,8 @@ export class BlockSelectionExtension extends LexxyExtension {
               newSelectedKeys.add(node.getKey())
               replacedKeys.add(key)
             } else if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
-              const parentList = parent.getParent()
-              const quote = $createQuoteNode()
-              parentList.replace(quote)
-              quote.append(node)
-              this.#wrappedOrigins.untrack(parent.getKey())
-              newSelectedKeys.add(quote.getKey())
+              const quote = this.#wrapLiInQuoteInPlace(parent)
+              if (quote) newSelectedKeys.add(quote.getKey())
               replacedKeys.add(key)
             } else {
               const quote = $createQuoteNode()
@@ -1412,16 +1505,17 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
         } else if (isListCommand) {
           // Non-list block → list. Behavior varies by the block's context:
-          //   inside a blockquote (node's parent is Quote): swap quote for
-          //     list wrapper (preserves the inner block).
-          //   node IS a QuoteNode wrapping non-text blocks: swap the quote
-          //     for a list; each wrapped child becomes a list item.
+          //   inside a blockquote (node's parent is Quote): swap the quote
+          //     wrapper for a list wrapper (preserves the inner block —
+          //     the user already opted out of quoted context by using an
+          //     explicit list command on quoted content).
           //   paragraph: text nodes move directly into the list item
           //     (`<li><p>` collapses to a plain bullet visually).
-          //   otherwise (heading, code): the block itself becomes the
-          //     wrapped child of the list item. Preserves block type AND —
-          //     because wrapped list items can carry nested children via
-          //     structural wrappers — makes the block a valid nest target.
+          //   otherwise (heading, quote, code): the block itself becomes
+          //     the wrapped child of the list item. Preserves block type
+          //     AND — because wrapped list items can carry nested children
+          //     via structural wrappers — makes the block a valid nest
+          //     target.
           //
           // Adjacent same-type lists merge during reconciliation, so
           // consecutive converted items end up in one list.
@@ -1434,21 +1528,6 @@ export class BlockSelectionExtension extends LexxyExtension {
             listItem.append(node)
             this.#wrappedOrigins.trackUser(listItem.getKey())
             newSelectedKeys.add(listItem.getKey())
-            replacedKeys.add(key)
-          } else if ($isQuoteNode(node)) {
-            // Quote of wrapped content → list of wrapped items. Each child
-            // block (code, heading, decorator) becomes its own wrapped LI.
-            const list = $createListNode(listType)
-            const children = [ ...node.getChildren() ]
-            for (const child of children) {
-              const li = $createListItemNode()
-              li.append(child)
-              list.append(li)
-              this.#wrappedOrigins.trackUser(li.getKey())
-            }
-            node.replace(list)
-            const firstLi = list.getFirstChild()
-            if (firstLi) newSelectedKeys.add(firstLi.getKey())
             replacedKeys.add(key)
           } else if ($isParagraphNode(node)) {
             const list = $createListNode(listType)
@@ -1470,23 +1549,25 @@ export class BlockSelectionExtension extends LexxyExtension {
             newSelectedKeys.add(listItem.getKey())
             replacedKeys.add(key)
           }
-        } else if (command === "insertQuoteBlock" && $isCodeNode(node)) {
-          // Code block + quote command. Behavior mirrors the decorator path:
-          //   already in a blockquote → unwrap (return to root)
-          //   already in a list (wrapped LI) → swap list for quote
-          //   otherwise → wrap in a new blockquote (preserves code formatting)
+        } else if (command === "insertQuoteBlock" && !$isQuoteNode(node)) {
+          // Non-quote block + quote command (paragraph, heading, code,
+          // anything else — decorators/tables are handled earlier).
+          // Behavior:
+          //   already in a blockquote → unwrap (promote to root)
+          //   already in a list-wrapped LI → wrap the whole LI in a
+          //     blockquote via #wrapLiInQuoteInPlace (the LI stays an LI
+          //     inside the quote; bullet visible, quote bar spans it).
+          //   otherwise → wrap in a new blockquote, preserving the inner
+          //     block intact (heading keeps heading styling, paragraph
+          //     stays a paragraph, code stays a code block).
           const parent = node.getParent()
           if ($isQuoteNode(parent)) {
             parent.replace(node)
             newSelectedKeys.add(node.getKey())
             replacedKeys.add(key)
           } else if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
-            const parentList = parent.getParent()
-            const quote = $createQuoteNode()
-            parentList.replace(quote)
-            quote.append(node)
-            this.#wrappedOrigins.untrack(parent.getKey())
-            newSelectedKeys.add(quote.getKey())
+            const quote = this.#wrapLiInQuoteInPlace(parent)
+            if (quote) newSelectedKeys.add(quote.getKey())
             replacedKeys.add(key)
           } else {
             const quote = $createQuoteNode()
@@ -2460,6 +2541,25 @@ export class BlockSelectionExtension extends LexxyExtension {
           return
         }
         this.#moveGroupAtBoundary(group, direction)
+      } else if ($isQuoteNode(firstParent)) {
+        // Group is at the boundary of a blockquote (Notion-style container).
+        // Exit the quote: detach each group node and place them in order
+        // just before/after the quote. Preserves selection.
+        for (let i = group.length - 1; i >= 0; i--) {
+          group[i].node.remove()
+        }
+        if (isUp) {
+          for (let i = 0; i < group.length; i++) {
+            firstParent.insertBefore(group[i].node)
+          }
+        } else {
+          let insertAfter = firstParent
+          for (let i = 0; i < group.length; i++) {
+            insertAfter.insertAfter(group[i].node)
+            insertAfter = group[i].node
+          }
+        }
+        return
       }
       // At document boundary (root level, no sibling) — nothing to do
       return
@@ -2470,6 +2570,29 @@ export class BlockSelectionExtension extends LexxyExtension {
       if ($isListNode(target)) {
         // Root-level group entering a list
         this.#moveGroupIntoList(group, target, direction)
+      } else if ($isQuoteNode(target)) {
+        // Root-level group entering a blockquote. Down → become first
+        // children; Up → become last children. Mirrors the single-block
+        // entry path in #moveTopLevelBlock.
+        for (let i = group.length - 1; i >= 0; i--) {
+          group[i].node.remove()
+        }
+        if (isUp) {
+          for (let i = 0; i < group.length; i++) {
+            target.append(group[i].node)
+          }
+        } else {
+          const firstChild = target.getFirstChild()
+          if (firstChild) {
+            for (let i = 0; i < group.length; i++) {
+              firstChild.insertBefore(group[i].node)
+            }
+          } else {
+            for (let i = 0; i < group.length; i++) {
+              target.append(group[i].node)
+            }
+          }
+        }
       } else {
         // Root-level swap with a non-list sibling
         for (let i = group.length - 1; i >= 0; i--) {
@@ -3271,8 +3394,11 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
 
       // Regular list items and user-wrapped items: wrap in a new sibling
-      // list and move it. Can't break out upward if at document start.
-      if (!isDown && !currentList.getPreviousSibling()) return
+      // list and move it. Can't break out upward if at document start —
+      // but a list inside a blockquote with no prior sibling can still
+      // escape UP out of the quote (handled below when the new sibling
+      // list reaches the quote boundary via #moveTopLevelBlock).
+      if (!isDown && !currentList.getPreviousSibling() && !$isQuoteNode(currentList.getParent())) return
 
       // Carry the node's children (structural wrapper) along when promoting
       const ownWrapper = this.#getOwnStructuralWrapper(node)
@@ -3463,7 +3589,42 @@ export class BlockSelectionExtension extends LexxyExtension {
     const isDown = direction === "down"
     const sibling = isDown ? node.getNextSibling() : node.getPreviousSibling()
 
-    if (!sibling) return
+    if (!sibling) {
+      // No adjacent sibling inside the current container. If the container
+      // is a blockquote (Notion-style quote-as-container model), exit the
+      // quote by moving the node just before/after the quote itself. This
+      // is what lets a heading/list/code inside a quote escape when it's
+      // the first or last child.
+      const parent = node.getParent()
+      if (parent && $isQuoteNode(parent)) {
+        node.remove()
+        if (isDown) {
+          parent.insertAfter(node)
+        } else {
+          parent.insertBefore(node)
+        }
+      }
+      return
+    }
+
+    // Entering a blockquote: treat it like a container we can step into,
+    // mirroring how we descend into lists. Moving DOWN onto a quote puts
+    // the node at the start of the quote's children; moving UP onto a
+    // quote puts it at the end.
+    if ($isQuoteNode(sibling)) {
+      node.remove()
+      if (isDown) {
+        const firstChild = sibling.getFirstChild()
+        if (firstChild) {
+          firstChild.insertBefore(node)
+        } else {
+          sibling.append(node)
+        }
+      } else {
+        sibling.append(node)
+      }
+      return
+    }
 
     // Decorator nodes (HR, images): Lexical keeps separator paragraphs between
     // adjacent decorators. When moving a decorator, skip over any empty separator
@@ -4443,6 +4604,68 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Remove the now-empty structural wrapper
     ownWrapper.remove()
+  }
+
+  // Swap a wrapped list item's outer list wrapper for a blockquote, splitting
+  // the parent list around it: siblings before stay in the original list,
+  // siblings after move to a new list, and a blockquote containing the
+  // wrapped block lands between them at the original vertical position.
+  // Mirrors #extractWrappedItemsInPlace but wraps the extracted content in
+  // a quote instead of leaving it at root.
+  // Wrap an LI (text or wrapped, with or without its own structural-wrapper
+  // children) inside a blockquote while KEEPING it as an LI. Splits the
+  // parent list around the target so preceding/trailing siblings stay in
+  // their original list. Result shape (for a single target LI in a
+  // multi-item list):
+  //
+  //   UL [pre]           ← preceding items (if any)
+  //   Quote
+  //     UL
+  //       LI (the target)
+  //       LI-structural-wrapper (if any, with nested children)
+  //   UL [post]          ← trailing items (if any)
+  //
+  // This is the Notion-style "wrap in quote" — the LI keeps its bullet, the
+  // quote bar spans the whole thing.
+  #wrapLiInQuoteInPlace(liNode) {
+    const parentList = liNode.getParent()
+    if (!$isListNode(parentList)) return null
+    const listType = parentList.getListType()
+    const ownWrapper = this.#getOwnStructuralWrapper(liNode)
+
+    // Snapshot trailing siblings (after the target + its own wrapper) so we
+    // can rebuild them into their own list below the quote.
+    const startAfter = ownWrapper || liNode
+    const trailing = []
+    let sib = startAfter.getNextSibling()
+    while (sib) {
+      trailing.push(sib)
+      sib = sib.getNextSibling()
+    }
+
+    // Detach the target LI (and its own structural wrapper) from the
+    // parent list before rebuilding.
+    liNode.remove()
+    if (ownWrapper) ownWrapper.remove()
+
+    // Single-LI mini-list holding the target and any of its wrapped
+    // children (in structural-wrapper form).
+    const innerList = $createListNode(listType)
+    innerList.append(liNode)
+    if (ownWrapper) innerList.append(ownWrapper)
+
+    const quote = $createQuoteNode()
+    quote.append(innerList)
+    parentList.insertAfter(quote)
+
+    if (trailing.length > 0) {
+      const trailingList = $createListNode(listType)
+      quote.insertAfter(trailingList)
+      for (const t of trailing) trailingList.append(t)
+    }
+
+    this.#cleanupEmptyList(parentList)
+    return quote
   }
 
   // Peel a wrapped list-item fully to root: outdent through every nested

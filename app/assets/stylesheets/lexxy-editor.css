@@ -909,7 +909,12 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     margin-inline: 0;
     padding: 0.25lh 2ch;
 
-    p:last-child {
+    /* The blockquote owns its own trailing margin — any last-child block
+       (paragraph, heading, list, code, table, figure) trailing margin
+       would double up on that. Flatten it so the quote's footer is tight.
+       Applies to any direct child so the rule works for the Notion-style
+       quote-as-container model (blockquote wrapping arbitrary blocks). */
+    > :last-child {
       margin-block-end: 0;
     }
   }
@@ -953,7 +958,8 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
       top: 0px;
       width: 2em;
       display: inline-block;
-      text-align: center;
+      text-align: right;
+      padding-right: 0.25em;
     }
   }
 
@@ -1016,6 +1022,63 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     &:has(> h4, > h5, > h6)::before {
       top: calc(var(--bullet-offset-y, 0px) + 9.5px);
     }
+
+    /* h1's first-char rect is tall; the dot sits a hair above visual
+       center. Nudge it down. */
+    &:has(> h1)::before {
+      top: calc(var(--bullet-offset-y, 0px) + 13.5px);
+    }
+  }
+
+  /* Wrapped items whose effective marker type is "number" show a "#."
+     placeholder. The effective type is resolved in JS (syncWrapperMarkers
+     in src/editor/list_wrapper_markers.js) by walking previous siblings —
+     a wrapper inherits the marker of the last text LI above it, or the
+     parent list's type if it's the first child. This works identically
+     for today's homogeneous lists and a future per-LI typed list.
+
+     !important throughout because the base wrapped-item rule above has
+     higher specificity ((0,1,3) from the :has() selector arguments
+     including `.lexxy-content__table-wrapper`) than our attribute
+     selector (0,1,2), so unflagged properties would be overridden. */
+  li[data-wrapper-marker="number"]::before {
+    /* Per-content-type `top` values below visually center the text cap-
+       height midpoint on the first line (align-items:center lines up
+       the LINE box, which sits a couple px above the text's visual
+       center for standard fonts). For multi-line headings the marker
+       stays at the FIRST line — the --bullet-offset-y value is
+       derived from first-char rect.top. */
+    content: "#." !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    width: 2em !important;
+    height: 1em !important;
+    line-height: 1 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    font-size: inherit !important;
+    right: 100% !important;
+    top: calc(var(--bullet-offset-y, 0px) + 6px) !important;
+    padding-right: 0.25em !important;
+    white-space: nowrap !important;
+    color: var(--lexxy-color-ink-lighter) !important;
+  }
+
+  /* Per-heading visual tweaks for the "#." marker. Uses !important
+     because the base wrapped-item rule above has higher specificity
+     from including `.lexxy-content__table-wrapper` in its :has() list. */
+  li[data-wrapper-marker="number"]:has(> h1)::before {
+    top: calc(var(--bullet-offset-y, 0px) + 7px) !important;
+  }
+  li[data-wrapper-marker="number"]:has(> h2)::before {
+    top: calc(var(--bullet-offset-y, 0px) + 5px) !important;
+  }
+  li[data-wrapper-marker="number"]:has(> h3)::before {
+    top: calc(var(--bullet-offset-y, 0px) + 5px) !important;
+  }
+  li[data-wrapper-marker="number"]:has(> h4, > h5, > h6)::before {
+    top: calc(var(--bullet-offset-y, 0px) + 4px) !important;
   }
 }
 
