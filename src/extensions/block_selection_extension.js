@@ -2896,6 +2896,17 @@ export class BlockSelectionExtension extends LexxyExtension {
       return
     }
 
+    // Adjacent sibling is a Quote: enter it. Symmetric to the single-block
+    // quote-entry path in #moveTopLevelBlock — when the group is in a list
+    // that sits right next to a Quote (e.g. a list that just exited the
+    // quote and is about to re-enter), one press re-enters the quote.
+    const isUp = direction === "up"
+    const adjacent = isUp ? currentList.getPreviousSibling() : currentList.getNextSibling()
+    if (adjacent && $isQuoteNode(adjacent)) {
+      this.#enterGroupIntoQuote(group, currentList, adjacent, direction)
+      return
+    }
+
     // Root-level list: exit the list entirely
     if (!$isListItemNode(listParent)) {
       this.#exitGroupFromList(group, currentList, direction)
@@ -2905,6 +2916,52 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Nested list: promote to parent list level (one level per move,
     // matching single-item depth-first traversal behavior)
     this.#promoteGroupOneLevel(group, currentList, direction)
+  }
+
+  // Merge a group's LIs into a Quote that's adjacent to the current list.
+  // If the quote's edge-child is a same-type list, the group's items get
+  // appended/prepended to that list so the quote stays tidy (no pile-up
+  // of adjacent same-type lists inside the quote). Otherwise the entire
+  // currentList is moved into the quote.
+  #enterGroupIntoQuote(group, currentList, quote, direction) {
+    const isUp = direction === "up"
+    const listType = currentList.getListType()
+
+    // Target: existing adjacent list in the quote of the same type.
+    const edge = isUp ? quote.getLastChild() : quote.getFirstChild()
+    const targetList = edge && $isListNode(edge) && edge.getListType() === listType ? edge : null
+
+    if (targetList) {
+      // Merge items into the existing list.
+      if (isUp) {
+        for (const { node, wrapper } of group) {
+          node.remove()
+          targetList.append(node)
+          if (wrapper) { wrapper.remove(); targetList.append(wrapper) }
+        }
+      } else {
+        // For DOWN, prepend items so they appear at the start in order.
+        const firstLi = this.#findFirstRealItem(targetList)
+        let insertBeforeRef = firstLi
+        for (const { node, wrapper } of group) {
+          node.remove()
+          if (insertBeforeRef) insertBeforeRef.insertBefore(node)
+          else targetList.append(node)
+          if (wrapper) { wrapper.remove(); node.insertAfter(wrapper) }
+          insertBeforeRef = null // subsequent items go after the first inserted one
+        }
+      }
+      this.#cleanupEmptyList(currentList)
+    } else {
+      // No adjacent same-type list in the quote — move the whole list in.
+      currentList.remove()
+      if (isUp) quote.append(currentList)
+      else {
+        const first = quote.getFirstChild()
+        if (first) first.insertBefore(currentList)
+        else quote.append(currentList)
+      }
+    }
   }
 
   // Exit a group from its containing list AND its containing quote in a
