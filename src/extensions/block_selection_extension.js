@@ -2579,7 +2579,22 @@ export class BlockSelectionExtension extends LexxyExtension {
     const edgeEnd = edgeWrapper || edgeNode
 
     let target = isUp ? edgeNode.getPreviousSibling() : edgeEnd.getNextSibling()
-    // Skip structural wrappers that aren't part of the group
+    // An LI whose only content is a Quote (Notion-style quote-as-container
+    // nested inside an outer list): redirect the target to the Quote
+    // itself so the group enters the quote instead of hopping over the
+    // LI-wrapper to the LI beyond. `$isStructuralWrapper` is too narrow
+    // here — it only matches LIs whose children are all lists — so check
+    // directly for "LI with a single Quote child".
+    if (target && $isListItemNode(target) && target.getChildrenSize() === 1) {
+      const only = target.getFirstChild()
+      if ($isQuoteNode(only)) target = only
+    }
+    // Symmetric: when exiting-and-re-entering from inside the outer list,
+    // the Quote's own sibling LI (`listitem > ul`) structure from
+    // `exitGroupOutOfQuote` can appear as target. Same redirect applies
+    // so the next press re-enters the Quote cleanly.
+    // Skip structural wrappers that aren't part of the group (and don't
+    // contain a quote we could enter).
     while (target && $isListItemNode(target) && $isStructuralWrapper(target)) {
       target = isUp ? target.getPreviousSibling() : target.getNextSibling()
     }
@@ -2653,24 +2668,33 @@ export class BlockSelectionExtension extends LexxyExtension {
         this.#moveGroupIntoList(group, target, direction)
       } else if ($isQuoteNode(target)) {
         // Root-level group entering a blockquote. Down → become first
-        // children; Up → become last children. Mirrors the single-block
-        // entry path in #moveTopLevelBlock.
-        for (let i = group.length - 1; i >= 0; i--) {
-          group[i].node.remove()
-        }
-        if (isUp) {
-          for (let i = 0; i < group.length; i++) {
-            target.append(group[i].node)
-          }
+        // children; Up → become last children. For groups of LIs coming
+        // from a list sibling, merge into an adjacent same-type list
+        // inside the quote if one exists (so the quote doesn't accumulate
+        // adjacent same-type lists across round trips). Otherwise detach
+        // and place directly inside the quote.
+        const firstParent = group[0].node.getParent()
+        const allListItems = group.every(g => $isListItemNode(g.node))
+        if (allListItems && $isListNode(firstParent)) {
+          this.#enterGroupIntoQuote(group, firstParent, target, direction)
         } else {
-          const firstChild = target.getFirstChild()
-          if (firstChild) {
-            for (let i = 0; i < group.length; i++) {
-              firstChild.insertBefore(group[i].node)
-            }
-          } else {
+          for (let i = group.length - 1; i >= 0; i--) {
+            group[i].node.remove()
+          }
+          if (isUp) {
             for (let i = 0; i < group.length; i++) {
               target.append(group[i].node)
+            }
+          } else {
+            const firstChild = target.getFirstChild()
+            if (firstChild) {
+              for (let i = 0; i < group.length; i++) {
+                firstChild.insertBefore(group[i].node)
+              }
+            } else {
+              for (let i = 0; i < group.length; i++) {
+                target.append(group[i].node)
+              }
             }
           }
         }
@@ -2941,14 +2965,15 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       } else {
         // For DOWN, prepend items so they appear at the start in order.
+        // Keep inserting BEFORE the original first LI so [A, B, C] end
+        // up as [A, B, C, existing…]. Falling back to end-append after
+        // the first iteration would interleave incorrectly.
         const firstLi = this.#findFirstRealItem(targetList)
-        let insertBeforeRef = firstLi
         for (const { node, wrapper } of group) {
           node.remove()
-          if (insertBeforeRef) insertBeforeRef.insertBefore(node)
+          if (firstLi && firstLi.getParent()) firstLi.insertBefore(node)
           else targetList.append(node)
           if (wrapper) { wrapper.remove(); node.insertAfter(wrapper) }
-          insertBeforeRef = null // subsequent items go after the first inserted one
         }
       }
       this.#cleanupEmptyList(currentList)
