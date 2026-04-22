@@ -963,11 +963,11 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     }
   }
 
-  /* Block editing: structural wrappers and wrapped blocks hide their markers.
-     Match the regular bullet margin-top (6px) so the wrapper's content
-     (e.g. a nested attachment/heading) sits at the same visual rhythm as
-     sibling text bullets — otherwise the wrapper feels glued to the
-     preceding item.
+  /* Block editing: structural wrappers hide their markers. No top margin —
+     indenting a bullet should just move its children to the right, not
+     push them down a row. Each real bullet below owns its own top margin,
+     so the nested block still gets vertical rhythm when it contains
+     actual items; the wrapper itself stays flush with the item above.
 
      `display: flow-root` establishes a block formatting context so that
      any margins on wrapped descendants (figures, headings, blockquotes
@@ -978,7 +978,7 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
   li.lexxy-nested-listitem {
     list-style-type: none;
     display: flow-root;
-    margin-top: 6px;
+    margin-top: 0;
 
     &::marker {
       content: none;
