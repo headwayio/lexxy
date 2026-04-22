@@ -5551,20 +5551,26 @@ export class BlockSelectionExtension extends LexxyExtension {
       sib = sib.getNextSibling()
     }
 
-    // Detach the target LI (and its own structural wrapper) from the
-    // parent list before rebuilding.
-    liNode.remove()
-    if (ownWrapper) ownWrapper.remove()
-
-    // Single-LI mini-list holding the target and any of its wrapped
-    // children (in structural-wrapper form).
+    // Place the quote BEFORE detaching the target LI from parentList.
+    // ListNode.canBeEmpty() is false in Lexical 0.42+, so removing the only
+    // real child triggers a cascade-remove that detaches parentList from
+    // the tree — calling parentList.insertAfter() afterwards throws
+    // "getParentOrThrow: node has no parent" (error #66) and the wrap
+    // silently fails.
     const innerList = $createListNode(listType)
-    innerList.append(liNode)
-    if (ownWrapper) innerList.append(ownWrapper)
-
     const quote = $createQuoteNode()
     quote.append(innerList)
     parentList.insertAfter(quote)
+
+    // Now safe to detach and move the LI (and its structural wrapper) into
+    // the new inner list. parentList may still be in the tree if there were
+    // other items; #cleanupEmptyList below handles the now-empty case.
+    liNode.remove()
+    innerList.append(liNode)
+    if (ownWrapper) {
+      ownWrapper.remove()
+      innerList.append(ownWrapper)
+    }
 
     if (trailing.length > 0) {
       const trailingList = $createListNode(listType)
