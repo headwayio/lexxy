@@ -708,11 +708,26 @@ export class BlockSelectionExtension extends LexxyExtension {
       let isNavigable = true
       this.editor.getEditorState().read(() => {
         const node = $getNodeByKey(key)
-        if ($isListNode(node)) isNavigable = false
-        else {
-          const el = this.editor.getElementByKey(key)
-          if (el?.hidden || el?.classList.contains("hidden")) isNavigable = false
+        if ($isListNode(node)) {
+          isNavigable = false
+          return
         }
+        // A QuoteNode that lives inside an LI in a list (Notion-style
+        // quote-as-container) resolves its selection to the wrapping LI
+        // via #resolveSelectionKey. Keeping the quote in the navigable
+        // list would make arrow navigation get stuck: pressing Down from
+        // the LI lands on the quote, which redirects right back to the
+        // LI. Skip it here so Down proceeds straight to the quote's first
+        // inner child.
+        if ($isQuoteNode(node)) {
+          const parent = node.getParent()
+          if (parent && $isListItemNode(parent) && $isListNode(parent.getParent())) {
+            isNavigable = false
+            return
+          }
+        }
+        const el = this.editor.getElementByKey(key)
+        if (el?.hidden || el?.classList.contains("hidden")) isNavigable = false
       })
       return isNavigable
     })
