@@ -4714,6 +4714,28 @@ export class BlockSelectionExtension extends LexxyExtension {
       // the first or last child.
       const parent = node.getParent()
       if (parent && $isQuoteNode(parent)) {
+        // When the quote sits inside an LI in a list, exiting straight to
+        // the LI would put the node alongside the blockquote inside that
+        // LI — an invalid structure that confuses subsequent moves (the
+        // user sees the blockquote "drag along" with later presses). Wrap
+        // the node in an LI and slot it into the surrounding list at the
+        // host LI's position instead. Mirrors the multi-block path
+        // (#exitGroupToHostList).
+        const quoteHostLi = parent.getParent()
+        const quoteHostList = quoteHostLi && $isListItemNode(quoteHostLi)
+          ? quoteHostLi.getParent()
+          : null
+        if (quoteHostList && $isListNode(quoteHostList)) {
+          this.#exitGroupToHostList(
+            [ { node, wrapper: null } ],
+            parent,
+            quoteHostLi,
+            quoteHostList,
+            direction
+          )
+          return
+        }
+
         node.remove()
         if (isDown) {
           parent.insertAfter(node)
