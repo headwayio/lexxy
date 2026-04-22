@@ -647,6 +647,25 @@ export class BlockSelectionExtension extends LexxyExtension {
     return result
   }
 
+  // When shift-extending selection lands on a QuoteNode atomically, prefer
+  // the LI that wraps the quote (if the quote is a Notion-style quote-as-
+  // container inside a list item). Selecting the LI makes the highlight
+  // render on the list item wrapper itself — the bullet + full width the
+  // user clicks on — rather than a mid-sized rectangle on the inner
+  // <blockquote> element.
+  #quoteSelectionKey(quoteKey) {
+    let resolved = quoteKey
+    this.editor.getEditorState().read(() => {
+      const quote = $getNodeByKey(quoteKey)
+      if (!quote) return
+      const parent = quote.getParent()
+      if (parent && $isListItemNode(parent) && $isListNode(parent.getParent())) {
+        resolved = parent.getKey()
+      }
+    })
+    return resolved
+  }
+
   // A list is "truly root-level" for group-movement purposes when it's not
   // wrapped in any container (list-item nesting OR a Quote). Pre-existing
   // code used the weaker check `!isListItemNode(list.getParent())`, which
@@ -909,14 +928,19 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
           // Shift-extension treats quotes atomically: if prevKey lands
           // INSIDE a quote the anchor isn't in, jump to the quote's own
-          // key instead of stepping into its last descendant.
+          // key instead of stepping into its last descendant. When the
+          // quote is a Notion-style quote-as-container (its parent is an
+          // LI that's itself a list child), prefer the wrapping LI so the
+          // selection highlight lands on the list item, not the inner
+          // blockquote — otherwise the user sees a mid-sized highlight
+          // redundant with the LI's own wrapper highlight.
           if (prevKey && event.shiftKey) {
             const anchorQuote = this.#containingQuoteKey(this.#anchorKey)
             let guard = 20
             while (prevKey && guard-- > 0) {
               const q = this.#containingQuoteKey(prevKey)
               if (!q || q === anchorQuote) break
-              prevKey = q
+              prevKey = this.#quoteSelectionKey(q)
             }
           }
           if (prevKey) {
