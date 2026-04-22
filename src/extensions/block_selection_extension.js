@@ -3493,12 +3493,19 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     const listParent = currentList.getParent()
 
-    // List inside a quote: group at the list boundary exits BOTH the list
-    // and the quote in one press. The group's LIs get wrapped in a new
-    // list placed just before/after the quote in the quote's container.
-    // One press = one meaningful move. Avoids leaving orphan LIs inside
-    // a quote that would need manual cleanup.
+    // List inside a quote: walk the group through the quote's other
+    // children first (paragraphs, headings, sibling lists). Only exit out
+    // of the quote when there's nothing left to swap with in the move
+    // direction. Otherwise the group would skip whatever sat between it
+    // and the quote's edge — the user expects each press to advance the
+    // group by one position.
     if ($isQuoteNode(listParent)) {
+      const isUpQ = direction === "up"
+      const adjacentInQuote = isUpQ ? currentList.getPreviousSibling() : currentList.getNextSibling()
+      if (adjacentInQuote) {
+        this.#swapGroupPastSiblingInQuote(group, currentList, adjacentInQuote, direction)
+        return
+      }
       this.#exitGroupOutOfQuote(group, currentList, listParent, direction)
       return
     }
@@ -3658,6 +3665,54 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (quote.getChildrenSize() === 0) {
       quote.remove()
     }
+  }
+
+  // Walk a group of LIs past a sibling that lives next to currentList inside
+  // a blockquote (a paragraph, heading, or another list). Extracts the group
+  // into its own list so non-group siblings in currentList stay behind, then
+  // places the new list on the far side of `adjacent`. If `adjacent` is a
+  // same-type list, the items merge into it instead, so the quote doesn't
+  // accumulate adjacent same-type lists across round trips.
+  #swapGroupPastSiblingInQuote(group, currentList, adjacent, direction) {
+    const isUp = direction === "up"
+    const listType = currentList.getListType()
+
+    // Same-type sibling list → merge into it (group items become its
+    // last/first children depending on direction).
+    if ($isListNode(adjacent) && adjacent.getListType() === listType) {
+      if (isUp) {
+        for (const { node, wrapper } of group) {
+          node.remove()
+          adjacent.append(node)
+          if (wrapper) { wrapper.remove(); adjacent.append(wrapper) }
+        }
+      } else {
+        const firstLi = this.#findFirstRealItem(adjacent)
+        for (const { node, wrapper } of group) {
+          node.remove()
+          if (firstLi && firstLi.getParent()) firstLi.insertBefore(node)
+          else adjacent.append(node)
+          if (wrapper) { wrapper.remove(); node.insertAfter(wrapper) }
+        }
+      }
+      this.#cleanupEmptyList(currentList)
+      return
+    }
+
+    // Other adjacent (paragraph, heading, different-type list, etc.):
+    // extract group items into a new list and place that new list on the
+    // far side of `adjacent`. Going UP, newList lands BEFORE `adjacent`
+    // (which used to sit just above currentList). Going DOWN, it lands
+    // AFTER `adjacent`.
+    const newList = $createListNode(listType)
+    if (isUp) adjacent.insertBefore(newList)
+    else adjacent.insertAfter(newList)
+    for (const { node, wrapper } of group) {
+      node.remove()
+      newList.append(node)
+      if (wrapper) { wrapper.remove(); newList.append(wrapper) }
+    }
+    this.#cleanupEmptyList(currentList)
   }
 
   // Exit a group from its list to root level using the cursor approach.
