@@ -68,6 +68,11 @@ export class BlockSelectionExtension extends LexxyExtension {
   #anchorKey = null
   #focusKey = null
   #savedHighlightStyles = new Map() // nodeKey → original style string (before parent color was applied)
+  // Keys of paragraph/heading nodes that were unwrapped from a movement-
+  // wrapped LI when the group entered a blockquote. Tracked so that when
+  // the same items move back out of the quote into a list, they re-wrap as
+  // movement-tracked LIs (preserving the round-trip exit-to-root behavior).
+  #unwrappedFromMovementKeys = new Set()
   #dragAndDrop = null
   #cleanupFns = []
   // Tracks list items wrapping a non-paragraph block. User-wrapped vs
@@ -3222,8 +3227,26 @@ export class BlockSelectionExtension extends LexxyExtension {
         this.#moveGroupAtBoundary(group, direction)
       } else if ($isQuoteNode(firstParent)) {
         // Group is at the boundary of a blockquote (Notion-style container).
-        // Exit the quote: detach each group node and place them in order
-        // just before/after the quote. Preserves selection.
+        // If the quote sits inside an LI in a list, exiting straight to the
+        // LI level produces invalid Lexical structure (LI with both a list
+        // and non-list child) and the user gets stuck. Wrap the items in a
+        // new sibling list of the host LI's parent list instead — paragraphs
+        // and headings become bullets there. Movement-tracked items
+        // (paragraphs that originated from movement-wrapped LIs) carry that
+        // tracking forward via #wrappedOrigins so the next list-exit
+        // unwraps them back to root paragraphs.
+        const quoteHostLi = firstParent.getParent()
+        const quoteHostList = quoteHostLi && $isListItemNode(quoteHostLi)
+          ? quoteHostLi.getParent()
+          : null
+
+        if (quoteHostList && $isListNode(quoteHostList)) {
+          this.#exitGroupToHostList(group, firstParent, quoteHostLi, quoteHostList, direction)
+          return
+        }
+
+        // Otherwise: exit straight out of the quote at the quote's parent
+        // level (matches the original Notion-style container behavior).
         for (let i = group.length - 1; i >= 0; i--) {
           group[i].node.remove()
         }
@@ -3568,27 +3591,131 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
       this.#cleanupEmptyList(currentList)
     } else {
-      // No adjacent same-type list in the quote — create a new list inside
-      // the quote and move only the group's items into it. Appending the
-      // whole currentList into the quote would cycle the tree whenever the
-      // quote is a descendant of currentList (target-redirect at line 3163
-      // picks out a quote that's nested inside one of currentList's own LIs),
-      // sending Lexical's reconciler into infinite recursion.
-      const newList = $createListNode(listType)
-      if (isUp) {
-        quote.append(newList)
-      } else {
-        const first = quote.getFirstChild()
-        if (first) first.insertBefore(newList)
-        else quote.append(newList)
+      // No adjacent same-type list in the quote — place each group item at
+      // the appropriate edge of the quote. Movement-wrapped LIs whose only
+      // block child is a paragraph or heading get UNWRAPPED into the quote
+      // (the LI was created by movement to bridge the list, so once we land
+      // in a container that natively holds those blocks, restore the
+      // original shape). Other LIs (with structural children, decorators,
+      // tables, etc.) go into a fresh sub-list so their structure stays
+      // valid; the sub-list is created lazily so we don't leave an empty
+      // list behind when every item unwraps.
+      let lazyList = null
+      function ensureList() {
+        if (lazyList) return lazyList
+        lazyList = $createListNode(listType)
+        if (isUp) {
+          quote.append(lazyList)
+        } else {
+          const first = quote.getFirstChild()
+          if (first) first.insertBefore(lazyList)
+          else quote.append(lazyList)
+        }
+        return lazyList
       }
+      // For DOWN we want items to appear at the TOP of the quote in order.
+      // Build the insertion sequence outermost-first using an anchor that
+      // tracks the last inserted node so order is preserved.
+      let downAnchor = null
+      function placeAtQuoteEdge(node) {
+        if (isUp) {
+          quote.append(node)
+        } else if (downAnchor) {
+          downAnchor.insertAfter(node)
+          downAnchor = node
+        } else {
+          const first = quote.getFirstChild()
+          if (first) first.insertBefore(node)
+          else quote.append(node)
+          downAnchor = node
+        }
+      }
+
       for (const { node, wrapper } of group) {
-        node.remove()
-        newList.append(node)
-        if (wrapper) { wrapper.remove(); newList.append(wrapper) }
+        const innerBlock = this.#movementWrappedInnerBlockToUnwrap(node, wrapper)
+        if (innerBlock) {
+          // Unwrap: extract the inner paragraph/heading (or wrap loose
+          // inline children in a paragraph) and drop the LI shell.
+          // Subsequent re-entry into a list re-wraps via #moveGroupIntoList,
+          // which marks the new LI as movement-wrapped — so the round-trip
+          // (quote → list → root) still unwraps cleanly at each boundary.
+          const oldKey = node.getKey()
+          this.#wrappedOrigins.untrack(oldKey)
+          if (wrapper) wrapper.remove()
+          if ($isElementNode(innerBlock) && innerBlock.getParent()) innerBlock.remove()
+          node.remove()
+          placeAtQuoteEdge(innerBlock)
+          // Move selection from the now-removed LI to the new inner block.
+          const newKey = innerBlock.getKey()
+          if (this.#selectedBlockKeys.has(oldKey)) {
+            this.#selectedBlockKeys.delete(oldKey)
+            this.#selectedBlockKeys.add(newKey)
+          }
+          if (this.#anchorKey === oldKey) this.#anchorKey = newKey
+          if (this.#focusKey === oldKey) this.#focusKey = newKey
+          // Remember this paragraph was once a movement-LI so a subsequent
+          // exit out of the quote re-wraps it as a movement-tracked LI.
+          this.#unwrappedFromMovementKeys.add(newKey)
+        } else {
+          // Keep this item as a list item — needs a list inside the quote.
+          const list = ensureList()
+          node.remove()
+          list.append(node)
+          if (wrapper) { wrapper.remove(); list.append(wrapper) }
+        }
       }
+
       this.#cleanupEmptyList(currentList)
     }
+  }
+
+  // If `node` is a movement-wrapped LI whose only block child is a paragraph
+  // or heading (and it has no structural-wrapper children below it), return
+  // that inner block. Otherwise null. Used by quote-entry to decide whether
+  // a group item can be unwrapped to its original shape inside the quote.
+  #movementWrappedInnerBlockToUnwrap(node, wrapper) {
+    if (!$isListItemNode(node)) return null
+    if (wrapper) return null // has nested children — preserve list structure
+    const liKey = node.getKey()
+    const isMovementTracked =
+      this.#wrappedOrigins.hasMovementKey(liKey) ||
+      this.#movementWrappedByDOMAttribute(liKey)
+    if (!isMovementTracked) return null
+
+    const children = node.getChildren()
+    if (children.length === 0) return null
+
+    // Single block child (paragraph or heading): return it directly.
+    if (children.length === 1) {
+      const only = children[0]
+      if ($isElementNode(only) && !$isListNode(only)) {
+        const type = only.getType()
+        if (type === "paragraph" || type === "heading") return only
+      }
+    }
+
+    // Otherwise the LI holds inline children directly (Lexical strips the
+    // ParagraphNode wrapper on append). Wrap them in a fresh paragraph so
+    // the blockquote gets a proper block-level child.
+    const allInline = children.every(c => !$isElementNode(c) || (c.isInline && c.isInline()))
+    if (!allInline) return null
+
+    const paragraph = $createParagraphNode()
+    for (const child of children) {
+      paragraph.append(child)
+    }
+    return paragraph
+  }
+
+  // Fallback: a movement-wrapped LI may have its key replaced via Lexical's
+  // copy-on-write between moves. The DOM attribute carries the origin
+  // independently so we can recover the tracking from it.
+  #movementWrappedByDOMAttribute(key) {
+    try {
+      const el = this.editor.getElementByKey(key)
+      if (!el || !el.hasAttribute("data-block-movement-wrapped")) return false
+      return el.dataset.blockMovementWrapped !== "user"
+    } catch (_) { return false }
   }
 
   // Exit a group from its containing list AND its containing quote in a
@@ -3713,6 +3840,61 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (wrapper) { wrapper.remove(); newList.append(wrapper) }
     }
     this.#cleanupEmptyList(currentList)
+  }
+
+  // Exit a group of direct quote children (paragraphs / headings) out of a
+  // blockquote that lives inside an LI in a list. Wraps each item in an LI
+  // and inserts those LIs into the host list before/after the host LI.
+  // Items previously tracked in #unwrappedFromMovementKeys (paragraphs that
+  // came from movement-wrapped LIs in a prior step) get their new LIs
+  // movement-tracked too, so the round-trip back to root unwraps cleanly.
+  #exitGroupToHostList(group, quote, hostLi, hostList, direction) {
+    const isUp = direction === "up"
+
+    let insertAnchor = hostLi
+    const itemsForward = isUp ? group : [ ...group ].reverse()
+    const placed = []
+    for (const { node } of itemsForward) {
+      const wasMovement = this.#unwrappedFromMovementKeys.has(node.getKey())
+      const oldKey = node.getKey()
+
+      const li = $createListItemNode()
+      // Append the original block node into the LI. Lexical typically flattens
+      // a ParagraphNode child into inline children, but a HeadingNode stays
+      // as a wrapped block — both are valid LI shapes here.
+      node.remove()
+      li.append(node)
+
+      if (isUp) {
+        insertAnchor.insertBefore(li)
+      } else {
+        insertAnchor.insertAfter(li)
+        insertAnchor = li
+      }
+
+      if (wasMovement) {
+        this.#wrappedOrigins.trackMovement(li.getKey())
+        this.#unwrappedFromMovementKeys.delete(oldKey)
+      }
+      placed.push({ oldKey, newKey: li.getKey() })
+    }
+
+    // Update selection so block-select highlights follow the new LIs.
+    for (const { oldKey, newKey } of placed) {
+      if (this.#selectedBlockKeys.has(oldKey)) {
+        this.#selectedBlockKeys.delete(oldKey)
+        this.#selectedBlockKeys.add(newKey)
+      }
+      if (this.#anchorKey === oldKey) this.#anchorKey = newKey
+      if (this.#focusKey === oldKey) this.#focusKey = newKey
+    }
+
+    // If the quote has no children left, remove the host LI too — the
+    // user just walked the blockquote's entire contents out of it.
+    if (quote.getChildrenSize() === 0) {
+      quote.remove()
+      if (hostLi.getChildrenSize() === 0) hostLi.remove()
+    }
   }
 
   // Exit a group from its list to root level using the cursor approach.
