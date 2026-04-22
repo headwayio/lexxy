@@ -5974,22 +5974,12 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
 
         if ($isListItemNode(node)) {
-          // Focused node is a list item. Promote any of its own structural
-          // children (a nested list living in the next-sibling structural
-          // wrapper) up to the node's parent list FIRST, so when the node
-          // itself extracts to root the children stay where the user
-          // expects them — at the depth they were authored, between the
-          // siblings they had. Without this, the children ride along with
-          // the node and end up flattened into a fresh root-level list
-          // (the "Remove Bullet brings children with it" symptom).
-          this.#flattenChildrenOneLevel(node)
-
-          // Outdent through nested lists to root, then extract in place
-          // (splits the root-level list around the item). Pass
-          // carryChildren=false (we already flattened above) AND
-          // carryTrailing=false so siblings further down the original list
-          // don't get yanked along — they stay in their original nested
-          // list at the depth the user authored them.
+          // Focused node is a list item. Detach the node from its own
+          // structural wrapper (its nested children stay in place — they
+          // get naturally re-adopted by whichever LI now precedes the
+          // wrapper, preserving the children's authored indent depth).
+          // Then walk the (now child-less) item up through nested lists
+          // without dragging trailing siblings, and extract it at root.
           let nested = 50
           while (nested-- > 0 && this.#outdentWrappedBlock(node, false, false)) {
             const refreshed = $getNodeByKey(node.getKey())
@@ -5997,8 +5987,11 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
           const liNow = $getNodeByKey(this.#focusKey)
           if (!liNow || !$isListItemNode(liNow)) continue
-          const wrapper = this.#getOwnStructuralWrapper(liNow)
-          this.#extractWrappedItemsInPlace([ { node: liNow, wrapper } ])
+          // Pass wrapper=null too: anything still in the original
+          // structural wrapper stays put as a sibling of liNow (becomes
+          // children of liNow's previous neighbor, depth preserved). The
+          // extracted helper otherwise pulls the wrapper out with the item.
+          this.#extractWrappedItemsInPlace([ { node: liNow, wrapper: null } ])
           continue
         }
 
