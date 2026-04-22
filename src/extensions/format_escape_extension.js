@@ -1,4 +1,4 @@
-import { $createParagraphNode, $getSelection, $isRangeSelection, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, ParagraphNode, defineExtension } from "lexical"
+import { $createParagraphNode, $getSelection, $isElementNode, $isRangeSelection, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, ParagraphNode, defineExtension } from "lexical"
 import { CodeNode } from "@lexical/code"
 import { ListItemNode } from "@lexical/list"
 import { $isQuoteNode, QuoteNode } from "@lexical/rich-text"
@@ -39,7 +39,16 @@ export class FormatEscapeExtension extends LexxyExtension {
             (event) => $handleArrowDownInCodeBlock(event),
             COMMAND_PRIORITY_NORMAL
           ),
-          editor.registerNodeTransform(QuoteNode, $ensureQuoteHasParagraphChild)
+          // Normalize QuoteNode children: Lexical's `> ` markdown shortcut and
+          // some paste paths leave a QuoteNode with inline children (TextNodes,
+          // LinkNodes, …) directly underneath, with no ParagraphNode wrapping
+          // them. That breaks Enter behavior — Lexical's default tries to
+          // split the blockquote itself and ends up creating a sibling
+          // paragraph outside the quote, so the user gets ejected after one
+          // keystroke. Wrapping any inline run in a ParagraphNode makes the
+          // structure consistent with toolbar-created blockquotes and lets
+          // Enter add a new paragraph inside the quote.
+          editor.registerNodeTransform(QuoteNode, $wrapInlineQuoteChildren)
         )
       }
     })
@@ -105,6 +114,42 @@ function $splitQuoteNode(node, paragraph) {
   paragraph.selectEnd()
 }
 
+// Wrap consecutive inline children of a QuoteNode in a ParagraphNode so
+// blockquote contents are always block-level. Empty QuoteNodes get a single
+// empty ParagraphNode so Enter has a paragraph to split. Idempotent: if every
+// child is already a block-level element, this is a no-op.
+function $wrapInlineQuoteChildren(quoteNode) {
+  const children = quoteNode.getChildren()
+
+  if (children.length === 0) {
+    quoteNode.append($createParagraphNode())
+    // Upstream behavior: keep the caret inside the quote after normalizing.
+    if ($containsRangeSelection(quoteNode)) quoteNode.getFirstChild().select()
+    return
+  }
+
+  // Group consecutive inline siblings; flush each run into its own ParagraphNode.
+  let run = []
+  const runs = []
+  for (const child of children) {
+    if (!$isElementNode(child)) {
+      run.push(child)
+    } else {
+      if (run.length > 0) { runs.push(run); run = [] }
+    }
+  }
+  if (run.length > 0) runs.push(run)
+  if (runs.length === 0) return
+
+  for (const inlineRun of runs) {
+    const paragraph = $createParagraphNode()
+    inlineRun[0].insertBefore(paragraph)
+    for (const node of inlineRun) {
+      paragraph.append(node)
+    }
+  }
+}
+
 function $handleArrowDownInCodeBlock(event) {
   const selection = $getSelection()
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
@@ -121,11 +166,4 @@ function $handleArrowDownInCodeBlock(event) {
   }
 
   return false
-}
-
-function $ensureQuoteHasParagraphChild(quoteNode) {
-  if (!quoteNode.isEmpty()) return
-
-  quoteNode.append($createParagraphNode())
-  if ($containsRangeSelection(quoteNode)) quoteNode.getFirstChild().select()
 }
