@@ -54,6 +54,15 @@ function $escapeFromBlockquote() {
   const blockquote = paragraph.getParent()
   if (!blockquote || !$isQuoteNode(blockquote)) return false
 
+  // Don't exit when the cursor sits in the blockquote's ONLY paragraph and
+  // it's empty — that's the freshly-inserted state, where the user expects
+  // Enter to add a second line, not eject them out immediately. Falling
+  // through to Lexical's default creates another paragraph below; the exit
+  // happens on the next Enter (which sees a previous blank sibling).
+  if (paragraph.getPreviousSibling() === null && paragraph.getNextSibling() === null) {
+    return false
+  }
+
   const nonEmptySiblings = paragraph.getNextSiblings().filter(sibling => !$isBlankNode(sibling))
 
   if (nonEmptySiblings.length > 0) {
