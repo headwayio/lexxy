@@ -244,12 +244,8 @@
     padding-inline-start: 2em;
   }
 
-  /* Nested first-children keep their margin so indenting doesn't
-     shift vertical position. Root-level first items stay flush. */
-  .lexxy-nested-listitem > ul > li:first-child:not(.lexxy-nested-listitem),
-  .lexxy-nested-listitem > ol > li:first-child:not(.lexxy-nested-listitem) {
-    margin-top: 6px;
-  }
+  /* First-child of a nested list stays flush with the parent row —
+     indenting a bullet should just shift it right, not push it down. */
 
   li.lexxy-nested-listitem {
     list-style-type: none;
