@@ -4219,6 +4219,22 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
 
     if (sibling && $isListItemNode(sibling)) {
+      // Adjacent LI whose only child is a blockquote (Notion-style
+      // quote-as-container LI like the Kilo / Delta examples): enter the
+      // quote instead of nesting under the LI. Mirrors the group-move
+      // behavior so single-item moves don't silently hop past the quote.
+      if (sibling.getChildrenSize() === 1) {
+        const only = sibling.getFirstChild()
+        if ($isQuoteNode(only)) {
+          this.#enterGroupIntoQuote(
+            [ { node, wrapper: this.#getOwnStructuralWrapper(node) } ],
+            parent,
+            only,
+            direction
+          )
+          return
+        }
+      }
       // Has adjacent text sibling → nest under it
       this.#nestListItemUnderSibling(node, sibling, parent, isDown)
     } else {
