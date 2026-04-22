@@ -5860,10 +5860,12 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   // Peel a wrapped list-item fully to root: outdent through every nested
-  // list level, then let #extractWrappedItemsInPlace split the root-level
-  // list around the item so siblings keep their positions. Used by the
-  // Turn-into "unwrap" paths so Wrap-in-X on an already-wrapped block
-  // lands at the same vertical position as the original wrapped item.
+  // list level without carrying the item's children or trailing siblings,
+  // then extract at the root list level. The children's structural wrapper
+  // and any trailing siblings stay where they were authored (re-adopting
+  // whatever LI now precedes them, depth preserved). Only the focused item
+  // escapes — splitting the surrounding list cleanly around its vertical
+  // position. Used by Turn-into "unwrap" paths and Remove Bullet alike.
   #unwrapWrappedLiToRootInPlace(liNode) {
     let li = liNode
     let guard = 50
@@ -5872,13 +5874,12 @@ export class BlockSelectionExtension extends LexxyExtension {
       if (!$isListNode(parent)) return
       const grandparent = parent.getParent()
       if (!grandparent || !$isListItemNode(grandparent)) break
-      if (!this.#outdentWrappedBlock(li)) break
+      if (!this.#outdentWrappedBlock(li, false, false)) break
       const refreshed = $getNodeByKey(li.getKey())
       if (!refreshed || !$isListItemNode(refreshed)) return
       li = refreshed
     }
-    const wrapper = this.#getOwnStructuralWrapper(li)
-    this.#extractWrappedItemsInPlace([ { node: li, wrapper } ])
+    this.#extractWrappedItemsInPlace([ { node: li, wrapper: null } ])
   }
 
   // Extract wrapped items from their lists in place. Each wrapped item is
