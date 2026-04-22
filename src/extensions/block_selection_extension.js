@@ -4949,12 +4949,17 @@ export class BlockSelectionExtension extends LexxyExtension {
         if (!$isRangeSelection(selection)) return false
 
         // Walk up to find the containing list item, but bail if we're
-        // inside a code block or table (they handle Enter internally)
+        // inside a code block or table (they handle Enter internally).
+        // Track an enclosing QuoteNode along the way — Enter inside a
+        // wrapped blockquote takes a different path (multi-line editing
+        // inside the quote) than Enter inside other wrapped block types.
         let current = selection.anchor.getNode()
         let listItem = null
+        let containingQuote = null
         while (current) {
           if ($isCodeNode(current)) return false
           if ($isElementNode(current) && current.getType()?.includes("table")) return false
+          if ($isQuoteNode(current) && !containingQuote) containingQuote = current
           if ($isListItemNode(current)) { listItem = current; break }
           current = current.getParent()
         }
@@ -4962,6 +4967,45 @@ export class BlockSelectionExtension extends LexxyExtension {
 
         // Only act on wrapped blocks (heading, quote, etc. in a list item)
         if (!this.#wrappedOrigins.isWrapped(listItem)) return false
+
+        // Wrapped-blockquote: blockquotes are multi-paragraph containers, so
+        // Enter should add a new paragraph INSIDE the quote, not jump out to
+        // a new sibling LI. Defer to Lexical's default for the first Enter.
+        // The exit happens on the second Enter, when the cursor sits in an
+        // empty paragraph at the end of the quote: remove that empty
+        // paragraph and create a new LI sibling so the user lands cleanly
+        // outside both the quote and its host LI (Notion-style).
+        if (containingQuote) {
+          // Find the quote's direct block child that contains the selection
+          let blockChild = selection.anchor.getNode()
+          while (blockChild && blockChild.getParent()?.getKey() !== containingQuote.getKey()) {
+            blockChild = blockChild.getParent()
+          }
+          const isEmptyLast = blockChild
+            && $isParagraphNode(blockChild)
+            && blockChild.getTextContentSize() === 0
+            && blockChild.getKey() === containingQuote.getLastChild()?.getKey()
+
+          if (!isEmptyLast) return false // let Lexical add a new paragraph inside the quote
+
+          event.preventDefault()
+          const listItemKey = listItem.getKey()
+          const emptyParaKey = blockChild.getKey()
+          queueMicrotask(() => {
+            this.editor.update(() => {
+              const empty = $getNodeByKey(emptyParaKey)
+              if (empty) empty.remove()
+              const li = $getNodeByKey(listItemKey)
+              if (!li || !$isListItemNode(li)) return
+              const newItem = $createListItemNode()
+              const ownWrapper = this.#getOwnStructuralWrapper(li)
+              if (ownWrapper) ownWrapper.insertAfter(newItem)
+              else li.insertAfter(newItem)
+              newItem.select()
+            })
+          })
+          return true
+        }
 
         // Prevent browser from firing beforeinput/insertParagraph
         event.preventDefault()
