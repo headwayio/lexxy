@@ -5859,27 +5859,14 @@ export class BlockSelectionExtension extends LexxyExtension {
     return quote
   }
 
-  // Peel a wrapped list-item fully to root: outdent through every nested
-  // list level without carrying the item's children or trailing siblings,
-  // then extract at the root list level. The children's structural wrapper
-  // and any trailing siblings stay where they were authored (re-adopting
-  // whatever LI now precedes them, depth preserved). Only the focused item
-  // escapes — splitting the surrounding list cleanly around its vertical
-  // position. Used by Turn-into "unwrap" paths and Remove Bullet alike.
+  // Peel a wrapped list-item fully to root using the recursive split-at-
+  // every-level path so the item escapes at the same vertical position the
+  // user sees it in, with surrounding lists splitting around its path and
+  // every preserved item keeping its original indent depth. Used by both
+  // Turn-into "Unwrap from list" and Remove Bullet so the two actions
+  // produce identical results.
   #unwrapWrappedLiToRootInPlace(liNode) {
-    let li = liNode
-    let guard = 50
-    while (guard-- > 0) {
-      const parent = li.getParent()
-      if (!$isListNode(parent)) return
-      const grandparent = parent.getParent()
-      if (!grandparent || !$isListItemNode(grandparent)) break
-      if (!this.#outdentWrappedBlock(li, false, false)) break
-      const refreshed = $getNodeByKey(li.getKey())
-      if (!refreshed || !$isListItemNode(refreshed)) return
-      li = refreshed
-    }
-    this.#extractWrappedItemsInPlace([ { node: li, wrapper: null } ])
+    this.#splitAndExtractToRoot(liNode)
   }
 
   // Extract wrapped items from their lists in place. Each wrapped item is
@@ -5944,6 +5931,89 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
   }
 
+  // Extract a list item (or blockquote-wrapped list item) to root while
+  // preserving the visual vertical position and the indent depth of every
+  // surrounding sibling. Walks up through every containing list, splitting
+  // each around the path: items before the ancestor-at-this-level stay in
+  // the original tree; items after go into a freshly-created "after" list
+  // that re-wraps at each level with a new structural-wrapper LI so the
+  // after-tree retains the same nesting shape. The focused item ends up at
+  // root, between the preserved before-tree and the rebuilt after-tree.
+  #splitAndExtractToRoot(node) {
+    if (!$isListItemNode(node)) return
+
+    const sourceList = node.getParent()
+    if (!$isListNode(sourceList)) return
+
+    // Build the after-tree bottom-up by walking the containing lists.
+    let afterListBelow = null // the after-list at the level we just processed
+    let currentSplitNode = node
+    let currentList = sourceList
+    let rootList = null
+
+    for (let guard = 0; guard < 50; guard++) {
+      // Collect siblings that follow the split point in this list; detach them.
+      const afterItems = []
+      let sib = currentSplitNode.getNextSibling()
+      while (sib) { afterItems.push(sib); sib = sib.getNextSibling() }
+      for (const item of afterItems) item.remove()
+
+      // The next-level after-content starts with a structural wrapper holding
+      // the deeper after-list (if any), followed by this level's trailing
+      // siblings. Skip building an empty wrapper when nothing exists below.
+      const thisLevelAfter = []
+      if (afterListBelow && afterListBelow.getChildrenSize() > 0) {
+        const wrapper = $createListItemNode()
+        wrapper.append(afterListBelow)
+        thisLevelAfter.push(wrapper)
+      }
+      for (const item of afterItems) thisLevelAfter.push(item)
+
+      afterListBelow = thisLevelAfter.length > 0
+        ? (() => {
+            const list = $createListNode(currentList.getListType())
+            for (const item of thisLevelAfter) list.append(item)
+            return list
+          })()
+        : null
+
+      // Walk up one level: currentList's parent is either a structural
+      // wrapper LI (continue splitting) or the editor root (stop, we've
+      // reached the outermost containing list).
+      const listParent = currentList.getParent()
+      if (!$isListItemNode(listParent)) {
+        rootList = currentList
+        break
+      }
+      currentSplitNode = listParent
+      currentList = listParent.getParent()
+      if (!$isListNode(currentList)) {
+        rootList = listParent.getParent()
+        break
+      }
+    }
+
+    if (!rootList) return
+
+    // Extract the focused item's content and remove the now-empty LI.
+    const extracted = this.#extractWrappedContent(node)
+    if (!extracted) return
+    const oldKey = node.getKey()
+    const originalList = node.getParent()
+    node.remove()
+    if (originalList && $isListNode(originalList)) this.#cleanupEmptyList(originalList)
+
+    // Place the extracted content at root, immediately after the original
+    // root-level list. Any rebuilt after-tree goes after the extracted
+    // content so the document stays in visual order.
+    rootList.insertAfter(extracted)
+    if (afterListBelow && afterListBelow.getChildrenSize() > 0) {
+      extracted.insertAfter(afterListBelow)
+    }
+
+    this.#updateKeyAfterUnwrap(oldKey, extracted.getKey())
+  }
+
   // Menu-driven "Remove Quote" and "Remove Bullet"/"Remove Numbered" actions
   // both land here. The two entry points show different labels for
   // discoverability (a user who sees a blockquote bar expects Remove Quote,
@@ -5975,24 +6045,14 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
 
         if ($isListItemNode(node)) {
-          // Focused node is a list item. Detach the node from its own
-          // structural wrapper (its nested children stay in place — they
-          // get naturally re-adopted by whichever LI now precedes the
-          // wrapper, preserving the children's authored indent depth).
-          // Then walk the (now child-less) item up through nested lists
-          // without dragging trailing siblings, and extract it at root.
-          let nested = 50
-          while (nested-- > 0 && this.#outdentWrappedBlock(node, false, false)) {
-            const refreshed = $getNodeByKey(node.getKey())
-            if (!refreshed || !$isListItemNode(refreshed)) return
-          }
-          const liNow = $getNodeByKey(this.#focusKey)
-          if (!liNow || !$isListItemNode(liNow)) continue
-          // Pass wrapper=null too: anything still in the original
-          // structural wrapper stays put as a sibling of liNow (becomes
-          // children of liNow's previous neighbor, depth preserved). The
-          // extracted helper otherwise pulls the wrapper out with the item.
-          this.#extractWrappedItemsInPlace([ { node: liNow, wrapper: null } ])
+          // Focused node is a list item. Walk up through every containing
+          // list, splitting each one around the path: items before stay in
+          // their original list at their original depth; items after move
+          // into a new "after" list at the same depth, wrapped in fresh
+          // structural-wrapper LIs as the after-tree builds up. The focused
+          // item lands at root between the original tree and the after-
+          // tree — same vertical position the user sees, but at root.
+          this.#splitAndExtractToRoot(node)
           continue
         }
 
