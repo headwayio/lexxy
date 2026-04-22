@@ -359,8 +359,15 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #syncSelectionClasses() {
+    // If a block's ancestor block is also in the selection, the ancestor's
+    // highlight already covers it — showing a second highlight on the child
+    // produces the nested "rectangle inside a rectangle" look the user sees
+    // on a blockquote whose wrapping LI is selected alongside its inner
+    // paragraph. Skip these descendants when applying classes.
+    const coveredByAncestor = this.#keysCoveredBySelectedAncestor()
+
     for (const key of this.#previousSelectedKeys) {
-      if (!this.#selectedBlockKeys.has(key)) {
+      if (!this.#selectedBlockKeys.has(key) || coveredByAncestor.has(key)) {
         const el = this.editor.getElementByKey(key)
         if (el) {
           el.classList.remove(BLOCK_SELECTED_CLASS, BLOCK_FOCUSED_CLASS,
@@ -370,6 +377,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
 
     for (const key of this.#selectedBlockKeys) {
+      if (coveredByAncestor.has(key)) continue
       const el = this.editor.getElementByKey(key)
       if (el) {
         el.classList.add(BLOCK_SELECTED_CLASS)
@@ -377,9 +385,10 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
-    // Remove focused from non-focus keys
+    // Remove focused from non-focus keys (and from descendants covered by a
+    // selected ancestor).
     for (const key of this.#selectedBlockKeys) {
-      if (key !== this.#focusKey) {
+      if (key !== this.#focusKey || coveredByAncestor.has(key)) {
         const el = this.editor.getElementByKey(key)
         if (el) el.classList.remove(BLOCK_FOCUSED_CLASS)
       }
@@ -393,6 +402,29 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#syncBulletOffsets()
     this.#syncLeafInsets()
     this.#syncParentSelectionHeight()
+  }
+
+  // Return the set of selected keys whose block-level ancestor is also in
+  // #selectedBlockKeys. Used to avoid double-highlighting a child whose
+  // parent (e.g., a blockquote LI) is already selected.
+  #keysCoveredBySelectedAncestor() {
+    const covered = new Set()
+    if (this.#selectedBlockKeys.size <= 1) return covered
+    this.editor.getEditorState().read(() => {
+      for (const key of this.#selectedBlockKeys) {
+        const node = $getNodeByKey(key)
+        if (!node) continue
+        let parent = node.getParent()
+        while (parent) {
+          if (this.#selectedBlockKeys.has(parent.getKey())) {
+            covered.add(key)
+            break
+          }
+          parent = parent.getParent()
+        }
+      }
+    })
+    return covered
   }
 
   #syncSelectionGroupClasses() {
