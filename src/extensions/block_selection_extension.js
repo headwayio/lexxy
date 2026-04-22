@@ -3593,6 +3593,53 @@ export class BlockSelectionExtension extends LexxyExtension {
   #exitGroupOutOfQuote(group, currentList, quote, direction) {
     const isUp = direction === "up"
     const listType = currentList.getListType()
+
+    // When the quote sits inside an LI (Notion-style quote-as-container
+    // nested in a list), exiting out of the quote should also exit out of
+    // that LI: the items become sibling LIs of the quote-host LI in the
+    // surrounding list. Inserting them inside the quote-host LI alongside
+    // the blockquote produces an invalid Lexical structure (LI with both a
+    // list and a non-list child) that triggers error #66 and freezes
+    // subsequent moves.
+    const quoteParent = quote.getParent()
+    const quoteHostList = quoteParent && $isListItemNode(quoteParent)
+      ? quoteParent.getParent()
+      : null
+
+    if (quoteHostList && $isListNode(quoteHostList)
+        && quoteHostList.getListType() === listType) {
+      // Place each group LI directly into the quote-host list, before/after
+      // the LI that hosts the quote. No wrapping list needed — items are
+      // already LIs of the same type.
+      const anchor = quoteParent
+      if (isUp) {
+        for (const { node, wrapper } of group) {
+          node.remove()
+          anchor.insertBefore(node)
+          if (wrapper) { wrapper.remove(); node.insertAfter(wrapper) }
+        }
+      } else {
+        let insertAfter = anchor
+        for (const { node, wrapper } of group) {
+          node.remove()
+          insertAfter.insertAfter(node)
+          insertAfter = node
+          if (wrapper) { wrapper.remove(); insertAfter.insertAfter(wrapper); insertAfter = wrapper }
+        }
+      }
+      this.#cleanupEmptyList(currentList)
+      if (quote.getChildrenSize() === 0) quote.remove()
+      // If the LI hosting the quote is now empty (we removed the quote
+      // because it had nothing left), remove the LI too so it doesn't
+      // render as an empty bullet.
+      if (!quote.getParent() && quoteParent.getChildrenSize() === 0) {
+        quoteParent.remove()
+      }
+      return
+    }
+
+    // Default: quote is a top-level container — wrap the group in a new
+    // list at the quote's sibling level, matching the original behavior.
     const newList = $createListNode(listType)
     for (const { node, wrapper } of group) {
       node.remove()
@@ -3608,7 +3655,6 @@ export class BlockSelectionExtension extends LexxyExtension {
       quote.insertAfter(newList)
     }
     this.#cleanupEmptyList(currentList)
-    // If the quote is now empty, remove it so we don't leave a stub.
     if (quote.getChildrenSize() === 0) {
       quote.remove()
     }
