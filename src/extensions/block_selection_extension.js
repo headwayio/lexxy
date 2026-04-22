@@ -5724,7 +5724,7 @@ export class BlockSelectionExtension extends LexxyExtension {
   // carryChildren: true = move structural wrapper with node (block-select mode),
   //                false = leave children behind (normal mode).
   // Returns true if outdent was performed
-  #outdentWrappedBlock(node, carryChildren = true) {
+  #outdentWrappedBlock(node, carryChildren = true, carryTrailing = true) {
     const currentList = node.getParent()
     if (!$isListNode(currentList)) return false
 
@@ -5734,10 +5734,12 @@ export class BlockSelectionExtension extends LexxyExtension {
     // Capture trailing siblings (items after the node in the nested list)
     const ownWrapper = carryChildren ? this.#getOwnStructuralWrapper(node) : null
     const trailingSiblings = []
-    let sib = (ownWrapper || node).getNextSibling()
-    while (sib) {
-      trailingSiblings.push(sib)
-      sib = sib.getNextSibling()
+    if (carryTrailing) {
+      let sib = (ownWrapper || node).getNextSibling()
+      while (sib) {
+        trailingSiblings.push(sib)
+        sib = sib.getNextSibling()
+      }
     }
 
     // Insert the node after the structural wrapper in the parent list
@@ -5972,11 +5974,24 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
 
         if ($isListItemNode(node)) {
-          // Focused node is a list item. Outdent through nested lists to
-          // root, then extract in place (splits the root-level list around
-          // the item).
+          // Focused node is a list item. Promote any of its own structural
+          // children (a nested list living in the next-sibling structural
+          // wrapper) up to the node's parent list FIRST, so when the node
+          // itself extracts to root the children stay where the user
+          // expects them — at the depth they were authored, between the
+          // siblings they had. Without this, the children ride along with
+          // the node and end up flattened into a fresh root-level list
+          // (the "Remove Bullet brings children with it" symptom).
+          this.#flattenChildrenOneLevel(node)
+
+          // Outdent through nested lists to root, then extract in place
+          // (splits the root-level list around the item). Pass
+          // carryChildren=false (we already flattened above) AND
+          // carryTrailing=false so siblings further down the original list
+          // don't get yanked along — they stay in their original nested
+          // list at the depth the user authored them.
           let nested = 50
-          while (nested-- > 0 && this.#outdentWrappedBlock(node)) {
+          while (nested-- > 0 && this.#outdentWrappedBlock(node, false, false)) {
             const refreshed = $getNodeByKey(node.getKey())
             if (!refreshed || !$isListItemNode(refreshed)) return
           }
