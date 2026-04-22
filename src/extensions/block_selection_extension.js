@@ -236,6 +236,12 @@ export class BlockSelectionExtension extends LexxyExtension {
   // -- Selection management ---------------------------------------------------
 
   #selectBlock(nodeKey, extend = false) {
+    // Selecting a Notion-style quote-as-container (QuoteNode inside an LI
+    // that's itself in a list) resolves to the wrapping LI instead so the
+    // highlight lands on the list-item box rather than a mid-sized
+    // <blockquote>-only rectangle.
+    nodeKey = this.#resolveSelectionKey(nodeKey)
+
     this.#deleteNeighbors = null
     // Cement inherited colors when selection changes — extending selection
     // (Shift+Arrow) or switching to a new block means the user has committed
@@ -344,7 +350,10 @@ export class BlockSelectionExtension extends LexxyExtension {
       const k = allBlocks[i]
       const enclosing = this.#containingQuoteKey(k)
       if (enclosing && enclosing !== fromQuote && enclosing !== toQuote) continue
-      this.#selectedBlockKeys.add(k)
+      // Redirect QuoteNode keys to their wrapping LI (when the quote is a
+      // Notion-style container inside a list item) so the selection
+      // highlight lands on the list item, not on the mid-sized <blockquote>.
+      this.#selectedBlockKeys.add(this.#resolveSelectionKey(k))
     }
 
     this.#syncSelectionClasses()
@@ -654,13 +663,24 @@ export class BlockSelectionExtension extends LexxyExtension {
   // user clicks on — rather than a mid-sized rectangle on the inner
   // <blockquote> element.
   #quoteSelectionKey(quoteKey) {
-    let resolved = quoteKey
+    return this.#resolveSelectionKey(quoteKey)
+  }
+
+  // Generic resolver: any block key whose corresponding node has a more
+  // appropriate "selection box" (e.g. a QuoteNode whose parent is an LI in
+  // a list) resolves to that container's key. Centralizes the redirect so
+  // every selection entry point — shift-extend, click-then-Escape, range
+  // collection, drag select — produces a single unambiguous highlight.
+  #resolveSelectionKey(nodeKey) {
+    let resolved = nodeKey
     this.editor.getEditorState().read(() => {
-      const quote = $getNodeByKey(quoteKey)
-      if (!quote) return
-      const parent = quote.getParent()
-      if (parent && $isListItemNode(parent) && $isListNode(parent.getParent())) {
-        resolved = parent.getKey()
+      const node = $getNodeByKey(nodeKey)
+      if (!node) return
+      if ($isQuoteNode(node)) {
+        const parent = node.getParent()
+        if (parent && $isListItemNode(parent) && $isListNode(parent.getParent())) {
+          resolved = parent.getKey()
+        }
       }
     })
     return resolved
