@@ -87,6 +87,14 @@ export class BlockSelectionExtension extends LexxyExtension {
   // subsequent press in the same direction would toggle wrap/exit and the
   // group could never escape the list. Cleared when the selection resets.
   #movementUnwrappedKeys = new Set()
+  // Resolution records queued during an editor.update for keys whose final
+  // post-transform value can't be known inside the callback. Each entry is
+  // { stableInnerKey, tentativeOuterKey }: when Lexical's extension-class
+  // replacement swaps the outer node (e.g. ListItemNode → EarlyEscapeListItemNode),
+  // tentativeOuterKey is invalidated post-commit. #resolvePendingKeys walks
+  // up from the (stable) inner node after the update to find the real outer
+  // key and rewrites selection/anchor/focus/wrappedOrigins accordingly.
+  #pendingKeyResolutions = []
   #blockActionsMenu = null
   #deleteNeighbors = null // { next, prev } keys after a delete, for arrow key navigation
   #selectionHistory = new SelectionHistory({
@@ -2473,6 +2481,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     rootKeys.sort((a, b) => keyIdx.get(a) - keyIdx.get(b))
 
     this.#selectionHistory.push()
+    this.#pendingKeyResolutions = []
     this.editor.update(() => {
       if (rootKeys.length === 1) {
         // Single root key: use existing single-item logic
@@ -2487,6 +2496,10 @@ export class BlockSelectionExtension extends LexxyExtension {
       try { this.#wrappedOrigins.resync(this.#selectedBlockKeys) } catch (_) { /* nodes may have been removed */ }
 
     }, { tag: "history-push" })
+    // After commit, resolve any tentative outer keys to their post-transform
+    // real keys. Without this, a second Cmd+Shift+Up/Down on the same element
+    // freezes because #filterToRootKeys can't find the stale key.
+    this.#resolvePendingKeys()
 
     // After the update completes and Lexical reconciles, apply highlight
     // inheritance. Done outside the update to ensure final positions are settled.
@@ -2677,6 +2690,46 @@ export class BlockSelectionExtension extends LexxyExtension {
       const idx = new Map(docOrder.map((k, i) => [ k, i ]))
       group.sort((a, b) => (idx.get(a.node.getKey()) ?? 0) - (idx.get(b.node.getKey()) ?? 0))
     }
+  }
+
+  // Resolve tentative outer-node keys queued during an editor.update. When
+  // Lexical's extension-class replacement swaps a newly-created node (e.g.
+  // a ListItemNode becoming an EarlyEscapeListItemNode during commit), the
+  // key we captured inside the update no longer maps to a live node. We
+  // walk up from the (stable) inner child's key to find the current outer
+  // LI and rewrite any selection/anchor/focus/wrappedOrigins entries that
+  // still point at the dead tentative key.
+  #resolvePendingKeys() {
+    if (this.#pendingKeyResolutions.length === 0) return
+    const pending = this.#pendingKeyResolutions
+    this.#pendingKeyResolutions = []
+
+    this.editor.getEditorState().read(() => {
+      for (const { stableInnerKey, tentativeOuterKey } of pending) {
+        // If the tentative key still resolves, no rewrite needed.
+        if ($getNodeByKey(tentativeOuterKey)) continue
+
+        const inner = $getNodeByKey(stableInnerKey)
+        if (!inner) continue
+        const outer = inner.getParent()
+        if (!outer || !$isListItemNode(outer)) continue
+
+        const realKey = outer.getKey()
+        if (realKey === tentativeOuterKey) continue
+
+        if (this.#selectedBlockKeys.has(tentativeOuterKey)) {
+          this.#selectedBlockKeys.delete(tentativeOuterKey)
+          this.#selectedBlockKeys.add(realKey)
+        }
+        if (this.#anchorKey === tentativeOuterKey) this.#anchorKey = realKey
+        if (this.#focusKey === tentativeOuterKey) this.#focusKey = realKey
+      }
+
+      // Rebuild wrappedOrigins so its internal key sets match the live tree
+      // (dead tentative keys out, real keys in via DOM-attribute recovery on
+      // the next syncDOMAttributes pass).
+      try { this.#wrappedOrigins.resync(this.#selectedBlockKeys) } catch (_) { /* nodes may have been removed */ }
+    })
   }
 
   #filterToRootKeys(selectedKeys) {
@@ -4946,7 +4999,13 @@ export class BlockSelectionExtension extends LexxyExtension {
         // via arrow movement, so it should auto-unwrap on the way out.
         this.#wrappedOrigins.trackMovement(listItem.getKey())
 
-        // Update selection to track the wrapper ListItemNode
+        // Update selection to track the wrapper ListItemNode.
+        // NOTE: listItem.getKey() here is only valid inside this update.
+        // Lexical's extension-class replacement (ListItemNode →
+        // EarlyEscapeListItemNode) runs during the commit phase and produces
+        // a fresh key, leaving the one we stored pointing at a dead node.
+        // Queue a resolution to walk up from the (stable) inner heading/para
+        // key after the update returns, so the next keypress sees a valid key.
         const newKey = listItem.getKey()
         if (this.#selectedBlockKeys.has(oldKey)) {
           this.#selectedBlockKeys.delete(oldKey)
@@ -4954,6 +5013,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           if (this.#anchorKey === oldKey) this.#anchorKey = newKey
           if (this.#focusKey === oldKey) this.#focusKey = newKey
         }
+        this.#pendingKeyResolutions.push({ stableInnerKey: oldKey, tentativeOuterKey: newKey })
 
         // Inherit color from the parent list item if it has one
         this.#inheritParentHighlight(listItem)
