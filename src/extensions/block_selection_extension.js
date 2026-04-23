@@ -6151,8 +6151,29 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (!extracted) return
     const oldKey = node.getKey()
     const originalList = node.getParent()
+
+    // Capture the structural-wrapper ancestor chain BEFORE detaching node.
+    // ListNode.canBeEmpty() is false, so removing the last child of
+    // originalList triggers Lexical's cascade which auto-removes the now-
+    // empty list and leaves its wrapper LI as an empty <li><br></li>.
+    // #cleanupEmptyList can't help because originalList is already detached
+    // by that point. We destroy any wrappers the cascade left behind.
+    const wrapperAncestors = []
+    let ancestor = originalList?.getParent()
+    while ($isListItemNode(ancestor) && $isStructuralWrapper(ancestor)) {
+      wrapperAncestors.push(ancestor)
+      const grandList = ancestor.getParent()
+      if (!$isListNode(grandList)) break
+      ancestor = grandList.getParent()
+    }
+
     node.remove()
     if (originalList && $isListNode(originalList)) this.#cleanupEmptyList(originalList)
+    for (const wrapper of wrapperAncestors) {
+      if (wrapper.getParent() && wrapper.getChildrenSize() === 0) {
+        this.#forceDestroyWrapper(wrapper.getKey())
+      }
+    }
 
     // Place the extracted content at root, immediately after the original
     // root-level list. Any rebuilt after-tree goes after the extracted
