@@ -282,7 +282,7 @@ export class TableController {
       if ($isListItemNode(parentListItem)) {
         const newItem = $createListItemNode()
         parentListItem.insertAfter(newItem)
-        $provisionalTableEscapeKeys.add(newItem.getKey())
+        $provisionalTableEscapeKeys(this.editor).add(newItem.getKey())
         newItem.select()
         return
       }

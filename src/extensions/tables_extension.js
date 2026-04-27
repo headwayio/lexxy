@@ -150,28 +150,29 @@ export class TablesExtension extends LexxyExtension {
 
           // Remove provisional escape list items when the user navigates away without typing
           editor.registerCommand(SELECTION_CHANGE_COMMAND, () => {
-            if ($provisionalTableEscapeKeys.size === 0) return false
+            const keys = $provisionalTableEscapeKeys(editor)
+            if (keys.size === 0) return false
 
             const selection = $getSelection()
             if (!$isRangeSelection(selection)) return false
 
             const anchorNode = selection.anchor.getNode()
 
-            for (const key of [ ...$provisionalTableEscapeKeys ]) {
+            for (const key of [ ...keys ]) {
               const node = $getNodeByKey(key)
               if (!node) {
-                $provisionalTableEscapeKeys.delete(key)
+                keys.delete(key)
                 continue
               }
               if (node.getTextContentSize() > 0) {
                 // User typed — no longer provisional
-                $provisionalTableEscapeKeys.delete(key)
+                keys.delete(key)
                 continue
               }
               const isInProvisional = anchorNode.is(node) || node.isParentOf(anchorNode)
               if (!isInProvisional) {
                 node.remove()
-                $provisionalTableEscapeKeys.delete(key)
+                keys.delete(key)
               }
             }
             return false
@@ -180,14 +181,15 @@ export class TablesExtension extends LexxyExtension {
           // Backspace in a provisional escape item returns focus to the table
           // or to the content above it
           editor.registerCommand(KEY_BACKSPACE_COMMAND, (event) => {
-            if ($provisionalTableEscapeKeys.size === 0) return false
+            const keys = $provisionalTableEscapeKeys(editor)
+            if (keys.size === 0) return false
 
             const selection = $getSelection()
             if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
 
             const anchorNode = selection.anchor.getNode()
 
-            for (const key of $provisionalTableEscapeKeys) {
+            for (const key of keys) {
               const provisional = $getNodeByKey(key)
               if (!provisional) continue
 
@@ -204,7 +206,7 @@ export class TablesExtension extends LexxyExtension {
               if (prevSibling && $getWrappedTableChild(prevSibling)) {
                 const tableNode = $getWrappedTableChild(prevSibling)
                 provisional.remove()
-                $provisionalTableEscapeKeys.delete(key)
+                keys.delete(key)
                 const lastRow = tableNode.getLastChild()
                 if (lastRow) lastRow.getLastChild()?.selectEnd()
                 return true
@@ -215,7 +217,7 @@ export class TablesExtension extends LexxyExtension {
                 const tableNode = $getWrappedTableChild(nextSibling)
                 const tableListItem = nextSibling
                 provisional.remove()
-                $provisionalTableEscapeKeys.delete(key)
+                keys.delete(key)
 
                 // Previous sibling of the table's list item
                 const prevOfTable = tableListItem.getPreviousSibling()
@@ -281,7 +283,7 @@ function $handleWrappedBlockEscapeInList(editor, event, direction) {
   } else {
     parentListItem.insertAfter(newItem)
   }
-  $provisionalTableEscapeKeys.add(newItem.getKey())
+  $provisionalTableEscapeKeys(editor).add(newItem.getKey())
   newItem.select()
 
   return true
