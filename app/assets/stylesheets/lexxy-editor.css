@@ -880,9 +880,24 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
        (paragraph, heading, list, code, table, figure) trailing margin
        would double up on that. Flatten it so the quote's footer is tight.
        Applies to any direct child so the rule works for the Notion-style
-       quote-as-container model (blockquote wrapping arbitrary blocks). */
-    > :last-child {
+       quote-as-container model (blockquote wrapping arbitrary blocks).
+       Also flatten when followed by a stray <br> (see below) — without
+       :has(), the <br> becomes :last-child instead of the real content
+       block, leaving the content block's bottom margin visible. */
+    > :last-child,
+    > :has(+ br:last-child) {
       margin-block-end: 0;
+    }
+
+    /* Hide stray <br> elements that appear as direct children of the
+       blockquote during drag-drop in contenteditable. Likely a Lexical
+       reconciler placeholder rather than a model node — $isLineBreakNode
+       doesn't see it. Saved HTML is already clean (exportDOM serializes
+       from the model), so this is a transient render-only artifact.
+       Pair with the :has() rule above so the preceding paragraph also
+       loses its bottom margin. */
+    > br {
+      display: none;
     }
   }
 
