@@ -8,6 +8,12 @@ import AttachmentIcons from "./attachment_icons"
 export class AttachmentControls extends HTMLElement {
   connectedCallback() {
     this.editorElement = this.closest("lexxy-editor")
+    // When a figure containing <lexxy-attachment-controls> is cloned as a
+    // drag ghost or moved outside the editor DOM, the cloned element runs
+    // connectedCallback with no ancestor <lexxy-editor>. Skip setup in that
+    // case so the ghost doesn't throw.
+    if (!this.editorElement) return
+
     this.editor = this.editorElement.editor
     this.classList.add("lexxy-floating-controls")
 
