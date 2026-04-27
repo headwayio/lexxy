@@ -664,6 +664,17 @@ export class BlockDragAndDrop {
     document.addEventListener("pointermove", this.#onPendingDragMove)
     document.addEventListener("pointerup", this.#onPendingDragEnd)
     document.addEventListener("pointercancel", this.#onPendingDragEnd)
+
+    // Register cleanup so that if the editor is destroyed mid-pointerdown
+    // (Turbo morph, modal close, disconnectedCallback race), the pending-drag
+    // listeners don't outlive the instance and fire against stale state.
+    this.#cleanupFns.push(this.#removePendingDragListeners)
+  }
+
+  #removePendingDragListeners = () => {
+    document.removeEventListener("pointermove", this.#onPendingDragMove)
+    document.removeEventListener("pointerup", this.#onPendingDragEnd)
+    document.removeEventListener("pointercancel", this.#onPendingDragEnd)
   }
 
   // While pending: check if we've moved far enough to start a real drag
