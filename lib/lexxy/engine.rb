@@ -87,11 +87,16 @@ module Lexxy
 
         # var() is needed so serialized `color: var(--highlight-N)` survives
         # re-render (the editor's default highlight palette is var-referenced).
-        # Narrow risk surface: host apps that never use the default palette
-        # can remove this line. Caveat: var() arguments (e.g. url() fallbacks)
-        # are not deep-scrubbed by Loofah — rely on DOMPurify's property-level
-        # allowlist (color + background-color only) upstream of persistence.
-        Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
+        # This mutates a gem-level constant used by every Loofah caller in the
+        # process, so guard against re-appending on app reload and deliberately
+        # accept that other callers in the same process will also see var()
+        # pass through their CSS sanitizer. Risk surface: var() arguments
+        # (e.g. url() fallbacks) are not deep-scrubbed by Loofah — rely on
+        # DOMPurify's property-level allowlist (color + background-color only)
+        # upstream of persistence.
+        unless Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS.include?("var")
+          Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
+        end
       end
     end
 
