@@ -21,29 +21,56 @@ module Lexxy
 
     def lexxy_attachment_preview_action(blob)
       link_to rails_blob_path(blob, disposition: :inline),
-              class: "attachment__action", target: "_blank", title: "Open", aria: { label: "Open" } do
+              class: "attachment__action", target: "_blank", rel: "noopener noreferrer",
+              title: "Open", aria: { label: "Open" } do
         lexxy_inline_svg("lexxy/preview.svg")
       end
     end
 
     def lexxy_attachment_download_action(blob)
       link_to url_for(blob),
-              class: "attachment__action", download: blob.filename, title: "Download", aria: { label: "Download" } do
+              class: "attachment__action", download: blob.filename, rel: "noopener noreferrer",
+              title: "Download", aria: { label: "Download" } do
         lexxy_inline_svg("lexxy/download.svg")
       end
     end
 
+    # Max SVG size to inline. Over this threshold, fall back to <img src> —
+    # the file is still downloadable but won't render inline. Prevents a
+    # malicious (or pathological) SVG from OOMing the Ruby process on every
+    # render via blob.download.
+    MAX_INLINE_SVG_BYTES = 512.kilobytes
+
+    # SVG-specific allowlist used to scrub user-uploaded SVG content before
+    # embedding it into the page. Narrower than the full ActionText allowlist
+    # on purpose — this path bypasses ActionText sanitization entirely when
+    # the partial is rendered directly (not via a ActionText::Content pipeline).
+    SVG_ALLOWED_TAGS = %w[
+      svg path circle ellipse line polyline polygon rect g defs use text tspan title desc
+      linearGradient radialGradient stop clipPath mask pattern symbol marker
+    ].freeze
+
+    SVG_ALLOWED_ATTRIBUTES = %w[
+      viewBox xmlns xmlns:xlink version d fill cx cy r rx ry x y x1 y1 x2 y2
+      points transform stroke stroke-width stroke-linecap stroke-linejoin
+      stroke-dasharray stroke-dashoffset stroke-opacity fill-opacity opacity
+      offset stop-color stop-opacity gradientUnits gradientTransform spreadMethod
+      patternUnits patternTransform clip-path mask font-family font-size font-weight
+      text-anchor dominant-baseline preserveAspectRatio width height class id
+    ].freeze
+
     # SVGs are forced to download by ActiveStorage's binary-types list (a
     # security default — SVGs can embed <script>). Embed the SVG markup
-    # directly so the browser renders it; the ActionText sanitizer strips
-    # <script> children before render, and Lexxy::Engine extends the
-    # allowlist to cover common SVG primitives.
+    # directly so the browser renders it. We don't trust the downstream
+    # ActionText sanitizer to run on every render path (the blob partial is
+    # deliberately reusable outside ActionText, per lexxy_blob_partial), so
+    # sanitize the SVG here against a dedicated SVG-only allowlist.
     def lexxy_attachment_image_tag(blob)
-      if blob.content_type == "image/svg+xml"
-        blob.download.sub(/\A<\?xml[^>]*\?>\s*/, "").html_safe
-      else
-        image_tag(url_for(blob))
-      end
+      return image_tag(url_for(blob)) unless blob.content_type == "image/svg+xml"
+      return image_tag(url_for(blob)) if blob.byte_size > MAX_INLINE_SVG_BYTES
+
+      raw_svg = blob.download.sub(/\A<\?xml[^>]*\?>\s*/, "")
+      sanitize(raw_svg, tags: SVG_ALLOWED_TAGS, attributes: SVG_ALLOWED_ATTRIBUTES)
     end
 
     def lexxy_attachment_actions(blob)
