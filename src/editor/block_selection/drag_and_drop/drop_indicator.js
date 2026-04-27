@@ -26,8 +26,20 @@ export class DropIndicator {
   }
 
   show({ top, left, right, gap, depth, listType }) {
-    // Skip if the indicator would barely move — prevents flicker between
-    // adjacent "after A" / "before B" targets at the same depth.
+    // Always update chrome attributes — data-depth and data-listType drive
+    // CSS rules that change the indicator's marker glyph (bullet vs #. vs
+    // hidden circle). Skipping them when top/left barely move leaves the
+    // glyph stale during UL↔OL boundary crossings at the same Y position.
+    this.#element.style.right = `${right}px`
+    this.#element.style.setProperty("--indicator-gap", `${Math.max(0, gap)}px`)
+    this.#element.dataset.depth = depth
+    this.#element.dataset.listType = listType || ""
+    this.#element.classList.add("lexxy-drop-indicator--visible")
+
+    // Skip top/left rewrites if the indicator would barely move — prevents
+    // flicker between adjacent "after A" / "before B" targets at the same
+    // depth. The chrome updates above are idempotent and cheap, so they
+    // happen unconditionally.
     if (this.#lastTop !== null && Math.abs(top - this.#lastTop) < 5 && Math.abs(left - this.#lastLeft) < 5) {
       return
     }
@@ -36,13 +48,6 @@ export class DropIndicator {
 
     this.#element.style.top = `${top}px`
     this.#element.style.left = `${left}px`
-    this.#element.style.right = `${right}px`
-    this.#element.style.setProperty("--indicator-gap", `${Math.max(0, gap)}px`)
-
-    this.#element.dataset.depth = depth
-    this.#element.dataset.listType = listType || ""
-
-    this.#element.classList.add("lexxy-drop-indicator--visible")
   }
 
   hide() {
