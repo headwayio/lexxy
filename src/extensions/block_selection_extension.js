@@ -1443,7 +1443,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           t.setStyle(getCSSFromStyleObject(existing))
         }
       }
-    }, { tag: "history-push" })
+    }, { tag: HISTORY_PUSH_TAG })
 
     queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
 
@@ -2495,7 +2495,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       // Lexical's copy-on-write may have changed keys during the update.
       try { this.#wrappedOrigins.resync(this.#selectedBlockKeys) } catch (_) { /* nodes may have been removed */ }
 
-    }, { tag: "history-push" })
+    }, { tag: HISTORY_PUSH_TAG })
     // After commit, resolve any tentative outer keys to their post-transform
     // real keys. Without this, a second Cmd+Shift+Up/Down on the same element
     // freezes because #filterToRootKeys can't find the stale key.
