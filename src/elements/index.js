@@ -33,6 +33,14 @@ export function defineElements() {
   })
 
   if (Lexxy.global.get("previewModal")) {
-    document.body.appendChild(document.createElement("lexxy-preview-modal"))
+    if (document.body) {
+      document.body.appendChild(document.createElement("lexxy-preview-modal"))
+    } else {
+      // Script was loaded in <head> without defer/module; defer body append
+      // until the body parses, otherwise document.body is null and throws.
+      document.addEventListener("DOMContentLoaded", () => {
+        document.body.appendChild(document.createElement("lexxy-preview-modal"))
+      }, { once: true })
+    }
   }
 }
