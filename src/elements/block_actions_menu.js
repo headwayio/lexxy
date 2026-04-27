@@ -1,5 +1,6 @@
 import ToolbarIcons from "./toolbar_icons"
 import { VIEWPORT_PADDING } from "../editor/block_helpers"
+import { createElement } from "../helpers/html_helper"
 import { getLastUsedColor, saveLastUsedColor } from "../helpers/storage_helper"
 
 const PALETTE_ICON = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -268,49 +269,78 @@ export class BlockActionsMenu extends HTMLElement {
     const panel = this.querySelector("[data-panel=\"color\"]")
     if (!panel) return
 
-    let html = ""
+    // Build via DOM API rather than innerHTML string interpolation. `last`
+    // comes from localStorage (persisted across page loads) — a prior
+    // same-origin XSS or a host app that writes user-controlled values to
+    // that key would otherwise persist a payload that fires every time
+    // this menu is built. textContent + dataset + style.setProperty escape
+    // untrusted values by construction.
+    panel.replaceChildren()
 
     const last = getLastUsedColor()
     if (last) {
-      const swatchStyle = last.style === "background-color"
-        ? `background-color:${last.value}`
-        : `color:${last.value}`
-      const swatchContent = last.style === "color" ? "A" : ""
-      html += `<div class="lexxy-block-actions__color-label">Last used</div>
-        <button type="button" role="menuitem" class="lexxy-block-actions__item" data-action="color" data-style="${last.style}" data-value="${last.value}">
-          <span class="lexxy-block-actions__color-swatch" style="${swatchStyle}">${swatchContent}</span>
-          <span class="lexxy-block-actions__label">${last.label}</span>
-          <span class="lexxy-block-actions__shortcut">⌘⇧H</span>
-        </button>
-        <div class="lexxy-block-actions__divider"></div>`
+      panel.appendChild(this.#colorSectionLabel("Last used"))
+      panel.appendChild(this.#colorButton({
+        style: last.style,
+        value: last.value,
+        label: last.label,
+        shortcut: "⌘⇧H"
+      }))
+      panel.appendChild(createElement("div", { className: "lexxy-block-actions__divider" }))
     }
 
     if (colorConfig.color?.length) {
-      html += "<div class=\"lexxy-block-actions__color-label\">Text color</div>"
-      html += colorConfig.color.map(c => `
-        <button type="button" role="menuitem" class="lexxy-block-actions__item" data-action="color" data-style="color" data-value="${c}">
-          <span class="lexxy-block-actions__color-swatch" style="color:${c}">A</span>
-          <span class="lexxy-block-actions__label">${colorLabel(c, "color")}</span>
-        </button>
-      `).join("")
+      panel.appendChild(this.#colorSectionLabel("Text color"))
+      for (const c of colorConfig.color) {
+        panel.appendChild(this.#colorButton({ style: "color", value: c, label: colorLabel(c, "color") }))
+      }
     }
 
     if (colorConfig["background-color"]?.length) {
-      html += "<div class=\"lexxy-block-actions__color-label\">Background color</div>"
-      html += colorConfig["background-color"].map(c => `
-        <button type="button" role="menuitem" class="lexxy-block-actions__item" data-action="color" data-style="background-color" data-value="${c}">
-          <span class="lexxy-block-actions__color-swatch" style="background-color:${c}"></span>
-          <span class="lexxy-block-actions__label">${colorLabel(c, "background-color")}</span>
-        </button>
-      `).join("")
+      panel.appendChild(this.#colorSectionLabel("Background color"))
+      for (const c of colorConfig["background-color"]) {
+        panel.appendChild(this.#colorButton({ style: "background-color", value: c, label: colorLabel(c, "background-color") }))
+      }
     }
 
-    html += `<div class="lexxy-block-actions__divider"></div>
-      <button type="button" role="menuitem" data-action="remove-color" class="lexxy-block-actions__item">
-        <span class="lexxy-block-actions__label">Remove color</span>
-      </button>`
+    panel.appendChild(createElement("div", { className: "lexxy-block-actions__divider" }))
 
-    panel.innerHTML = html
+    const removeBtn = createElement("button", {
+      type: "button",
+      role: "menuitem",
+      className: "lexxy-block-actions__item"
+    })
+    removeBtn.dataset.action = "remove-color"
+    const removeLabel = createElement("span", { className: "lexxy-block-actions__label", textContent: "Remove color" })
+    removeBtn.appendChild(removeLabel)
+    panel.appendChild(removeBtn)
+  }
+
+  #colorSectionLabel(text) {
+    return createElement("div", { className: "lexxy-block-actions__color-label", textContent: text })
+  }
+
+  #colorButton({ style, value, label, shortcut }) {
+    const button = createElement("button", {
+      type: "button",
+      role: "menuitem",
+      className: "lexxy-block-actions__item"
+    })
+    button.dataset.action = "color"
+    button.dataset.style = style
+    button.dataset.value = value
+
+    const swatch = createElement("span", { className: "lexxy-block-actions__color-swatch" })
+    swatch.style.setProperty(style, value)
+    if (style === "color") swatch.textContent = "A"
+    button.appendChild(swatch)
+
+    button.appendChild(createElement("span", { className: "lexxy-block-actions__label", textContent: label }))
+
+    if (shortcut) {
+      button.appendChild(createElement("span", { className: "lexxy-block-actions__shortcut", textContent: shortcut }))
+    }
+    return button
   }
 
   #position(anchorRect) {
