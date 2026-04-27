@@ -83,7 +83,7 @@ function buildHeader({ downloadHref, fileName, caption, fileSize }) {
   const downloadLink = createElement("a", {
     className: "lexxy-preview-modal__download",
     href: downloadHref,
-    download: fileName || true
+    download: fileName || ""
   })
   downloadLink.innerHTML = AttachmentIcons.download
   downloadLink.appendChild(document.createTextNode(" Download"))
@@ -178,7 +178,7 @@ function buildGenericFallback({ src, fileName, caption }) {
   wrapper.appendChild(createElement("a", {
     className: "lexxy-preview-modal__generic-download",
     href: src,
-    download: fileName || true,
+    download: fileName || "",
     textContent: "Download"
   }))
 
