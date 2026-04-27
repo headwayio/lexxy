@@ -1129,8 +1129,12 @@ export class BlockDragAndDrop {
 
   // Build an array of { depth, pixelLeft } snap points from real DOM measurements.
   // Each point represents a valid nesting level the dragged block can land at.
-  // minDepth prevents list items from snapping to root level (depth 0).
-  #getDropSnapPoints(blockElement, position, root, minDepth = 1) {
+  // Callers filter the returned array by their own allowed minimum depth —
+  // the "before" case permits depth 0 for all draggables, and the "after"
+  // case permits depth 0 only for wrapped blocks and non-list content.
+  // Defaulting to 0 here means the returned array always contains every
+  // candidate; callers re-filter so nothing unintended lands at root.
+  #getDropSnapPoints(blockElement, position, root, minDepth = 0) {
     const points = []
     const seen = new Set()
 
