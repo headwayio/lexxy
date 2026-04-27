@@ -1,4 +1,4 @@
-import { $createParagraphNode, $getSelection, $isElementNode, $isRangeSelection, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, ParagraphNode, defineExtension } from "lexical"
+import { $createParagraphNode, $getSelection, $isDecoratorNode, $isElementNode, $isRangeSelection, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, ParagraphNode, defineExtension } from "lexical"
 import { CodeNode } from "@lexical/code"
 import { ListItemNode } from "@lexical/list"
 import { $isQuoteNode, QuoteNode } from "@lexical/rich-text"
@@ -105,10 +105,21 @@ function $wrapInlineQuoteChildren(quoteNode) {
   }
 
   // Group consecutive inline siblings; flush each run into its own ParagraphNode.
+  // Classification:
+  //   - TextNode and other leaf nodes: inline (wrap in paragraph)
+  //   - Inline ElementNodes (LinkNode, AutoLinkNode, MarkNode, …): inline
+  //   - Block ElementNodes (ParagraphNode, HeadingNode, …): block separator
+  //   - DecoratorNodes (attachments, images, HRs, embeds): block — leave
+  //     as direct children of the QuoteNode. Wrapping them in a Paragraph
+  //     fails Lexical reconciliation (error #14) because block-rendered
+  //     decorator figures aren't valid paragraph children.
   let run = []
   const runs = []
   for (const child of children) {
-    if (!$isElementNode(child)) {
+    const isInline = $isDecoratorNode(child)
+      ? false
+      : ($isElementNode(child) ? child.isInline() : true)
+    if (isInline) {
       run.push(child)
     } else {
       if (run.length > 0) { runs.push(run); run = [] }
