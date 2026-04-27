@@ -1,4 +1,4 @@
-import { $createParagraphNode, $getSelection, $isDecoratorNode, $isElementNode, $isRangeSelection, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, ParagraphNode, defineExtension } from "lexical"
+import { $createParagraphNode, $getSelection, $isDecoratorNode, $isElementNode, $isLineBreakNode, $isRangeSelection, $splitNode, COMMAND_PRIORITY_HIGH, COMMAND_PRIORITY_NORMAL, INSERT_PARAGRAPH_COMMAND, KEY_ARROW_DOWN_COMMAND, ParagraphNode, defineExtension } from "lexical"
 import { CodeNode } from "@lexical/code"
 import { ListItemNode } from "@lexical/list"
 import { $isQuoteNode, QuoteNode } from "@lexical/rich-text"
@@ -97,6 +97,17 @@ function $splitQuoteNode(node, paragraph) {
 // empty ParagraphNode so Enter has a paragraph to split. Idempotent: if every
 // child is already a block-level element, this is a no-op.
 function $wrapInlineQuoteChildren(quoteNode) {
+  // Strip stray LineBreakNodes that appear as direct children. The browser
+  // inserts a literal <br> into a <blockquote> as a side effect of certain
+  // drag-and-drop / paste flows in contenteditable; Lexical accepts it as a
+  // LineBreakNode child of the QuoteNode. Soft breaks belong inside a
+  // paragraph (Shift+Enter creates them there), so a LineBreakNode at the
+  // quote-direct-child level is always a structural artifact — remove it
+  // rather than wrapping it in an empty paragraph.
+  for (const child of quoteNode.getChildren()) {
+    if ($isLineBreakNode(child)) child.remove()
+  }
+
   const children = quoteNode.getChildren()
 
   if (children.length === 0) {
