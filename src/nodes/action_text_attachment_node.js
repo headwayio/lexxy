@@ -11,14 +11,38 @@ import { parseBoolean } from "../helpers/string_helper"
 // resulting object URL across every node that points at the same blob.
 // Without the cache every createDOM() would leak a new object URL.
 const SVG_OBJECT_URL_BY_SRC = new Map()
+const SVG_RESOLVED_OBJECT_URLS = new Set()
+
+// Revoke on page unload so object URLs don't survive across SPA navigations
+// or leak into browser memory beyond the document's lifetime.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    for (const url of SVG_RESOLVED_OBJECT_URLS) URL.revokeObjectURL(url)
+    SVG_RESOLVED_OBJECT_URLS.clear()
+    SVG_OBJECT_URL_BY_SRC.clear()
+  })
+}
 
 function cachedSvgObjectUrl(src) {
   const cached = SVG_OBJECT_URL_BY_SRC.get(src)
   if (cached) return cached
 
   const promise = fetch(src)
-    .then(response => response.blob())
-    .then(blob => URL.createObjectURL(new Blob([ blob ], { type: "image/svg+xml" })))
+    .then(response => {
+      if (!response.ok) throw new Error(`SVG fetch failed: ${response.status}`)
+      return response.blob()
+    })
+    .then(blob => {
+      const objectUrl = URL.createObjectURL(new Blob([ blob ], { type: "image/svg+xml" }))
+      SVG_RESOLVED_OBJECT_URLS.add(objectUrl)
+      return objectUrl
+    })
+    .catch(error => {
+      // Evict the rejected promise so a subsequent render retries the fetch
+      // instead of reusing the cached failure forever.
+      SVG_OBJECT_URL_BY_SRC.delete(src)
+      throw error
+    })
 
   SVG_OBJECT_URL_BY_SRC.set(src, promise)
   return promise
