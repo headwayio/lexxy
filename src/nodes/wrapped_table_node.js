@@ -1,11 +1,22 @@
 import { TableNode } from "@lexical/table"
 import { $createListItemNode, $isListItemNode } from "@lexical/list"
-import { $getNodeByKey } from "lexical"
+import { $getEditor, $getNodeByKey } from "lexical"
 import { createElement } from "../helpers/html_helper"
 
 // Tracks provisional list items created when arrowing out of a table in a list.
-// These are auto-removed when the user navigates away without typing.
-export const $provisionalTableEscapeKeys = new Set()
+// Keyed by editor so multiple <lexxy-editor> instances on the same page don't
+// share state — a selection-change in editor B used to silently evict editor
+// A's pending keys because $getNodeByKey resolves per-editor.
+const PROVISIONAL_KEYS_BY_EDITOR = new WeakMap()
+
+export function $provisionalTableEscapeKeys(editor = $getEditor()) {
+  let keys = PROVISIONAL_KEYS_BY_EDITOR.get(editor)
+  if (!keys) {
+    keys = new Set()
+    PROVISIONAL_KEYS_BY_EDITOR.set(editor, keys)
+  }
+  return keys
+}
 
 export class WrappedTableNode extends TableNode {
   $config() {
@@ -57,14 +68,15 @@ export class WrappedTableNode extends TableNode {
 }
 
 export function $cleanupProvisionalEscapeItems() {
-  for (const key of [ ...$provisionalTableEscapeKeys ]) {
+  const keys = $provisionalTableEscapeKeys()
+  for (const key of [ ...keys ]) {
     const node = $getNodeByKey(key)
     if (!node || node.getTextContentSize() > 0) {
-      $provisionalTableEscapeKeys.delete(key)
+      keys.delete(key)
       continue
     }
     node.remove()
-    $provisionalTableEscapeKeys.delete(key)
+    keys.delete(key)
   }
 }
 
