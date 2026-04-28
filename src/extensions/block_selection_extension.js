@@ -3434,25 +3434,29 @@ export class BlockSelectionExtension extends LexxyExtension {
         if (allListItems && $isListNode(firstParent)) {
           this.#enterGroupIntoQuote(group, firstParent, target, direction)
         } else {
+          // Capture old keys BEFORE detaching. Lexical clones each node via
+          // getWritable() during remove()/append() — their __key may change
+          // during the move. The clone is what lands in the tree; the
+          // original instance still in #selectedBlockKeys would orphan its
+          // selection class. Sync via #rewriteGroupKeysAfterMove using
+          // node.getLatest(). DecoratorNodes (attachments) are especially
+          // sensitive because their isInline() flips when parent changes
+          // from root → quote, which can amplify the rendering churn.
+          const oldKeys = group.map(g => g.node.getKey())
           for (let i = group.length - 1; i >= 0; i--) {
             group[i].node.remove()
           }
           if (isUp) {
-            for (let i = 0; i < group.length; i++) {
-              target.append(group[i].node)
-            }
+            for (let i = 0; i < group.length; i++) target.append(group[i].node)
           } else {
             const firstChild = target.getFirstChild()
             if (firstChild) {
-              for (let i = 0; i < group.length; i++) {
-                firstChild.insertBefore(group[i].node)
-              }
+              for (let i = 0; i < group.length; i++) firstChild.insertBefore(group[i].node)
             } else {
-              for (let i = 0; i < group.length; i++) {
-                target.append(group[i].node)
-              }
+              for (let i = 0; i < group.length; i++) target.append(group[i].node)
             }
           }
+          this.#rewriteGroupKeysAfterMove(group, oldKeys)
         }
       } else {
         // Root-level swap with a non-list sibling
@@ -3718,6 +3722,13 @@ export class BlockSelectionExtension extends LexxyExtension {
     const edge = isUp ? quote.getLastChild() : quote.getFirstChild()
     const targetList = edge && $isListNode(edge) && edge.getListType() === listType ? edge : null
 
+    // Capture old keys before any move so we can rewrite selection /
+    // anchor / focus / wrappedOrigins to the post-COW keys returned by
+    // node.getLatest() after the moves complete. Lexical clones nodes
+    // via getWritable() during remove()/append(); the JS reference still
+    // points at the original instance with its (now stale) key.
+    const oldKeys = group.map(g => g.node.getKey())
+
     if (targetList) {
       // Merge items into the existing list.
       if (isUp) {
@@ -3740,6 +3751,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
       this.#cleanupEmptyList(currentList)
+      this.#rewriteGroupKeysAfterMove(group, oldKeys)
     } else {
       // No adjacent same-type list in the quote — place each group item at
       // the appropriate edge of the quote. Movement-wrapped LIs whose only
@@ -3781,7 +3793,12 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
       }
 
-      for (const { node, wrapper } of group) {
+      // Track which group entries took the unwrap path so we don't double-
+      // rewrite their selection keys (the unwrap branch already handles its
+      // own key transition LI → inner block).
+      const unwrappedIndices = new Set()
+      for (let gi = 0; gi < group.length; gi++) {
+        const { node, wrapper } = group[gi]
         const innerBlock = this.#movementWrappedInnerBlockToUnwrap(node, wrapper)
         if (innerBlock) {
           // Unwrap: extract the inner paragraph/heading (or wrap loose
@@ -3806,6 +3823,7 @@ export class BlockSelectionExtension extends LexxyExtension {
           // Remember this paragraph was once a movement-LI so a subsequent
           // exit out of the quote re-wraps it as a movement-tracked LI.
           this.#unwrappedFromMovementKeys.add(newKey)
+          unwrappedIndices.add(gi)
         } else {
           // Keep this item as a list item — needs a list inside the quote.
           const list = ensureList()
@@ -3816,6 +3834,37 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
 
       this.#cleanupEmptyList(currentList)
+      // Rewrite keys for entries that DIDN'T take the unwrap path. The
+      // unwrap path already migrated selection from the LI key to the
+      // inner-block key; for kept-as-LI entries we still need the
+      // post-COW key sync.
+      this.#rewriteGroupKeysAfterMove(group, oldKeys, unwrappedIndices)
+    }
+  }
+
+  // After a group move that performed remove() + append() / insertBefore()
+  // on each node, rewrite #selectedBlockKeys / #anchorKey / #focusKey /
+  // wrappedOrigins from each node's old key to its post-COW key. Lexical
+  // clones nodes via getWritable() during tree mutations; the JS reference
+  // we hold (group[i].node) keeps the original instance, so calling
+  // .getLatest() follows the COW chain to the live node and .getKey() on
+  // it returns the new identity. `skipIndices` lets a caller exclude
+  // entries that already had bespoke key migration (e.g., LI → inner-block
+  // unwrap into a quote).
+  #rewriteGroupKeysAfterMove(group, oldKeys, skipIndices = null) {
+    for (let i = 0; i < group.length; i++) {
+      if (skipIndices && skipIndices.has(i)) continue
+      const oldKey = oldKeys[i]
+      const node = group[i].node
+      const newKey = node.getLatest ? node.getLatest().getKey() : node.getKey()
+      if (oldKey === newKey) continue
+      if (this.#selectedBlockKeys.has(oldKey)) {
+        this.#selectedBlockKeys.delete(oldKey)
+        this.#selectedBlockKeys.add(newKey)
+      }
+      if (this.#anchorKey === oldKey) this.#anchorKey = newKey
+      if (this.#focusKey === oldKey) this.#focusKey = newKey
+      this.#wrappedOrigins.replaceKey(oldKey, newKey)
     }
   }
 
