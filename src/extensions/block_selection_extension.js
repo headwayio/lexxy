@@ -4595,9 +4595,16 @@ export class BlockSelectionExtension extends LexxyExtension {
       const parentList = listParent.getParent()
       const isTargetRootLevel = parentList && !$isListItemNode(parentList.getParent())
 
-      // Wrapped blocks skip root level entirely — they either nest into
-      // the adjacent root-level sibling or exit the list as standalone elements.
-      if (isTargetRootLevel && this.#wrappedOrigins.isWrapped(node)) {
+      // User-wrapped blocks (Turn-into headings/quotes/etc.) skip the
+      // root-level sibling-between position when promoting from a nested
+      // list — they either nest into the adjacent root-level sibling
+      // (continuing traversal) or exit the list as a standalone block.
+      // Movement-wrapped items (transient attachments/tables/etc. drifting
+      // through a list) DO want the normal alternation: nest under
+      // sibling N, promote to sibling-between N and N+1, nest under N+1,
+      // matching what a regular non-wrapped block does so the user can
+      // pause at every position. So gate on isUser, not isWrapped.
+      if (isTargetRootLevel && this.#wrappedOrigins.isUser(node)) {
         this.#promoteWrappedBlockThroughRoot(node, currentList, listParent, parentList, isDown)
         return
       }
