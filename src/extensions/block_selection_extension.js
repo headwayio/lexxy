@@ -4909,13 +4909,20 @@ export class BlockSelectionExtension extends LexxyExtension {
       return
     }
 
-    // Decorator nodes (HR, images): Lexical keeps separator paragraphs between
-    // adjacent decorators. When moving a decorator, skip over any empty separator
-    // paragraphs to reach the real target position.
-    // If the target is a ListNode, fall through to the list-handling logic below.
-    if ($isDecoratorNode(node)) {
+    // Lexical inserts empty separator paragraphs (ProvisionalParagraphNode)
+    // around any block that doesn't accept text on its boundary — both
+    // DecoratorNodes (HR, images, attachments) AND ElementNodes that
+    // override canInsertTextBefore/After to return false (e.g. WrappedTableNode).
+    // Without skipping those separators, moving a Table past an Attachment
+    // (or vice versa) only swaps with the invisible separator, then Lexical
+    // re-inserts a fresh separator on the other side, leaving the user
+    // visually stuck. If the target is a ListNode, fall through to the
+    // list-handling logic below.
+    const nodeFlankedByProvisionals = $isDecoratorNode(node) ||
+      ($isElementNode(node) && !node.canInsertTextBefore() && !node.canInsertTextAfter())
+    if (nodeFlankedByProvisionals) {
       let target = sibling
-      // Skip empty separator paragraphs between decorator nodes
+      // Skip empty separator paragraphs to reach the real target position
       while (target && $isParagraphNode(target) && target.getTextContentSize() === 0) {
         const beyond = isDown ? target.getNextSibling() : target.getPreviousSibling()
         if (beyond) {
