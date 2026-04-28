@@ -3884,6 +3884,17 @@ export class BlockSelectionExtension extends LexxyExtension {
     const children = node.getChildren()
     if (children.length === 0) return null
 
+    // Block-rendered DecoratorNodes (attachments, images, HRs, embeds) MUST
+    // stay wrapped — never unwrap them into a quote child or wrap them in
+    // a paragraph. <figure> can't live inside <p>; the browser auto-closes
+    // the paragraph and the figure ends up as a sibling, leaving the
+    // empty paragraph in #selectedBlockKeys without the actual decorator.
+    // Visual symptom: the attachment looks "deselected" while peers
+    // (heading, paragraph) keep their highlight. Same misclassification as
+    // $wrapInlineQuoteChildren — DecoratorNode is a leaf, so the
+    // !$isElementNode predicate alone treats it as inline content.
+    if (children.some(c => $isDecoratorNode(c))) return null
+
     // Single block child (paragraph or heading): return it directly.
     if (children.length === 1) {
       const only = children[0]
