@@ -1579,7 +1579,7 @@ export class BlockSelectionExtension extends LexxyExtension {
                 node.append(child)
               }
               wrappedChild.remove()
-              this.#wrappedOrigins.untrack(node.getKey())
+              this.#wrappedOrigins.untrack(node)
             }
             newSelectedKeys.add(node.getKey())
           } else {
@@ -1618,7 +1618,7 @@ export class BlockSelectionExtension extends LexxyExtension {
               list.append(listItem)
               parent.replace(list)
               listItem.append(node)
-              this.#wrappedOrigins.trackUser(listItem.getKey())
+              this.#wrappedOrigins.trackUser(listItem)
               newSelectedKeys.add(listItem.getKey())
               replacedKeys.add(key)
             } else {
@@ -1627,7 +1627,7 @@ export class BlockSelectionExtension extends LexxyExtension {
               list.append(listItem)
               node.replace(list)
               listItem.append(node)
-              this.#wrappedOrigins.trackUser(listItem.getKey())
+              this.#wrappedOrigins.trackUser(listItem)
               newSelectedKeys.add(listItem.getKey())
               replacedKeys.add(key)
             }
@@ -1679,7 +1679,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             list.append(listItem)
             quoteParent.replace(list)
             listItem.append(node)
-            this.#wrappedOrigins.trackUser(listItem.getKey())
+            this.#wrappedOrigins.trackUser(listItem)
             newSelectedKeys.add(listItem.getKey())
             replacedKeys.add(key)
           } else if ($isParagraphNode(node)) {
@@ -1698,7 +1698,7 @@ export class BlockSelectionExtension extends LexxyExtension {
             list.append(listItem)
             node.replace(list)
             listItem.append(node)
-            this.#wrappedOrigins.trackUser(listItem.getKey())
+            this.#wrappedOrigins.trackUser(listItem)
             newSelectedKeys.add(listItem.getKey())
             replacedKeys.add(key)
           }
@@ -1840,7 +1840,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Track as a user-wrapped block (persists through arrow movement,
     // only outdented via Shift+Tab).
-    this.#wrappedOrigins.trackUser(node.getKey())
+    this.#wrappedOrigins.trackUser(node)
   }
 
   // Extract a list item from its parent list, convert it to the target
@@ -2723,6 +2723,12 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
         if (this.#anchorKey === tentativeOuterKey) this.#anchorKey = realKey
         if (this.#focusKey === tentativeOuterKey) this.#focusKey = realKey
+        // Transfer wrappedOrigins membership too. Without this, a freshly
+        // wrapped listItem's movement-tracking key is dropped by the resync
+        // below, and isUser() falls through to "treat as user-wrapped" — so
+        // a transient pass-through (table moving across a list) never
+        // unwraps on exit.
+        this.#wrappedOrigins.replaceKey(tentativeOuterKey, realKey)
       }
 
       // Rebuild wrappedOrigins so its internal key sets match the live tree
@@ -4017,7 +4023,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
 
       if (wasMovement) {
-        this.#wrappedOrigins.trackMovement(li.getKey())
+        this.#wrappedOrigins.trackMovement(li)
         this.#unwrappedFromMovementKeys.delete(oldKey)
       }
       placed.push({ oldKey, newKey: li.getKey() })
@@ -4290,7 +4296,7 @@ export class BlockSelectionExtension extends LexxyExtension {
         }
 
         if (isWrapped) {
-          this.#wrappedOrigins.trackMovement(listItem.getKey())
+          this.#wrappedOrigins.trackMovement(listItem)
           const newKey = listItem.getKey()
           if (this.#selectedBlockKeys.has(oldKey)) {
             this.#selectedBlockKeys.delete(oldKey)
@@ -5004,7 +5010,7 @@ export class BlockSelectionExtension extends LexxyExtension {
 
         // Track this as a movement-wrapped item — it drifted into a list
         // via arrow movement, so it should auto-unwrap on the way out.
-        this.#wrappedOrigins.trackMovement(listItem.getKey())
+        this.#wrappedOrigins.trackMovement(listItem)
 
         // Update selection to track the wrapper ListItemNode.
         // NOTE: listItem.getKey() here is only valid inside this update.

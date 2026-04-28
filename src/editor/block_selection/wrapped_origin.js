@@ -11,52 +11,144 @@ import { getNodeKeyFromElement } from "../block_helpers"
 //   movement-wrapped — auto-created during group moves, auto-unwraps on exit
 //
 // Lexical node keys can change under us via copy-on-write. We defend
-// against that with two mechanisms:
+// against that with three mechanisms:
 //
-//   1. syncDOMAttributes() writes data-block-movement-wrapped to each
+//   1. Per-tracked listItem we ALSO record its inner content node's key
+//      (#movementInnerKeys / #userInnerKeys). The inner key is durable
+//      across listItem copy-on-writes — the inner block's parent changes,
+//      but the inner block itself is not cloned. isUser/isWrapped fall
+//      back to the inner-key lookup when the listItem key has gone stale.
+//   2. syncDOMAttributes() writes data-block-movement-wrapped to each
 //      tracked element with its origin. If a key changes, the attribute
 //      survives and we recover the new key from the DOM on the next sync.
-//   2. resync(selectedKeys) rebuilds both Sets filtering by
+//   3. resync(selectedKeys) rebuilds both Sets filtering by
 //      $getNodeByKey, preserving origin for keys still resolvable.
 export class WrappedOriginTracker {
   #userKeys = new Set()
   #movementKeys = new Set()
+  // Inner-content keys keyed by origin. Filled when a tracker call
+  // receives a listItem node (vs. a bare key); used as a stable fallback
+  // when the listItem's own key has been invalidated by copy-on-write.
+  #userInnerKeys = new Set()
+  #movementInnerKeys = new Set()
   #editor
 
   constructor(editor) {
     this.#editor = editor
   }
 
-  trackUser(key) {
-    this.#userKeys.add(key)
-    this.#movementKeys.delete(key)
+  trackUser(keyOrNode) {
+    const { key, innerKey } = this.#resolve(keyOrNode)
+    if (key) {
+      this.#userKeys.add(key)
+      this.#movementKeys.delete(key)
+    }
+    if (innerKey) {
+      this.#userInnerKeys.add(innerKey)
+      this.#movementInnerKeys.delete(innerKey)
+    }
   }
 
-  trackMovement(key) {
+  trackMovement(keyOrNode) {
+    const { key, innerKey } = this.#resolve(keyOrNode)
     // Don't demote user-wrapped to movement-wrapped. If a user-wrapped item
     // happens to travel through movement code paths, preserve its origin.
-    if (this.#userKeys.has(key)) return
-    this.#movementKeys.add(key)
+    if (key && this.#userKeys.has(key)) return
+    if (innerKey && this.#userInnerKeys.has(innerKey)) return
+    if (key) this.#movementKeys.add(key)
+    if (innerKey) this.#movementInnerKeys.add(innerKey)
   }
 
-  untrack(key) {
-    this.#userKeys.delete(key)
-    this.#movementKeys.delete(key)
+  untrack(keyOrNode) {
+    const resolved = this.#resolve(keyOrNode)
+    const key = resolved.key
+    let innerKey = resolved.innerKey
+    // When called with a bare key, try to recover the inner key from the
+    // editor state so untrack also cleans the inner-key fallback. Skipped
+    // silently if the key has gone stale — caller-side cleanup happens
+    // again on the next resync().
+    if (innerKey == null && typeof keyOrNode === "string") {
+      try {
+        const node = $getNodeByKey(keyOrNode)
+        if (node) innerKey = this.#firstNonStructuralChild(node)?.getKey() ?? null
+      } catch { /* stale key */ }
+    }
+    if (key) {
+      this.#userKeys.delete(key)
+      this.#movementKeys.delete(key)
+    }
+    if (innerKey) {
+      this.#userInnerKeys.delete(innerKey)
+      this.#movementInnerKeys.delete(innerKey)
+    }
   }
 
-  // True iff `key` is currently in the movement-wrapped set (direct key
-  // match only; no DOM attribute or content-heuristic fallback). Call
-  // before untrack() when you need to know whether an unwrap is
-  // "releasing" a movement-wrapped item.
-  hasMovementKey(key) {
-    return this.#movementKeys.has(key)
+  // Pull (key, innerKey) out of either a key string or a ListItemNode.
+  // For a key string we can't derive the inner — caller-supplied inner
+  // tracking only kicks in when a node is passed.
+  #resolve(keyOrNode) {
+    if (keyOrNode == null) return { key: null, innerKey: null }
+    if (typeof keyOrNode === "string") return { key: keyOrNode, innerKey: null }
+    const key = keyOrNode.getKey()
+    let innerKey = null
+    try {
+      const inner = this.#firstNonStructuralChild(keyOrNode)
+      if (inner) innerKey = inner.getKey()
+    } catch { /* read errors swallowed; inner tracking is opportunistic */ }
+    return { key, innerKey }
+  }
+
+  // The "wrapped block" is the listItem's first non-structural child —
+  // the heading/table/code/HR the listItem was created to hold. Exclude
+  // ListNode children (those are the list-item's own nested-list wrapper).
+  #firstNonStructuralChild(listItemNode) {
+    if (!listItemNode || !listItemNode.getChildren) return null
+    for (const child of listItemNode.getChildren()) {
+      if (!$isListNode(child)) return child
+    }
+    return null
+  }
+
+  // Transfer an origin entry from oldKey to newKey, preserving its origin.
+  // Used by the post-update key-resolution pass when Lexical's
+  // node-replacement rules (e.g. ListItemNode → EarlyEscapeListItemNode)
+  // assign a fresh key to a listItem we just trackMovement-ed. Without
+  // this, the stale key gets dropped by resync() and the new key falls
+  // through to the "treat as user-wrapped" fallback in isUser().
+  replaceKey(oldKey, newKey) {
+    if (oldKey === newKey) return
+    if (this.#userKeys.has(oldKey)) {
+      this.#userKeys.delete(oldKey)
+      this.#userKeys.add(newKey)
+    }
+    if (this.#movementKeys.has(oldKey)) {
+      this.#movementKeys.delete(oldKey)
+      this.#movementKeys.add(newKey)
+    }
+  }
+
+  // True iff `keyOrNode` is currently in the movement-wrapped set. When
+  // passed a node, also consults the inner-content-key fallback so this
+  // survives copy-on-write of the listItem. Call before untrack() when
+  // you need to know whether an unwrap is "releasing" a movement-wrapped
+  // item.
+  hasMovementKey(keyOrNode) {
+    if (typeof keyOrNode === "string") return this.#movementKeys.has(keyOrNode)
+    if (keyOrNode == null) return false
+    if (this.#movementKeys.has(keyOrNode.getKey())) return true
+    const inner = this.#firstNonStructuralChild(keyOrNode)
+    return !!inner && this.#movementInnerKeys.has(inner.getKey())
   }
 
   isUser(listItemNode) {
     const key = listItemNode.getKey()
+    const inner = this.#firstNonStructuralChild(listItemNode)
+    const innerKey = inner ? inner.getKey() : null
     if (this.#userKeys.has(key)) return true
+    if (innerKey && this.#userInnerKeys.has(innerKey)) return true
     if (this.#matchesKeySet(listItemNode, this.#userKeys)) return true
     if (this.#movementKeys.has(key)) return false
+    if (innerKey && this.#movementInnerKeys.has(innerKey)) return false
     if (this.#matchesKeySet(listItemNode, this.#movementKeys)) return false
     // Fallback: any wrapped block we can't classify is treated as user-wrapped.
     // Reasoning: documents loaded from storage have no origin marker, but
@@ -73,6 +165,9 @@ export class WrappedOriginTracker {
   isWrapped(listItemNode) {
     const key = listItemNode.getKey()
     if (this.#userKeys.has(key) || this.#movementKeys.has(key)) return true
+    const inner = this.#firstNonStructuralChild(listItemNode)
+    const innerKey = inner ? inner.getKey() : null
+    if (innerKey && (this.#userInnerKeys.has(innerKey) || this.#movementInnerKeys.has(innerKey))) return true
 
     // Content heuristic: a single block-level child (heading, code block, table,
     // HR, etc.) means this list item is wrapping a non-list block that entered
