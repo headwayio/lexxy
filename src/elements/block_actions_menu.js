@@ -61,7 +61,7 @@ export class BlockActionsMenu extends HTMLElement {
     this.#removeScrollResizeListeners()
   }
 
-  show({ anchorElement, anchorRect, editorElement, onAction, onClose, blockRestriction = null, canUnwrapFromQuote = false, unwrapListType = null }) {
+  show({ anchorElement, anchorRect, editorElement, onAction, onClose, blockRestriction = null, canUnwrapFromQuote = false, unwrapListType = null, isPlainParagraph = false }) {
     this.#onAction = onAction
     this.#onClose = onClose
     this.#anchorElement = anchorElement || null
@@ -74,7 +74,7 @@ export class BlockActionsMenu extends HTMLElement {
       this.#buildColorSubmenu(colorConfig)
     }
 
-    this.#applyBlockRestrictions(blockRestriction, { listType: unwrapListType, inQuote: canUnwrapFromQuote })
+    this.#applyBlockRestrictions(blockRestriction, { listType: unwrapListType, inQuote: canUnwrapFromQuote, isPlainParagraph })
 
     // Contextual top-level actions. Only visible when the focused block
     // actually has a wrapper we can remove — a blockquote wrapping non-text
@@ -116,11 +116,19 @@ export class BlockActionsMenu extends HTMLElement {
   //     inQuote:  true if the focused block has a blockquote ancestor
   //
   // Per-command label rule:
-  //     Current wrapper matches target       → "Unwrap from X"
-  //     Different list type (UL in OL etc.)  → plain label (type swap)
-  //     No wrapper on the block              → "Wrap in X"
-  //     Would create nested wrapper          → hide (no double-wrap)
-  #applyBlockRestrictions(restriction, currentWrap = { listType: null, inQuote: false }) {
+  //     Current wrapper matches target       → disabled, plain label
+  //                                             (top-level "Remove X" unwraps)
+  //     Different list type (UL in OL etc.)  → enabled, plain label (whole-
+  //                                             list swap)
+  //     Plain text paragraph                 → enabled, plain label (just
+  //                                             a content-type change, no
+  //                                             inner block to preserve)
+  //     Other block (heading, code, …)       → enabled, "Wrap in X" label
+  //                                             (the inner block survives)
+  //     Conflicting wrappers (UL + quote)    → disabled, plain label
+  //                                             (handler doesn't double-wrap;
+  //                                             menu items always show)
+  #applyBlockRestrictions(restriction, currentWrap = { listType: null, inQuote: false, isPlainParagraph: false }) {
     const HEADINGS = [ "setFormatHeadingLarge", "setFormatHeadingMedium", "setFormatHeadingSmall" ]
 
     // Turn-into (non-wrap) commands allowed per content shape. Wrap commands
@@ -133,33 +141,35 @@ export class BlockActionsMenu extends HTMLElement {
       decorator: new Set(),
     }
 
-    const inList = currentWrap.listType !== null
     const inQuote = currentWrap.inQuote
+    const isPlainParagraph = currentWrap.isPlainParagraph
 
-    // Per-wrap-command decision: one of "wrap", "unwrap", "swap", or "hide".
-    //   wrap   → "Wrap in X" label, enabled, command wraps the block
-    //   unwrap → "Unwrap from X" label, enabled, command removes that wrapper
-    //   swap   → plain "Bullet list"/"Numbered list" label, enabled, command
-    //            swaps list type in place (only meaningful for text LIs)
-    //   hide   → button hidden (would create a nested double-wrap the user
-    //            hasn't asked for)
+    // Per-wrap-command decision: one of "wrap", "convert", "swap", or
+    // "disabled". Wrap commands always render (no "hide") so the Turn
+    // into menu has a stable, predictable layout.
+    //   wrap     → "Wrap in X" label, enabled (preserves inner block)
+    //   convert  → plain "X" label, enabled (plain text → wrapper)
+    //   swap     → plain "X" label, enabled (UL ↔ OL whole-list swap)
+    //   disabled → plain "X" label, button greyed out (already in X,
+    //              or wrapping it would create an unsupported combo)
     function wrapDecision(command) {
       if (command === "insertUnorderedList") {
-        if (currentWrap.listType === "bullet") return "unwrap"
+        if (currentWrap.listType === "bullet") return "disabled"
         if (currentWrap.listType === "number") return "swap"
-        if (inQuote) return "hide"
-        return "wrap"
+        if (inQuote) return "disabled"
+        return isPlainParagraph ? "convert" : "wrap"
       }
       if (command === "insertOrderedList") {
-        if (currentWrap.listType === "number") return "unwrap"
+        if (currentWrap.listType === "number") return "disabled"
         if (currentWrap.listType === "bullet") return "swap"
-        if (inQuote) return "hide"
-        return "wrap"
+        if (inQuote) return "disabled"
+        return isPlainParagraph ? "convert" : "wrap"
       }
       if (command === "insertQuoteBlock") {
-        if (inQuote) return "unwrap"
-        if (inList) return "hide"
-        return "wrap"
+        if (inQuote) return "disabled"
+        // LI + quote (Notion-style) is supported by the handler — fall
+        // through to wrap/convert branches.
+        return isPlainParagraph ? "convert" : "wrap"
       }
       return null
     }
@@ -174,14 +184,14 @@ export class BlockActionsMenu extends HTMLElement {
       const isWrapCommand = decision !== null
 
       if (isWrapCommand) {
-        button.hidden = decision === "hide"
-        // Wrap commands are always enabled regardless of content shape —
-        // every block can be wrapped in a list or quote.
-        button.toggleAttribute("disabled", false)
-        button.setAttribute("aria-disabled", "false")
+        // Wrap commands always render (never hidden) so the Turn into
+        // menu's layout stays stable across selections.
+        button.hidden = false
+        const disable = decision === "disabled"
+        button.toggleAttribute("disabled", disable)
+        button.setAttribute("aria-disabled", String(disable))
         if (label && option) {
-          if (decision === "unwrap" && option.unwrapLabel) label.textContent = option.unwrapLabel
-          else if (decision === "wrap" && option.wrapLabel) label.textContent = option.wrapLabel
+          if (decision === "wrap" && option.wrapLabel) label.textContent = option.wrapLabel
           else label.textContent = option.label
         }
       } else {

@@ -1299,6 +1299,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     let blockRestriction = null // null = no restrictions (regular text block)
     let canUnwrapFromQuote = false
     let unwrapListType = null
+    let isPlainParagraph = false
     this.editor.getEditorState().read(() => {
       const node = $getNodeByKey(this.#focusKey)
       if (!node) return
@@ -1336,12 +1337,15 @@ export class BlockSelectionExtension extends LexxyExtension {
         blockRestriction = "decorator"
       }
 
-      // Wrap flags: arm only when the wrapper chain actually wraps non-text
-      // content. If drill-down didn't descend past the outermost wrapper,
-      // `inner === outermost` and the chain is a plain text LI or plain
-      // text blockquote at root — neither is "wrapping" anything, so no
-      // "Unwrap from …" / "Remove …" affordance is offered (users convert
-      // via Turn into → Text instead).
+      // Wrap flags arm the top-level "Remove X" buttons.
+      //
+      // Lists: any list item (plain text or wrapped) gets a "Remove
+      // Bullet"/"Remove Numbered" affordance — both eject the item to
+      // root via #extractContentToRoot, splitting the surrounding list.
+      //
+      // Quotes: only when the blockquote actually wraps non-text content
+      // (`inner !== outermost`). A plain-text blockquote is its own block
+      // and uses Turn into → Text to convert.
       //
       // When BOTH wrappers are present, the top-level "Remove X" button
       // reports the outermost wrapper only — the handler
@@ -1349,13 +1353,17 @@ export class BlockSelectionExtension extends LexxyExtension {
       // label was clicked, so showing two buttons that do the same thing
       // is a UX trap. `outermost` (above) already identifies the outer
       // wrapper; use it to pick one, and hide the other.
-      if (inner !== outermost) {
-        if ($isQuoteNode(outermost)) {
-          canUnwrapFromQuote = true
-        } else if ($isListItemNode(outermost)) {
-          const list = outermost.getParent()
-          if ($isListNode(list)) unwrapListType = list.getListType()
-        }
+      if ($isListItemNode(outermost)) {
+        const list = outermost.getParent()
+        if ($isListNode(list)) unwrapListType = list.getListType()
+      } else if ($isQuoteNode(outermost) && inner !== outermost) {
+        canUnwrapFromQuote = true
+      } else if ($isParagraphNode(outermost)) {
+        // Plain text paragraph at root: Turn into bullet/numbered/quote
+        // labels itself as a CONVERSION (plain "Bullet list", "Quote")
+        // rather than a WRAP ("Wrap in bullet list") since the source
+        // block is just text — no inner block survives the change.
+        isPlainParagraph = true
       }
     })
 
@@ -1366,7 +1374,8 @@ export class BlockSelectionExtension extends LexxyExtension {
       onClose: () => this.root?.focus({ preventScroll: true }),
       blockRestriction,
       canUnwrapFromQuote,
-      unwrapListType
+      unwrapListType,
+      isPlainParagraph
     })
 
     this.#blockActionsMenu.focus()
