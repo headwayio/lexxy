@@ -652,6 +652,25 @@ export class BlockDragAndDrop {
     return closestList?.tagName?.toLowerCase() || null
   }
 
+  // Is the dragged node the IMMEDIATE next sibling of `targetKey`?
+  // Used to detect drop-on-own-row no-ops in #resolveDropTarget. Walks
+  // through structural-wrapper LIs the same way the existing "before,
+  // dragged is prev sibling" check does, so a wrapped block with a
+  // children wrapper between it and the dragged item still resolves.
+  #draggedIsImmediateNextSibling(targetKey) {
+    let isNext = false
+    this.#editor.getEditorState().read(() => {
+      const targetNode = $getNodeByKey(targetKey)
+      const draggedNode = $getNodeByKey(this.#draggedNodeKey)
+      if (!targetNode || !draggedNode) return
+      let next = targetNode.getNextSibling()
+      // Skip the target's own structural wrapper (children container)
+      if (next && $isStructuralWrapper(next)) next = next.getNextSibling()
+      if (next && next.getKey() === this.#draggedNodeKey) isNext = true
+    })
+    return isNext
+  }
+
   // Given a hidden element, find the nearest visible sibling by clientY
   #nearestVisibleSibling(element, clientY) {
     function isVisible(el) {
@@ -1123,6 +1142,15 @@ export class BlockDragAndDrop {
         const snapBulletLeft = snap.depth === 0 ? snapContentLeft : (listType === "ol" ? snapContentLeft : snapContentLeft - 12)
         // Self-target is only valid when depth actually changes (outdent)
         if (isSelfTarget && snap.depth >= targetDepth) return null
+        // "After target X" where the dragged item is X's immediate next
+        // sibling AND we're not outdenting (snap.depth === targetDepth)
+        // resolves to a drop on the dragged's own row that wouldn't
+        // change anything — hide the indicator. Multi-level outdent
+        // gestures (snap.depth < targetDepth) still pass through so
+        // dragging left for outdent still gets feedback.
+        if (!isSelfTarget && snap.depth === targetDepth && this.#draggedIsImmediateNextSibling(nodeKey)) {
+          return null
+        }
         return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft, listType }
       }
     }
