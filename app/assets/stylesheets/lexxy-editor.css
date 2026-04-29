@@ -2163,6 +2163,17 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) .lexxy-editor__block--selected::after {
     display: none;
   }
+  /* Don't flip on the wrapper-marker (`#.` / `•` ::before) for descendants
+     inside a parent-takeover. The flip-on rule below at the bottom sets
+     `::before` opacity:1 when a wrapped LI gets --selected. Inside a
+     takeover, the parent's rectangle absorbs the descendant's identity —
+     a fully-opaque marker on every descendant reads as "Juliet (etc.) is
+     individually emphasized" overlaying the unified takeover, which is
+     exactly what the user complains about. Keep ::before at its normal
+     dimmed/hidden opacity instead. */
+  .lexxy-editor__block--selected + li.lexxy-nested-listitem:has(.lexxy-editor__block--selected) .lexxy-editor__block--selected::before {
+    opacity: 0;
+  }
 
   /* Inner structural wrappers: suppress their ::after when already inside
      a highlighted outer wrapper. Without this, each nesting level draws its
