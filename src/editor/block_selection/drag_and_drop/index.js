@@ -1033,7 +1033,7 @@ export class BlockDragAndDrop {
           const snap = findNearestSnapPoint(validSnaps, event.clientX)
           if (snap.depth < targetDepth) {
             const snapContentLeft = snap.pixelLeft + listPadding
-            const snapBulletLeft = snap.depth === 0 ? snapContentLeft : snapContentLeft - 12
+            const snapBulletLeft = snap.depth === 0 ? snapContentLeft : (listType === "ol" ? snapContentLeft : snapContentLeft - 12)
             return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft, listType }
           }
         }
@@ -1045,7 +1045,7 @@ export class BlockDragAndDrop {
       // the target itself is the depth gate (you need an item at each level).
       const insideDepth = targetDepth + 1
       const insideContentLeft = blockLeft + listPadding
-      const insideBulletLeft = insideContentLeft - 12
+      const insideBulletLeft = listType === "ol" ? insideContentLeft : insideContentLeft - 12
       return { element: resolvedBlock, nodeKey, position, depth: insideDepth, bulletLeft: insideBulletLeft, contentLeft: insideContentLeft, listType }
     }
 
@@ -1079,7 +1079,7 @@ export class BlockDragAndDrop {
           ? findNearestSnapPoint(validSnaps, event.clientX)
           : validSnaps[0]
         const snapContentLeft = snap.pixelLeft + listPadding
-        const snapBulletLeft = snap.depth === 0 ? snapContentLeft : snapContentLeft - 12
+        const snapBulletLeft = snap.depth === 0 ? snapContentLeft : (listType === "ol" ? snapContentLeft : snapContentLeft - 12)
         // Self-target is only valid when depth actually changes (outdent)
         if (isSelfTarget && snap.depth >= targetDepth) return null
         return { element: resolvedBlock, nodeKey, position, depth: snap.depth, bulletLeft: snapBulletLeft, contentLeft: snapContentLeft, listType }
@@ -1090,10 +1090,15 @@ export class BlockDragAndDrop {
     if (isSelfTarget) return null
 
     // Before/after: place at the target's depth as a sibling.
-    // The native bullet center is ~10px left of the LI content edge.
+    // The native UL bullet center is ~10px left of the LI content edge.
     // Subtract the indicator circle radius (3px) so the circle center aligns.
     // At depth 0 (root level) there's no bullet, so no offset needed.
-    const bulletLeft = targetDepth === 0 ? blockLeft : blockLeft - 12
+    // For OL, leave bulletLeft at blockLeft and let the CSS absolutely
+    // position the "#." in a 2em right-aligned box mirroring the OL
+    // counter's own positioning. Otherwise the indicator floats to the
+    // left of the rendered "1." / "2." / "3." which is right-aligned in
+    // the same 2em box.
+    const bulletLeft = targetDepth === 0 ? blockLeft : (listType === "ol" ? blockLeft : blockLeft - 12)
     return { element: blockElement, nodeKey, position, depth: targetDepth, bulletLeft, contentLeft: blockLeft, listType }
   }
 
