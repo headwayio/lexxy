@@ -2505,22 +2505,36 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
   }
 
   /* OL drop indicator: show "#." instead of a circle to indicate
-     numbered list insertion without implying a specific number.
-     Right-align to match the OL counter position. */
+     numbered list insertion without implying a specific number. Use
+     the EXACT rendering technique of `li[data-wrapper-marker="number"]
+     ::before` so the indicator's "#." period aligns vertically and
+     horizontally with the wrapped-block markers above it. Both:
+       - position: absolute, right: 100% (right edge at LI.left)
+       - 2em wide, 0.25em right padding (period column)
+       - inline-flex + flex-end + center (right-align text in a
+         vertically-centered 1em box)
+       - height: 1em, line-height: 1 (compact box centered on the bar)
+     `top: -0.5em` shifts the 1em box up by half its height so it
+     vertically centers on the indicator's top edge (the bar
+     position). Without this match, the period drifts a few px from
+     the wrapped markers' periods. */
   .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__circle {
     border: none;
     border-radius: 0;
     background: none;
-    inline-size: auto;
-    block-size: auto;
-    margin-inline-start: -11px;
-    margin-inline-end: var(--indicator-gap, 0px);
-    font-size: 0.85em;
-    font-weight: 500;
-    line-height: 0;
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    inline-size: 2em;
+    block-size: 1em;
+    margin: 0;
+    padding-inline-end: 0.25em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    line-height: 1;
     color: var(--lexxy-focus-ring-color);
-    position: relative;
-    top: 0px;
   }
   .lexxy-drop-indicator[data-list-type="ol"] .lexxy-drop-indicator__circle::before {
     content: "#.";
