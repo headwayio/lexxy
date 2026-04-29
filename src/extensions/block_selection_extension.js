@@ -1568,8 +1568,17 @@ export class BlockSelectionExtension extends LexxyExtension {
               newSelectedKeys.add(node.getKey())
             }
           } else if (isListCommand) {
-            // Plain text list item: change item's list type in place.
-            if (node.setListItemType) node.setListItemType(listType)
+            // Plain text list item + the OTHER list type: swap the WHOLE
+            // parent list's type. Lexxy's lists are homogeneous (every
+            // item shares the parent's marker style), so swapping one
+            // item alone would create a visual mismatch. Mixed-typed
+            // lists (per-LI data-list-item-type) can refine this later;
+            // for now follow the parent. Same-type clicks are blocked
+            // by the menu's disabled state, so this branch only fires
+            // for true cross-type swaps.
+            if ($isListNode(parentList) && parentList.getListType() !== listType) {
+              parentList.setListType(listType)
+            }
             newSelectedKeys.add(node.getKey())
           } else if (command === "insertQuoteBlock" && $isListNode(parentList)) {
             // LI + quote command: wrap the LI (text or wrapped) inside a
