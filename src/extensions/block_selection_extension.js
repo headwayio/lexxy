@@ -1593,7 +1593,11 @@ export class BlockSelectionExtension extends LexxyExtension {
             if (quote) newSelectedKeys.add(quote.getKey())
             replacedKeys.add(key)
           } else if (command === "setFormatParagraph") {
-            // Wrapped → paragraph: unwrap back to regular list item content.
+            // Turn into → Text on a list item ejects the item out of its
+            // list to root as a plain paragraph, splitting the surrounding
+            // list around it so siblings keep their position. Wrapped LIs
+            // first get their wrapper stripped (so the heading/code/etc.
+            // becomes inline content in the LI), then the LI is ejected.
             if (wrappedChild) {
               for (const child of [ ...wrappedChild.getChildren() ]) {
                 node.append(child)
@@ -1601,7 +1605,12 @@ export class BlockSelectionExtension extends LexxyExtension {
               wrappedChild.remove()
               this.#wrappedOrigins.untrack(node)
             }
-            newSelectedKeys.add(node.getKey())
+            if ($isListNode(parentList)) {
+              this.#splitAndExtractToRoot(node)
+              replacedKeys.add(key)
+            } else {
+              newSelectedKeys.add(node.getKey())
+            }
           } else {
             // List item → wrapped block: convert inline content to a wrapped
             // block element (e.g., heading, quote) inside the list item.
@@ -6236,7 +6245,22 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (!rootList) return
 
     // Extract the focused item's content and remove the now-empty LI.
-    const extracted = this.#extractWrappedContent(node)
+    // For wrapped LIs, #extractWrappedContent peels the heading/code/etc.
+    // out as-is. For plain text LIs (no wrapped child) it returns null —
+    // wrap the inline children in a fresh ParagraphNode so the eject
+    // path always lands a real block at root. Used by Remove Bullet
+    // (text LIs become paragraphs at root) and Turn into → Text (caller
+    // strips the wrapped child first, then this fallback handles the
+    // resulting plain-text LI).
+    let extracted = this.#extractWrappedContent(node)
+    if (!extracted) {
+      const inlineChildren = node.getChildren().filter(c => !$isListNode(c))
+      if (inlineChildren.length > 0) {
+        const paragraph = $createParagraphNode()
+        for (const child of inlineChildren) paragraph.append(child)
+        extracted = paragraph
+      }
+    }
     if (!extracted) return
     const oldKey = node.getKey()
     const originalList = node.getParent()
