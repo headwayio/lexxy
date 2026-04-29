@@ -1556,17 +1556,19 @@ export class BlockSelectionExtension extends LexxyExtension {
           const parentList = node.getParent()
 
           if (isListCommand && wrappedChild && $isListNode(parentList)) {
-            // Wrapped non-text block in a list + list command:
-            //   same type → peel the wrapped LI out to root, splitting the
-            //     parent list so sibling items keep their positions.
-            //   different type → swap the parent list's type (UL ↔ OL).
-            if (parentList.getListType() === listType) {
-              this.#unwrapWrappedLiToRootInPlace(node)
-              replacedKeys.add(key)
-            } else {
+            // Wrapped LI + list command. Swap the WHOLE parent list type
+            // when it differs; no-op when it already matches. Unwrap
+            // (peel out to root) is exposed as the top-level "Remove
+            // Bullet/Numbered" action and goes through #extractContentToRoot.
+            // Keeping a peel-out path here is unsafe under multi-selection:
+            // the first swap mutates the parent list to the new type, so
+            // subsequent items in the same list would see "same type" and
+            // peel out mid-iteration, emptying the list and triggering
+            // Lexical error #66 from a stale rootList.insertAfter.
+            if (parentList.getListType() !== listType) {
               parentList.setListType(listType)
-              newSelectedKeys.add(node.getKey())
             }
+            newSelectedKeys.add(node.getKey())
           } else if (isListCommand) {
             // Plain text list item + the OTHER list type: swap the WHOLE
             // parent list's type. Lexxy's lists are homogeneous (every
@@ -1615,21 +1617,20 @@ export class BlockSelectionExtension extends LexxyExtension {
           // dispatch path below since they DO have selectable text content.)
           if (isListCommand) {
             // Decorator + list command. Behavior depends on what wraps it:
-            //   already in a list of the same type → unwrap (return to root)
+            //   already in a list of the same type → no-op (the wrapping
+            //     LI is already this type; "Remove Bullet/Numbered" at
+            //     top level handles unwrap)
             //   already in a list of the other type → swap UL↔OL in place
             //   already in a blockquote → swap quote wrapper for list wrapper
             //   otherwise → wrap in new list + listItem
             const parent = node.getParent()
             if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
               const parentList = parent.getParent()
-              if (parentList.getListType() === listType) {
-                this.#unwrapWrappedLiToRootInPlace(parent)
-                replacedKeys.add(key)
-              } else {
+              if (parentList.getListType() !== listType) {
                 parentList.setListType(listType)
-                newSelectedKeys.add(parent.getKey())
                 replacedKeys.add(key)
               }
+              newSelectedKeys.add(parent.getKey())
             } else if ($isQuoteNode(parent)) {
               const list = $createListNode(listType)
               const listItem = $createListItemNode()
@@ -6106,16 +6107,6 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     this.#cleanupEmptyList(parentList)
     return quote
-  }
-
-  // Peel a wrapped list-item fully to root using the recursive split-at-
-  // every-level path so the item escapes at the same vertical position the
-  // user sees it in, with surrounding lists splitting around its path and
-  // every preserved item keeping its original indent depth. Used by both
-  // Turn-into "Unwrap from list" and Remove Bullet so the two actions
-  // produce identical results.
-  #unwrapWrappedLiToRootInPlace(liNode) {
-    this.#splitAndExtractToRoot(liNode)
   }
 
   // Extract wrapped items from their lists in place. Each wrapped item is
