@@ -618,6 +618,40 @@ export class BlockDragAndDrop {
     return best
   }
 
+  // Resolve the effective list-marker style ("ol" or "ul") at a drop
+  // target. The indicator is a continuation of the item directly ABOVE
+  // the drop position — that's what the dropped item visually follows
+  // from. So:
+  //   - position "after X"  → use X itself (X is the item above).
+  //   - position "before X" → use X's previous LI sibling (the item
+  //     above the drop position, NOT X). If X is the first child of its
+  //     list, fall through to closest-list tag.
+  //   - position "inside X" → use X (rare; treated as a continuation
+  //     of X for indicator purposes).
+  // Then for the chosen target LI:
+  //   1. If it has a data-wrapper-marker (wrapped block), use it —
+  //      stamped by syncWrapperMarkers, source of truth.
+  //   2. Otherwise (regular text LI or non-LI), use the closest list's
+  //      tag (UL→bullet, OL→number).
+  #effectiveListType(blockElement, closestList, position) {
+    if (!blockElement) return closestList?.tagName?.toLowerCase() || null
+
+    let target = blockElement
+    if (position === "before" && blockElement.tagName === "LI") {
+      let prev = blockElement.previousElementSibling
+      // Skip structural-wrapper siblings (children-of-prior-item containers).
+      while (prev && prev.classList.contains(NESTED_LISTITEM_CLASS)) {
+        prev = prev.previousElementSibling
+      }
+      if (prev && prev.tagName === "LI") target = prev
+    }
+
+    const m = target.dataset?.wrapperMarker
+    if (m === "number") return "ol"
+    if (m === "bullet") return "ul"
+    return closestList?.tagName?.toLowerCase() || null
+  }
+
   // Given a hidden element, find the nearest visible sibling by clientY
   #nearestVisibleSibling(element, clientY) {
     function isVisible(el) {
@@ -992,7 +1026,14 @@ export class BlockDragAndDrop {
 
     const targetDepth = getElementNestingDepth(resolvedBlock, root)
     const closestList = resolvedBlock.closest("ul, ol")
-    const listType = closestList?.tagName?.toLowerCase() || null
+    // Effective marker style: prefer the wrapped block's data-wrapper-marker
+    // (set by syncWrapperMarkers, which walks previous siblings to inherit
+    // the effective marker), then look at the previous sibling's marker,
+    // then fall back to the closest list's tag. This makes the indicator
+    // visually match the bullet/number style of the item above the drop
+    // position — important in mixed-marker lists where the closest list's
+    // tag (UL/OL) doesn't reflect the rendered marker.
+    const listType = this.#effectiveListType(resolvedBlock, closestList, position)
     const listPadding = closestList
       ? parseFloat(getComputedStyle(closestList).paddingInlineStart) || DEFAULT_ROOT_PADDING
       : 28
