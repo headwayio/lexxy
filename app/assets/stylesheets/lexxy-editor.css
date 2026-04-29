@@ -2625,6 +2625,34 @@ action-text-attachment[content-type^="application/vnd.actiontext"] {
 .lexxy-drag-ghost .lexxy-editor__content a {
   color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 30%, transparent);
 }
+
+/* OL ghost: render "#." as the marker instead of the browser's native
+   decimal counter. The ghost's OL is built fresh (counter resets to 1)
+   so the original number is irrelevant — and showing "1." for what
+   started as "2." or "3." is misleading. Mirror the in-editor OL
+   counter's positioning (right-aligned 2em box with 0.25em right
+   padding) so the "#." sits exactly where the eventual rendered
+   counter will appear after the drop. */
+.lexxy-drag-ghost ol {
+  list-style: none;
+  padding-inline-start: 0;
+}
+.lexxy-drag-ghost ol > li {
+  position: relative;
+}
+.lexxy-drag-ghost ol > li::before {
+  content: "#.";
+  position: absolute;
+  right: 100%;
+  top: 0;
+  width: 2em;
+  text-align: right;
+  padding-right: 0.25em;
+  color: color-mix(in oklch, var(--lexxy-color-ink, #1a1a1a) 50%, transparent);
+}
+.lexxy-drag-ghost ol > li::marker {
+  content: none;
+}
 .lexxy-drag-ghost pre,
 .lexxy-drag-ghost code[data-language] {
   position: relative;
