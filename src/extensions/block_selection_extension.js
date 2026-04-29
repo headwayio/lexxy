@@ -364,6 +364,35 @@ export class BlockSelectionExtension extends LexxyExtension {
       this.#selectedBlockKeys.add(this.#resolveSelectionKey(k))
     }
 
+    // Atomic parents: any LI in the range that owns a structural-
+    // wrapper subtree (parent-with-takeover) drags its FULL subtree
+    // into the selection — irrespective of which side of the range it
+    // sits on. The user's mental model treats parent-with-takeover as
+    // an atomic unit: starting on a child (Foxtrot) and Shift-clicking
+    // the parent (Echo) should produce parent + all children, not
+    // parent + just the originally-selected child. A parent crossed
+    // by the range likewise drags its subtree along.
+    //
+    // The linear range walks document order via navigable blocks, but
+    // a parent's "block children" live in a sibling structural-wrapper
+    // LI (Lexxy's block model), so children are NOT necessarily
+    // between the anchor and focus in linear order. #collectChildKeys
+    // walks the sibling-wrapper chain authoritatively — calling it on
+    // every in-range LI restores the atomic-parent invariant after
+    // the linear loop.
+    //
+    // Quotes have a separate atomicity mechanism (the `containingQuoteKey`
+    // filter above), so we don't recurse into them here.
+    const rangeKeys = [ ...this.#selectedBlockKeys ]
+    this.editor.getEditorState().read(() => {
+      for (const k of rangeKeys) {
+        const node = $getNodeByKey(k)
+        if ($isListItemNode(node)) {
+          this.#collectChildKeys(node, this.#selectedBlockKeys)
+        }
+      }
+    })
+
     this.#syncSelectionClasses()
   }
 
