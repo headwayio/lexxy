@@ -6327,40 +6327,53 @@ export class BlockSelectionExtension extends LexxyExtension {
     const scrollY = window.scrollY
     this.#selectionHistory.push()
     this.editor.update(() => {
-      // Peel one wrapper layer at a time, top-down. Each iteration either
-      // (a) unwraps a blockquote whose content is non-text, or (b) extracts
-      // a list item out of its containing list. Tracking is via #focusKey
-      // which the unwrap/extract helpers update as keys change.
-      let guard = 20
-      while (guard-- > 0) {
-        const node = $getNodeByKey(this.#focusKey)
-        if (!node) return
-        const parent = node.getParent()
-        if (!parent) return
+      // Multi-selection: eject each selected list item to root in
+      // document order. Items already at root or in non-list wrappers
+      // are silently skipped — the user's intent is "remove bullet/
+      // numbered from anything that has one, leave the rest alone".
+      // Snapshotting keys before the loop is critical: each
+      // #splitAndExtractToRoot mutates the tree (splits parent lists,
+      // re-parents trailing siblings into new lists), but the key of a
+      // given LI survives the move, so $getNodeByKey resolves to the
+      // node in its new home on the next iteration.
+      const keys = this.#selectedBlockKeys.size > 0
+        ? [ ...this.#selectedBlockKeys ]
+        : (this.#focusKey ? [ this.#focusKey ] : [])
 
-        if ($isQuoteNode(node)) {
-          // Focused node itself is a blockquote wrapping a non-text block —
-          // typical standalone <blockquote><hr></blockquote> scenario.
-          const before = this.#focusKey
-          this.#unwrapQuoteIfWrappingNonText(node)
-          if (this.#focusKey === before) return // no-op guard
-          continue
+      for (const key of keys) {
+        // Peel one wrapper layer at a time, top-down (per item). A
+        // quote-wrapping-an-LI is rare but legitimate: peel quote
+        // first, then peel list. Per-item guard keeps it bounded.
+        let guard = 5
+        let currentKey = key
+        while (guard-- > 0) {
+          const node = $getNodeByKey(currentKey)
+          if (!node) break
+          const parent = node.getParent()
+          if (!parent) break
+
+          if ($isQuoteNode(node)) {
+            const before = currentKey
+            this.#unwrapQuoteIfWrappingNonText(node)
+            // #focusKey gets re-pointed if the unwrap promoted a child;
+            // for multi-selection per-item peeling, follow the focus.
+            if (this.#focusKey !== before) currentKey = this.#focusKey
+            else break
+            continue
+          }
+
+          if ($isListItemNode(node)) {
+            this.#splitAndExtractToRoot(node)
+            // After split-and-extract, the LI is gone and the extracted
+            // content lives at root. There's no further wrapper above
+            // an extracted root paragraph/heading/etc., so we're done
+            // with this item.
+            break
+          }
+
+          // Node isn't a wrapper itself. Nothing more to peel.
+          break
         }
-
-        if ($isListItemNode(node)) {
-          // Focused node is a list item. Walk up through every containing
-          // list, splitting each one around the path: items before stay in
-          // their original list at their original depth; items after move
-          // into a new "after" list at the same depth, wrapped in fresh
-          // structural-wrapper LIs as the after-tree builds up. The focused
-          // item lands at root between the original tree and the after-
-          // tree — same vertical position the user sees, but at root.
-          this.#splitAndExtractToRoot(node)
-          continue
-        }
-
-        // Node isn't a wrapper itself. Nothing more to peel.
-        return
       }
     }, { tag: HISTORY_PUSH_TAG })
     this.#syncAndRefocus()
