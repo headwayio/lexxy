@@ -6280,6 +6280,15 @@ export class BlockSelectionExtension extends LexxyExtension {
       ancestor = grandList.getParent()
     }
 
+    // Capture the placement anchors at root BEFORE mutating the tree.
+    // node.remove() may empty rootList (when node was the only remaining
+    // descendant after the trailing-siblings split), and Lexical's
+    // ListNode.canBeEmpty()=false cascade then auto-detaches rootList,
+    // leaving us with no anchor for rootList.insertAfter(). Capturing
+    // rootList's parent + next-sibling up front lets us recover.
+    const rootParent = rootList.getParent()
+    const rootAnchorNext = rootList.getNextSibling()
+
     node.remove()
     if (originalList && $isListNode(originalList)) this.#cleanupEmptyList(originalList)
     for (const wrapper of wrapperAncestors) {
@@ -6289,9 +6298,18 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
 
     // Place the extracted content at root, immediately after the original
-    // root-level list. Any rebuilt after-tree goes after the extracted
-    // content so the document stays in visual order.
-    rootList.insertAfter(extracted)
+    // root-level list. If rootList survived, insert after it. If Lexical
+    // cascaded it away, fall back to the next-sibling anchor (or append
+    // to root if rootList was the last block).
+    if (rootList.getParent()) {
+      rootList.insertAfter(extracted)
+    } else if (rootAnchorNext && rootAnchorNext.getParent()) {
+      rootAnchorNext.insertBefore(extracted)
+    } else if (rootParent) {
+      rootParent.append(extracted)
+    } else {
+      return
+    }
     if (afterListBelow && afterListBelow.getChildrenSize() > 0) {
       extracted.insertAfter(afterListBelow)
     }
