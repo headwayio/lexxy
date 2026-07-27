@@ -22,6 +22,16 @@ export default class Extensions {
     }
   }
 
+  // Dispatches destroy to every extension that supports it, exactly once.
+  // Extensions own their document-level listeners (e.g. BlockSelection's
+  // keydown), so skipping this on editor reset leaks inert handlers and
+  // retains the editor graph across open/close cycles.
+  destroy() {
+    const extensions = this.enabledExtensions
+    this.enabledExtensions = []
+    extensions.forEach(ext => ext.destroy?.())
+  }
+
   get #lexxyToolbar() {
     return this.lexxyElement.toolbar
   }

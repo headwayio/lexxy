@@ -538,6 +538,11 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #reset() {
+    // Destroy extensions first, while the editor they may reference is still
+    // alive; connectedCallback builds a fresh Extensions on (re)connect.
+    this.extensions?.destroy()
+    this.extensions = null
+
     this.#unregisterHandlers()
 
     if (this.editorContentElement) {
