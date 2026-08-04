@@ -527,8 +527,8 @@ export class BlockSelectionExtension extends LexxyExtension {
     if (this.#isPromptOpen()) return false
 
     if (this.isBlockSelectMode) {
-      // Block-select → exit and blur the editor. The next Esc will bubble
-      // to the parent (slide-over/modal close) since the editor isn't focused.
+      // Block-select → exit and blur the editor. The DOM event is deliberately
+      // left to propagate so a host modal/slide-over closes on this same press.
       this.#exitBlockSelectMode()
       this.#savedSelection = null
       this.editor.update(() => { $setSelection(null) })
@@ -536,9 +536,13 @@ export class BlockSelectionExtension extends LexxyExtension {
       return true
     }
 
-    // Edit mode → enter block-select on the current block
+    // Edit mode → enter block-select on the current block. Consume the DOM
+    // event too: document-level modal close handlers must not treat this
+    // press as "close the modal" while the editor is still absorbing it.
     const blockKey = this.#getBlockKeyContainingCursor()
     if (blockKey) {
+      event?.preventDefault()
+      event?.stopPropagation()
       this.enterBlockSelectMode(blockKey)
       return true
     }
