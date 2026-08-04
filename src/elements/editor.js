@@ -877,9 +877,9 @@ export class LexicalEditorElement extends HTMLElement {
     const headings = this.config.get("headings")
     return [
       { label: "Normal", command: "setFormatParagraph", tag: null },
-      ...headings.map((tag, index) => ({
-        label: HeadingDropdown.labelFor(tag, index),
-        command: HeadingDropdown.commandFor(index),
+      ...headings.map((tag) => ({
+        label: HeadingDropdown.labelFor(tag),
+        command: HeadingDropdown.commandFor(tag),
         tag
       }))
     ]

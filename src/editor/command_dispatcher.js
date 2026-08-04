@@ -252,15 +252,15 @@ export class CommandDispatcher {
   }
 
   dispatchSetFormatHeadingLarge() {
-    this.#applyConfiguredHeadingFormat(0)
+    this.contents.applyHeadingFormat("h2")
   }
 
   dispatchSetFormatHeadingMedium() {
-    this.#applyConfiguredHeadingFormat(1)
+    this.contents.applyHeadingFormat("h3")
   }
 
   dispatchSetFormatHeadingSmall() {
-    this.#applyConfiguredHeadingFormat(2)
+    this.contents.applyHeadingFormat("h4")
   }
 
   dispatchSetFormatParagraph() {
@@ -317,11 +317,6 @@ export class CommandDispatcher {
 
   dispose() {
     this.#listeners.dispose()
-  }
-
-  #applyConfiguredHeadingFormat(index) {
-    const tag = this.editorElement.config.get("headings")[index]
-    if (tag) this.contents.applyHeadingFormat(tag)
   }
 
   #registerCommands() {

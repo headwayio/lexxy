@@ -3,16 +3,18 @@ import { ListenerBin, registerEventListener } from "../../helpers/listener_helpe
 
 const HEADING_BUTTON_SELECTOR = "button.lexxy-heading-button"
 
-const HEADING_PRESETS = [
-  { label: "Large Heading", name: "heading-large", command: "setFormatHeadingLarge" },
-  { label: "Medium Heading", name: "heading-medium", command: "setFormatHeadingMedium" },
-  { label: "Small Heading", name: "heading-small", command: "setFormatHeadingSmall" }
-]
+const HEADING_PRESETS = {
+  h1: { label: "Heading 1", name: "heading-xlarge", command: "setFormatHeadingXLarge" },
+  h2: { label: "Heading 2", name: "heading-large", command: "setFormatHeadingLarge" },
+  h3: { label: "Heading 3", name: "heading-medium", command: "setFormatHeadingMedium" },
+  h4: { label: "Heading 4", name: "heading-small", command: "setFormatHeadingSmall" }
+}
 
 export class HeadingDropdown extends HTMLElement {
-  static labelFor(tag, index) {
-    if (index < HEADING_PRESETS.length) {
-      return HEADING_PRESETS[index].label
+  static labelFor(tag) {
+    const preset = HEADING_PRESETS[tag]
+    if (preset) {
+      return preset.label
     } else {
       const level = tag.match(/^h(\d+)$/)?.[1]
       if (level) {
@@ -23,9 +25,10 @@ export class HeadingDropdown extends HTMLElement {
     }
   }
 
-  static nameFor(tag, index) {
-    if (index < HEADING_PRESETS.length) {
-      return HEADING_PRESETS[index].name
+  static nameFor(tag) {
+    const preset = HEADING_PRESETS[tag]
+    if (preset) {
+      return preset.name
     } else {
       const level = tag.match(/^h(\d+)$/)?.[1]
       if (level) {
@@ -36,12 +39,8 @@ export class HeadingDropdown extends HTMLElement {
     }
   }
 
-  static commandFor(index) {
-    if (index < HEADING_PRESETS.length) {
-      return HEADING_PRESETS[index].command
-    } else {
-      return "applyHeadingFormat"
-    }
+  static commandFor(tag) {
+    return HEADING_PRESETS[tag]?.command ?? "applyHeadingFormat"
   }
 
   #listeners = new ListenerBin()
@@ -93,20 +92,20 @@ export class HeadingDropdown extends HTMLElement {
   #setUpButtons() {
     this.#buttonContainer.innerHTML = ""
 
-    this.#configuredHeadings.forEach((tag, index) => {
-      this.#buttonContainer.appendChild(this.#createButton(tag, index))
+    this.#configuredHeadings.forEach((tag) => {
+      this.#buttonContainer.appendChild(this.#createButton(tag))
     })
   }
 
-  #createButton(tag, index) {
-    const label = HeadingDropdown.labelFor(tag, index)
-    const name = HeadingDropdown.nameFor(tag, index)
+  #createButton(tag) {
+    const label = HeadingDropdown.labelFor(tag)
+    const name = HeadingDropdown.nameFor(tag)
     const icon = ToolbarIcons[tag] || ""
 
     const button = document.createElement("button")
     button.type = "button"
     button.dataset.heading = tag
-    button.dataset.command = HeadingDropdown.commandFor(index)
+    button.dataset.command = HeadingDropdown.commandFor(tag)
     button.classList.add("lexxy-heading-button")
     button.name = name
     button.title = label
