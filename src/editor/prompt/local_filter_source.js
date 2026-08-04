@@ -1,6 +1,7 @@
 import BaseSource from "./base_source"
 import fuzzysort from "fuzzysort"
 import { createElement } from "../../helpers/html_helper"
+import { filterMatchPosition } from "../../helpers/string_helper"
 
 const MAX_RENDERED_SUGGESTIONS = 100
 
@@ -30,6 +31,13 @@ export default class LocalFilterSource extends BaseSource {
   }
 
   #buildFilteredResults(promptItems, filter) {
+    // Command palettes (slash menu) carry data-command and want fuzzy matching;
+    // mention-style prompts keep word-boundary matching ordered by position.
+    const isCommandPalette = promptItems.some(item => item.hasAttribute("data-command"))
+    if (!isCommandPalette) {
+      return this.#buildPositionFilteredResults(promptItems, filter)
+    }
+
     const listItems = []
     const targets = promptItems.map(promptItem => ({
       promptItem,
@@ -47,6 +55,28 @@ export default class LocalFilterSource extends BaseSource {
       }
     }
 
+    return listItems
+  }
+
+  #buildPositionFilteredResults(promptItems, filter) {
+    const matches = []
+    for (const promptItem of promptItems) {
+      const searchableText = promptItem.getAttribute("search")
+      const position = filterMatchPosition(searchableText, filter)
+      if (position >= 0) {
+        matches.push({ promptItem, position })
+      }
+    }
+
+    matches.sort((a, b) => a.position - b.position)
+
+    const listItems = []
+    for (const { promptItem } of matches) {
+      if (listItems.length >= MAX_RENDERED_SUGGESTIONS) break
+      const listItem = this.buildListItemElementFor(promptItem)
+      this.promptItemByListItem.set(listItem, promptItem)
+      listItems.push(listItem)
+    }
     return listItems
   }
 
