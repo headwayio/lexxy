@@ -197,7 +197,7 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const attachment = createElement(this.tagName, {
       sgid: this.sgid,
       previewable: this.previewable || null,
-      collapsed: this.isPreviewableAttachment ? String(this.collapsed) : null,
+      collapsed: this.isPreviewableAttachment && this.collapsed !== this.#defaultCollapsed(this.contentType) ? String(this.collapsed) : null,
       url: this.src,
       "blob-url": this.blobUrl || null,
       alt: this.altText,
