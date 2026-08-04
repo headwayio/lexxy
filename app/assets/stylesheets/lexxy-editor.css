@@ -677,6 +677,10 @@
     pointer-events: none;
     position: absolute;
     white-space: pre-line;
+
+    /* The first paragraph is pulled up by the first-element spacing rules
+       below; shift the placeholder identically so it overlays the caret line. */
+    margin-block-start: -5.5px;
   }
 }
 
@@ -735,6 +739,11 @@
    are designed for the 48px padding. These editors use 1ch padding. */
 lexxy-editor[block-handles="false"] .lexxy-editor__content {
   > :is(:first-child, .hidden + *) { margin-top: 0 !important; padding-top: revert !important; }
+}
+
+/* No first-paragraph pull-up in compact editors, so no placeholder shift either. */
+lexxy-editor[block-handles="false"] .lexxy-editor__content::before {
+  margin-block-start: 0;
 }
 
 :where(.lexxy-editor__content) {
