@@ -51,7 +51,7 @@ const SLASH_COMMAND_SECTIONS = [
   {
     section: "Media",
     items: [
-      { command: "uploadAttachments", label: "Upload file", search: "upload file attachment image media", icon: ToolbarIcons.attachment },
+      { command: "uploadFile", label: "Upload file", search: "upload file attachment image media", icon: ToolbarIcons.attachment },
     ]
   },
 ]
