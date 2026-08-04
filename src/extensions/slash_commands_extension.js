@@ -45,7 +45,7 @@ const SLASH_COMMAND_SECTIONS = [
       { command: "italic", label: "Italic", search: "italic emphasis", icon: ToolbarIcons.italic, shortcut: "_text_" },
       { command: "underline", label: "Underline", search: "underline", icon: ToolbarIcons.underline },
       { command: "strikethrough", label: "Strikethrough", search: "strikethrough strike", icon: ToolbarIcons.strikethrough, shortcut: "~~text~~" },
-      { command: "link", label: "Link", search: "link url href", icon: ToolbarIcons.link },
+      { command: "openLinkDialog", label: "Link", search: "link url href", icon: ToolbarIcons.link, keepsSelection: true },
     ]
   },
   {
@@ -107,7 +107,7 @@ export class SlashCommandsExtension extends LexxyExtension {
     this.#promptElement = prompt
   }
 
-  #buildCommandItem({ command, label, search, icon, section, payload, selectBlock, shortcut, insertBelow, filterSuffix }) {
+  #buildCommandItem({ command, label, search, icon, section, payload, selectBlock, shortcut, insertBelow, filterSuffix, keepsSelection }) {
     const item = createElement("lexxy-prompt-item")
     item.setAttribute("search", search)
     item.setAttribute("data-command", command)
@@ -116,6 +116,7 @@ export class SlashCommandsExtension extends LexxyExtension {
     if (selectBlock) item.setAttribute("data-command-select-block", "")
     if (insertBelow) item.setAttribute("data-insert-below", "")
     if (filterSuffix) item.setAttribute("data-filter-suffix", filterSuffix)
+    if (keepsSelection) item.setAttribute("data-command-keeps-selection", "")
 
     const shortcutHtml = shortcut
       ? `<span class="lexxy-slash-command__shortcut">${shortcut}</span>`

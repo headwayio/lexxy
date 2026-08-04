@@ -34,6 +34,7 @@ const COMMANDS = [
   "underline",
   "link",
   "unlink",
+  "openLinkDialog",
   "toggleHighlight",
   "removeHighlight",
   "setFormatHeadingXLarge",
@@ -117,6 +118,16 @@ export class CommandDispatcher {
         $toggleLink(url)
       }
     })
+  }
+
+  // Opens the toolbar's link dropdown instead of toggling a link directly, so
+  // the user gets the URL input. Deferred a frame: the dispatch can arrive
+  // mid editor.update (e.g. from the slash menu), and the dropdown focuses
+  // its input on open — that must happen after Lexical reconciles.
+  dispatchOpenLinkDialog() {
+    const dropdown = this.editorElement.querySelector("lexxy-link-dropdown")
+    if (!dropdown) return
+    requestAnimationFrame(() => dropdown.open())
   }
 
   dispatchUnlink() {

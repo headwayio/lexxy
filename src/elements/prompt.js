@@ -1,7 +1,7 @@
 import Lexxy from "../config/lexxy"
 import { createElement, generateDomId, parseHtml } from "../helpers/html_helper"
 import { getNonce } from "../helpers/csp_helper"
-import { $createParagraphNode, $createTextNode, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, COMMAND_PRIORITY_CRITICAL, INPUT_COMMAND, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_ENTER_COMMAND, KEY_SPACE_COMMAND, KEY_TAB_COMMAND } from "lexical"
+import { $createParagraphNode, $createRangeSelection, $createTextNode, $getNodeByKey, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, $setSelection, COMMAND_PRIORITY_CRITICAL, INPUT_COMMAND, KEY_ARROW_DOWN_COMMAND, KEY_ARROW_UP_COMMAND, KEY_DOWN_COMMAND, KEY_ENTER_COMMAND, KEY_SPACE_COMMAND, KEY_TAB_COMMAND } from "lexical"
 import { $textBeforeOffset } from "../helpers/lexical_helper"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import InlinePromptSource from "../editor/prompt/inline_source"
@@ -20,6 +20,7 @@ export class LexicalPromptElement extends HTMLElement {
   #globalListeners = new ListenerBin()
   #popoverListeners = new ListenerBin()
   #debouncedFilterOptions = debounce(() => this.#filterOptions(), FILTER_DEBOUNCE_INTERVAL)
+  #selectionAtTrigger = null
 
   constructor() {
     super()
@@ -34,6 +35,7 @@ export class LexicalPromptElement extends HTMLElement {
     this.source = this.#createSource()
 
     this.#addTriggerListener()
+    this.#registerSelectionCaptureListener()
     this.#removePopoverBeforeTurboCaches()
     this.toggleAttribute("connected", true)
   }
@@ -118,7 +120,10 @@ export class LexicalPromptElement extends HTMLElement {
             if (textBeforeCursor === this.trigger) {
               const textBeforeTrigger = $textBeforeOffset(node, offset - triggerLength)
 
-              if (this.#onlyAtRegExp.test(textBeforeTrigger)) {
+              // A stashed selection bypasses the start-of-word gate: the
+              // trigger was deliberately typed over highlighted text, which
+              // usually ends mid-sentence.
+              if (this.#selectionAtTrigger || this.#onlyAtRegExp.test(textBeforeTrigger)) {
                 this.#popoverListeners.dispose()
                 this.#showPopover()
               }
@@ -131,6 +136,60 @@ export class LexicalPromptElement extends HTMLElement {
 
   get #onlyAtRegExp() {
     return new RegExp(`(?:${this.onlyAt ?? DEFAULT_ONLY_AT_PATTERN})$`)
+  }
+
+  // When the trigger is typed over a highlighted range, stash that range and
+  // collapse to its end so the trigger character lands after the text instead
+  // of replacing it. The stashed range is re-applied when a command item is
+  // dispatched, so "select text → / → Red text" colors exactly the selection.
+  #registerSelectionCaptureListener() {
+    if (!this.hasAttribute("dispatch-command")) return
+    if (this.trigger?.length !== 1) return
+
+    this.#globalListeners.track(
+      this.#editor.registerCommand(KEY_DOWN_COMMAND, (event) => {
+        if (event.key !== this.trigger || event.metaKey || event.ctrlKey || event.altKey) return false
+
+        this.#selectionAtTrigger = null
+        this.#editor.getEditorState().read(() => {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection) || selection.isCollapsed()) return
+
+          this.#selectionAtTrigger = {
+            anchor: { key: selection.anchor.key, offset: selection.anchor.offset, type: selection.anchor.type },
+            focus: { key: selection.focus.key, offset: selection.focus.offset, type: selection.focus.type }
+          }
+        })
+
+        if (this.#selectionAtTrigger) {
+          this.#editor.update(() => {
+            const selection = $getSelection()
+            if (!$isRangeSelection(selection) || selection.isCollapsed()) return
+
+            const end = selection.isBackward() ? selection.anchor : selection.focus
+            const { key, offset, type } = end
+            selection.anchor.set(key, offset, type)
+            selection.focus.set(key, offset, type)
+          })
+        }
+
+        return false
+      }, COMMAND_PRIORITY_CRITICAL)
+    )
+  }
+
+  #restoreStashedSelection({ anchor, focus }) {
+    const anchorNode = $getNodeByKey(anchor.key)
+    const focusNode = $getNodeByKey(focus.key)
+    if (!anchorNode || !focusNode) return false
+    if ($isTextNode(anchorNode) && anchor.offset > anchorNode.getTextContentSize()) return false
+    if ($isTextNode(focusNode) && focus.offset > focusNode.getTextContentSize()) return false
+
+    const selection = $createRangeSelection()
+    selection.anchor.set(anchor.key, anchor.offset, anchor.type)
+    selection.focus.set(focus.key, focus.offset, focus.type)
+    $setSelection(selection)
+    return true
   }
 
   get #promptContentTypePermitted() {
@@ -450,6 +509,7 @@ export class LexicalPromptElement extends HTMLElement {
 
   async #hidePopover() {
     this.showPopoverId++
+    this.#selectionAtTrigger = null
     this.#clearSelection()
     this.popoverElement.classList.toggle("lexxy-prompt-menu--visible", false)
     this.#popoverListeners.dispose()
@@ -629,6 +689,12 @@ export class LexicalPromptElement extends HTMLElement {
     const payload = payloadStr ? JSON.parse(payloadStr) : undefined
     const selectBlock = promptItem.hasAttribute("data-command-select-block")
     const insertBelow = promptItem.hasAttribute("data-insert-below")
+    const keepsSelection = promptItem.hasAttribute("data-command-keeps-selection")
+
+    // Take the stash synchronously — #hidePopover clears it right after this
+    // call stack, before the deferred dispatch below runs.
+    const stashedSelection = this.#selectionAtTrigger
+    this.#selectionAtTrigger = null
 
     this.#editor.update(() => {
       this.#editorContents.replaceTextBackUntil(stringToReplace, [ $createTextNode("") ])
@@ -637,6 +703,22 @@ export class LexicalPromptElement extends HTMLElement {
     requestAnimationFrame(() => {
       this.#editor.update(() => {
         this.#removeTrailingWhitespaceNode()
+
+        // Text highlighted when the trigger was typed wins over the
+        // whole-block fallback: the command applies to exactly that range.
+        if (stashedSelection && this.#restoreStashedSelection(stashedSelection)) {
+          this.#editor.dispatchCommand(command, payload)
+
+          // Collapse to the end so the cursor lands after the styled text —
+          // unless the command needs the selection kept (e.g. link dialog).
+          if (!keepsSelection) {
+            const afterSel = $getSelection()
+            if ($isRangeSelection(afterSel)) {
+              afterSel.anchor.set(afterSel.focus.key, afterSel.focus.offset, afterSel.focus.type)
+            }
+          }
+          return
+        }
 
         if (insertBelow) {
           this.#insertNewBlockBelow()

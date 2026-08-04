@@ -1,8 +1,11 @@
+import { $getSelection, $isRangeSelection, $setSelection } from "lexical"
 import { LinkNode } from "@lexical/link"
 import { ToolbarDropdown } from "../toolbar_dropdown"
 import { registerEventListener } from "../../helpers/listener_helper"
 
 export class LinkDropdown extends ToolbarDropdown {
+  #savedSelection = null
+
   editorReady() {
     this.input = this.panel.querySelector("input")
 
@@ -14,12 +17,17 @@ export class LinkDropdown extends ToolbarDropdown {
   }
 
   onOpen() {
+    // Opening moves focus into the URL input, which loses the editor's
+    // selection. Save it now and restore it before dispatching, so the link
+    // wraps the text the user had highlighted.
+    this.#saveSelection()
     this.input.value = this.#selectedLinkUrl
     this.input.required = true
   }
 
   onClose() {
     this.input.required = false
+    this.#savedSelection = null
   }
 
   get linkButton() {
@@ -28,6 +36,29 @@ export class LinkDropdown extends ToolbarDropdown {
 
   get unlinkButton() {
     return this.panel.querySelector("[value='unlink']")
+  }
+
+  #saveSelection() {
+    this.#savedSelection = null
+    this.editor.getEditorState().read(() => {
+      const selection = $getSelection()
+      if ($isRangeSelection(selection)) {
+        this.#savedSelection = selection.clone()
+      }
+    })
+  }
+
+  #restoreSavedSelection() {
+    const saved = this.#savedSelection
+    if (!saved) return
+
+    this.editor.update(() => {
+      try {
+        $setSelection(saved.clone())
+      } catch {
+        // The selected nodes no longer exist — fall back to current selection
+      }
+    })
   }
 
   #handleEnter = (event) => {
@@ -44,11 +75,13 @@ export class LinkDropdown extends ToolbarDropdown {
       return
     }
 
+    this.#restoreSavedSelection()
     this.editor.dispatchCommand("link", this.input.value)
     this.close()
   }
 
   #handleUnlink = () => {
+    this.#restoreSavedSelection()
     this.editor.dispatchCommand("unlink")
     this.close()
   }
