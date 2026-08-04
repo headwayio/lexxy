@@ -8,6 +8,7 @@ import {
   $isElementNode,
   $isParagraphNode,
   $isRangeSelection,
+  $isRootOrShadowRoot,
   $isTextNode,
   $parseSerializedNode,
   $setSelection,
@@ -77,6 +78,7 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#registerBlockSelectFormatHandler()
     this.#dragAndDrop = new BlockDragAndDrop(this.editor, this.editorElement, this)
     this.#registerBulletOffsetSyncListener()
+    this.#registerCaretBlockListener()
   }
 
   dispose() {
@@ -1264,6 +1266,37 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
     this.root?.addEventListener("lexxy:sync-wrapped-block", handler)
     this.#cleanupFns.push(() => this.root?.removeEventListener("lexxy:sync-wrapped-block", handler))
+  }
+
+  // Keep the gutter controls (+ and drag handle) on the caret's block, so they
+  // are visible immediately after Enter, arrow keys, or undo/redo — without
+  // waiting for a mousemove. Runs after reconciliation; the double rAF waits
+  // for layout before measuring, matching the indent/move sync paths.
+  #registerCaretBlockListener() {
+    this.#cleanupFns.push(
+      this.editor.registerUpdateListener(({ editorState }) => {
+        if (this.#mode === "block-select") return
+
+        const blockElement = editorState.read(() => {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection) || !selection.isCollapsed()) return null
+
+          let node = selection.anchor.getNode()
+          while (node && !$isListItemNode(node) && node.getParent() && !$isRootOrShadowRoot(node.getParent())) {
+            node = node.getParent()
+          }
+          if (!node) return null
+
+          const blockNode = $isListItemNode(node) ? node : node.getTopLevelElement()
+          return blockNode ? this.editor.getElementByKey(blockNode.getKey()) : null
+        })
+        if (!blockElement) return
+
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (blockElement.isConnected) this.#dragAndDrop?.showForBlock(blockElement)
+        }))
+      })
+    )
   }
 
   #syncBulletOffsets() {

@@ -104,6 +104,23 @@ export class BlockDragAndDrop {
     this.#positionHandle(this.#currentHoveredBlock)
   }
 
+  // Show the controls next to an explicitly supplied block (caret-driven),
+  // not just the mouse-hovered one. Adopting the block as the hovered one is
+  // required, not incidental: the add button and the handle pointerdown both
+  // read #currentHoveredBlock, so "+" inserts after the caret's block.
+  showForBlock(blockElement) {
+    if (!blockElement || this.#hoverSuppressed || this.#isDragging || !this.#showHandles) return
+
+    if (blockElement === this.#currentHoveredBlock) {
+      this.#positionHandle(blockElement)
+      return
+    }
+
+    this.#currentHoveredBlock?.classList.remove("lexxy-block-hovered")
+    this.#currentHoveredBlock = blockElement
+    this.#positionHandle(blockElement)
+  }
+
   destroy() {
     this.#cleanup()
     this.#cancelHideTimer()
@@ -426,6 +443,10 @@ export class BlockDragAndDrop {
     const offset = textNode.textContent.search(/\S/)
     range.setStart(textNode, offset >= 0 ? offset : 0)
     range.setEnd(textNode, (offset >= 0 ? offset : 0) + 1)
+
+    // jsdom (native-adapter tests) has no Range#getBoundingClientRect
+    if (typeof range.getBoundingClientRect !== "function") return null
+
     return range.getBoundingClientRect()
   }
 
