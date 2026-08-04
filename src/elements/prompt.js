@@ -216,6 +216,10 @@ export class LexicalPromptElement extends HTMLElement {
     this.popoverElement.classList.toggle("lexxy-prompt-menu--visible", true)
     this.#selectFirstOption()
 
+    // The pre-visible positioning ran against a zero-height menu; re-run the
+    // overflow/flip math now that the menu has real dimensions.
+    this.#positionPopover()
+
     this.#popoverListeners.track(
       registerEventListener(this.#editorElement, "keydown", this.#handleKeydownOnPopover),
       registerEventListener(this.#editorElement, "lexxy:change", this.#debouncedFilterOptions)
@@ -281,7 +285,6 @@ export class LexicalPromptElement extends HTMLElement {
     } else {
       listItem.scrollIntoView({ block: "nearest", container: "nearest", behavior: "smooth" })
     }
-    listItem.focus()
 
     this.#setEditorAssociationAttribute("aria-controls", this.popoverElement.id)
     this.#setEditorAssociationAttribute("aria-activedescendant", listItem.id)
@@ -395,21 +398,35 @@ export class LexicalPromptElement extends HTMLElement {
 
     const popoverRect = this.popoverElement.getBoundingClientRect()
 
-    // Clamp to viewport right edge
-    if (popoverRect.right > window.innerWidth) {
-      this.#setPopoverOffsetX(Math.max(8, window.innerWidth - popoverRect.width - 8))
+    // Clamp so the menu stays inside the editor horizontally (and on screen).
+    // Narrow editors also cap the menu's width — min-inline-size would
+    // otherwise push it past the editor's right edge.
+    const editorRect = this.#editorElement.getBoundingClientRect()
+    const rightLimit = Math.min(editorRect.right, window.innerWidth - 8)
+    if (popoverRect.right > rightLimit) {
+      const clampedLeft = Math.max(editorRect.left, rightLimit - popoverRect.width)
+      this.#setPopoverOffsetX(clampedLeft)
+
+      const availableWidth = rightLimit - clampedLeft
+      if (popoverRect.width > availableWidth) {
+        this.popoverElement.style.minInlineSize = "0"
+        this.popoverElement.style.maxInlineSize = `${availableWidth}px`
+      }
     }
 
-    // Flip above cursor if it would overflow viewport bottom
+    // Flip above cursor if it would overflow the viewport bottom, or when the
+    // vertical-direction attribute forces a side (never flip when forced bottom)
+    const forceTop = this.verticalDirection === "top"
+    const forceBottom = this.verticalDirection === "bottom"
     const flippedGap = fontSize * 3
-    if (popoverRect.bottom > window.innerHeight) {
-      this.popoverElement.toggleAttribute("data-flipped", true)
+    if (!forceBottom && (forceTop || popoverRect.bottom > window.innerHeight)) {
+      this.popoverElement.toggleAttribute("data-clipped-at-bottom", true)
       this.#setPopoverOffsetY(viewportY - popoverRect.height - flippedGap)
     }
 
     // When flipped above cursor, recalculate top so the bottom edge
     // stays anchored to the cursor as the menu height changes (filtering)
-    if (this.popoverElement.hasAttribute("data-flipped")) {
+    if (this.popoverElement.hasAttribute("data-clipped-at-bottom")) {
       const flippedTop = viewportY - this.popoverElement.offsetHeight - flippedGap
       this.#setPopoverOffsetY(Math.max(8, flippedTop))
     }
@@ -427,7 +444,8 @@ export class LexicalPromptElement extends HTMLElement {
     this.popoverElement.removeAttribute("data-clipped-at-bottom")
     this.popoverElement.removeAttribute("data-clipped-at-right")
     this.popoverElement.removeAttribute("data-anchored")
-    this.popoverElement.removeAttribute("data-flipped")
+    this.popoverElement.style.minInlineSize = ""
+    this.popoverElement.style.maxInlineSize = ""
   }
 
   async #hidePopover() {
@@ -443,9 +461,14 @@ export class LexicalPromptElement extends HTMLElement {
   // The popover is appended to the <lexxy-editor> subtree, so Turbo serializes it
   // into the page cache. Removing it before caching prevents an orphaned, unmanaged
   // popover from being restored on history back/forward.
+  // registerEventListener holds the handler via WeakRef only — an inline
+  // arrow would be collected before dispose could remove it from document,
+  // leaking one listener per prompt lifecycle.
+  #removePopoverBeforeTurboCache = () => this.#removePopover()
+
   #removePopoverBeforeTurboCaches() {
     this.#globalListeners.track(
-      registerEventListener(document, "turbo:before-cache", () => this.#removePopover())
+      registerEventListener(document, "turbo:before-cache", this.#removePopoverBeforeTurboCache)
     )
   }
 

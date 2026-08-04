@@ -1244,6 +1244,8 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
   min-inline-size: 300px;
   scroll-padding: 6px 0 32px;
   position: fixed;
+  inset-block-start: var(--lexxy-prompt-offset-y, 0);
+  inset-inline-start: var(--lexxy-prompt-offset-x, 0);
 }
 
 .lexxy-prompt-menu::before {
