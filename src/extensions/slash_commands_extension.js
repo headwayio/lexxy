@@ -58,21 +58,28 @@ const SLASH_COMMAND_SECTIONS = [
 
 export class SlashCommandsExtension extends LexxyExtension {
   #promptElement = null
+  #deferredBuild = null
 
   get enabled() {
     return this.editorElement.supportsRichText
   }
 
   initializeEditor() {
-    // Defer prompt element creation until after editor is interactive.
-    // The slash menu only appears when the user types "/", so there's
-    // no need to build it synchronously during editor initialization.
-    typeof requestIdleCallback === "function"
-      ? requestIdleCallback(() => this.#buildPromptElement())
-      : setTimeout(() => this.#buildPromptElement(), 0)
+    // Defer prompt element creation until after editor initialization has
+    // finished. The slash menu only appears when the user types "/", so
+    // there's no need to build it synchronously — but a plain timeout (not
+    // requestIdleCallback, which Safari lacks and busy pages starve) keeps
+    // the build prompt and deterministic.
+    this.#deferredBuild = setTimeout(() => this.#buildPromptElement(), 0)
   }
 
   dispose() {
+    // A pending deferred build would append a prompt on behalf of a dead
+    // extension — the editor reconnect cycle would then accumulate one
+    // orphaned prompt per cycle.
+    clearTimeout(this.#deferredBuild)
+    this.#deferredBuild = null
+
     this.#promptElement?.remove()
     this.#promptElement = null
   }
