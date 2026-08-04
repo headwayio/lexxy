@@ -257,7 +257,11 @@ class AttachmentNodeConversion {
       ...this.#propertiesFromBlob,
       src: this.#src,
       previewSrc: this.previewSrc,
-      pendingPreview: this.blob.previewable && !this.uploadNode.isPreviewableImage,
+      // Types that default to the collapsed file card (PDFs) skip the
+      // preview-polling pipeline entirely — #swapToPreviewDOM would flip the
+      // card into an inline image and discard the collapse state.
+      pendingPreview: this.blob.previewable && !this.uploadNode.isPreviewableImage &&
+        !ActionTextAttachmentNode.defaultCollapsedFor(this.blob.content_type),
       blobUrl: this.#blobSrc
     })
   }

@@ -121,8 +121,14 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     return this.blobUrl || this.src
   }
 
-  #defaultCollapsed(contentType) {
+  // PDFs render as the full-width file card by default; the app's read-mode
+  // renderer relies on this same default when the attribute is absent.
+  static defaultCollapsedFor(contentType) {
     return contentType === "application/pdf"
+  }
+
+  #defaultCollapsed(contentType) {
+    return ActionTextAttachmentNode.defaultCollapsedFor(contentType)
   }
 
   createDOM() {
@@ -197,7 +203,10 @@ export class ActionTextAttachmentNode extends DecoratorNode {
     const attachment = createElement(this.tagName, {
       sgid: this.sgid,
       previewable: this.previewable || null,
-      collapsed: this.isPreviewableAttachment && this.collapsed !== this.#defaultCollapsed(this.contentType) ? String(this.collapsed) : null,
+      // Serialize whenever collapsed is on, even at its default: consumers of
+      // the saved HTML (the app's read-mode renderer) treat a missing
+      // attribute as "not collapsed" and would show a PDF as an inline image.
+      collapsed: this.isPreviewableAttachment && (this.collapsed || this.collapsed !== this.#defaultCollapsed(this.contentType)) ? String(this.collapsed) : null,
       url: this.src,
       "blob-url": this.blobUrl || null,
       alt: this.altText,
