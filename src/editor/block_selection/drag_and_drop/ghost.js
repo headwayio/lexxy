@@ -21,37 +21,51 @@ export class DragGhost {
     return this.#element
   }
 
-  create(sourceElement, event) {
+  create(sourceElement, event, extraElements = []) {
     this.remove()
     if (!sourceElement) return
 
     const rect = sourceElement.getBoundingClientRect()
 
-    // For list items with children, the children live in a structural
-    // wrapper sibling. Build a container that includes both the item
-    // and its children so the ghost shows the full subtree.
-    let ghostContent
-    const nextSib = sourceElement.nextElementSibling
-    const hasChildren = sourceElement.tagName === "LI" &&
-      nextSib && nextSib.classList.contains(NESTED_LISTITEM_CLASS)
+    // Build ghost content for ONE element (the grabbed one or any
+    // extra selected one). Returns a DOM node ready to append to
+    // the ghost's container. List items get wrapped in a mini list
+    // so bullets/numbers render; non-list blocks pass through.
+    function buildOne(el) {
+      const sib = el.nextElementSibling
+      const hasChildren = el.tagName === "LI"
+        && sib && sib.classList.contains(NESTED_LISTITEM_CLASS)
+      if (hasChildren) {
+        const list = document.createElement(el.closest("ul, ol")?.tagName || "UL")
+        list.appendChild(el.cloneNode(true))
+        list.appendChild(sib.cloneNode(true))
+        list.style.margin = "0"
+        list.style.paddingInlineStart = "1.5em"
+        return list
+      }
+      if (el.tagName === "LI") {
+        const list = document.createElement(el.closest("ul, ol")?.tagName || "UL")
+        list.appendChild(el.cloneNode(true))
+        list.style.margin = "0"
+        list.style.paddingInlineStart = "1.5em"
+        return list
+      }
+      return el.cloneNode(true)
+    }
 
-    if (hasChildren) {
-      // Wrap in a mini list so the bullets render correctly
-      const list = document.createElement(sourceElement.closest("ul, ol")?.tagName || "UL")
-      list.appendChild(sourceElement.cloneNode(true))
-      list.appendChild(nextSib.cloneNode(true))
-      list.style.margin = "0"
-      list.style.paddingInlineStart = "1.5em"
-      ghostContent = list
-    } else if (sourceElement.tagName === "LI") {
-      // Single list item — wrap in a list for proper bullet rendering
-      const list = document.createElement(sourceElement.closest("ul, ol")?.tagName || "UL")
-      list.appendChild(sourceElement.cloneNode(true))
-      list.style.margin = "0"
-      list.style.paddingInlineStart = "1.5em"
-      ghostContent = list
+    // Multi-block: stack each selected block's clone inside a
+    // single ghost container so the user sees the full extent of
+    // what's about to move. Single-block: just the one source.
+    let ghostContent
+    if (extraElements.length > 0) {
+      const stack = document.createElement("div")
+      stack.appendChild(buildOne(sourceElement))
+      for (const el of extraElements) {
+        if (el && el !== sourceElement) stack.appendChild(buildOne(el))
+      }
+      ghostContent = stack
     } else {
-      ghostContent = sourceElement.cloneNode(true)
+      ghostContent = buildOne(sourceElement)
     }
 
     // Strip selection classes from cloned elements — they carry box-shadows
