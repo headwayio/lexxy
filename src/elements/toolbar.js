@@ -402,7 +402,16 @@ export class LexicalToolbarElement extends HTMLElement {
       this.#templateNode = document.createElement("template")
       this.#templateNode.innerHTML = this.defaultTemplate
     }
-    return this.#templateNode.content.cloneNode(true)
+
+    const fragment = this.#templateNode.content.cloneNode(true)
+
+    // defaultTemplate mints a fresh id on every call so that two editors on the
+    // same page don't collide. Caching the PARSED template would freeze one id
+    // into every clone, so re-mint it here.
+    const linkInput = fragment.querySelector("input[type='url']")
+    if (linkInput) linkInput.id = generateDomId("lexxy-link-url")
+
+    return fragment
   }
 
   // Kept public: editor.js still reads it directly until a later commit
