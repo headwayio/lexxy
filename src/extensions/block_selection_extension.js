@@ -5746,6 +5746,15 @@ export class BlockSelectionExtension extends LexxyExtension {
     }
   }
 
+  // Public: snapshot the current block-selection state to the
+  // history stack so an UNDO can restore it after Lexical reverts
+  // the tree change. Call BEFORE editor.update for any operation
+  // that should round-trip via undo. Used by drag-drop, which lives
+  // in a separate module and can't reach #selectionHistory directly.
+  pushSelectionHistory() {
+    this.#selectionHistory.push()
+  }
+
   // Public: apply parent highlight inheritance to a node after drop.
   inheritParentHighlight(nodeKey) {
     this.editor.update(() => {

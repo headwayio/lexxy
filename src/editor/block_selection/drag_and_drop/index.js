@@ -1325,6 +1325,14 @@ export class BlockDragAndDrop {
     const draggedKey = this.#draggedNodeKey
     if (!target || !draggedKey) return
 
+    // Snapshot the block-selection state BEFORE the drop's editor.update
+    // so Lexical's UNDO can restore it. Without this, Lexical reverts the
+    // tree on undo but the JS-side selection (selectedBlockKeys, anchor,
+    // focus) stays at its post-drop value — and any keys that changed
+    // during the move resolve to nothing after the revert, leaving the
+    // dragged item unhighlighted at its restored location.
+    this.#blockSelectionExtension.pushSelectionHistory()
+
     this.#editor.update(() => {
       try {
       const draggedNode = $getNodeByKey(draggedKey)
