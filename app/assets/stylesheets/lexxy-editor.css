@@ -1404,6 +1404,8 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
         background-color: var(--lexxy-color-ink-lightest);
         inline-size: 100%;
         padding-inline: 2ch;
+        /* Keep "Unlink" on one line when the panel is cramped. */
+        white-space: nowrap;
       }
 
       button[value="link"] {
