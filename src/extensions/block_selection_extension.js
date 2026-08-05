@@ -159,11 +159,17 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // mouseenter fires before any mousedown/click, so handlers are ready
     // for the first click. focusin catches keyboard-first users (Tab to focus).
-    const root = this.root
-    root?.addEventListener("focusin", activate, { once: true })
+    //
+    // Both listeners go on the editor element, not the Lexical root: the root
+    // is mounted a frame later (editor.js calls #mountRoot inside a
+    // requestAnimationFrame that runs after extensions initialize), so reading
+    // this.root here yields null and the listener would be dropped silently.
+    // focusin bubbles, so the host element still sees focus landing in the
+    // contenteditable.
+    this.editorElement.addEventListener("focusin", activate, { once: true })
     this.editorElement.addEventListener("mouseenter", activateWithDragAndDrop, { once: true })
     this.#cleanupFns.push(() => {
-      root?.removeEventListener("focusin", activate)
+      this.editorElement.removeEventListener("focusin", activate)
       this.editorElement.removeEventListener("mouseenter", activateWithDragAndDrop)
     })
   }
