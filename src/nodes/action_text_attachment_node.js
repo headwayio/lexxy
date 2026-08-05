@@ -578,6 +578,13 @@ export class ActionTextAttachmentNode extends DecoratorNode {
   }
 
   #startEditingName(event, nameTag) {
+    // Renaming begins on a click against an already-selected attachment, not
+    // on the first click. On file cards the name sits in the middle of the
+    // figure, so swallowing the first click here would make the attachment
+    // impossible to select by clicking it.
+    const figure = nameTag.closest("figure.attachment")
+    if (figure && !figure.classList.contains("node--selected")) return
+
     event.stopPropagation()
 
     // Don't create another input if already editing
