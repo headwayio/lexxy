@@ -763,6 +763,8 @@
 /* Reserve the mounted height before upgrade so it doesn't shift layout on mount. */
 :where(lexxy-editor:not(:defined)) {
   min-block-size: calc(var(--lexxy-toolbar-height) + var(--lexxy-editor-rows) + 2 * var(--lexxy-editor-padding));
+}
+
 /* Restore native text selection highlight on name input — must be outside
    :where(lexxy-editor) to override the inherited transparent ::selection */
 .attachment__name-input,
@@ -1229,7 +1231,6 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
 
 :where(.lexxy-editor__toolbar-dropdown) {
   -webkit-user-select: none;
-}
 
   @supports (user-select: none) {
     user-select: none;
