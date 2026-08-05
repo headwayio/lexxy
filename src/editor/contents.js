@@ -87,8 +87,7 @@ export default class Contents {
     if (!$isRangeSelection(selection)) return
 
     // When inside a wrapped block in a list item, unwrap back to regular content
-    const anchorNode = selection.anchor.getNode()
-    const listItem = getListItemNode(anchorNode)
+    const listItem = this.#singleSelectedListItem(selection)
     if (listItem) {
       const children = listItem.getChildren()
       const wrappedChild = children.find(c =>
@@ -113,8 +112,7 @@ export default class Contents {
 
     // When the cursor is inside a list item, wrap the content in a heading
     // node (creating a wrapped block) instead of replacing the LI container.
-    const anchorNode = selection.anchor.getNode()
-    const listItem = getListItemNode(anchorNode)
+    const listItem = this.#singleSelectedListItem(selection)
     if (listItem) {
       this.#wrapListItemInBlock(listItem, $createHeadingNode(tag))
       return
@@ -122,6 +120,20 @@ export default class Contents {
 
     $expandSelectionToLineBreaksAndSplitAtEdges(selection)
     $setBlocksType(selection, () => $createHeadingNode(tag))
+  }
+
+  // The wrapped-block flow converts exactly one list item. When the selection
+  // reaches beyond a single item — across sibling items, into a nested list, or
+  // out to surrounding content — fall through to the range-based path so the
+  // whole selection converts, which is what the toolbar commands promise.
+  #singleSelectedListItem(selection) {
+    const anchorItem = getListItemNode(selection.anchor.getNode())
+    if (!anchorItem) return null
+
+    const focusItem = getListItemNode(selection.focus.getNode())
+    if (!focusItem || !anchorItem.is(focusItem)) return null
+
+    return anchorItem
   }
 
   // Wrap a list item's inline content in a block element (heading, quote, code).
@@ -180,13 +192,10 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
-    // Inside a list item → wrap as a code block
-    const anchorNode = selection.anchor.getNode()
-    const listItem = getListItemNode(anchorNode)
-    if (listItem) {
-      this.#wrapListItemInBlock(listItem, $createCodeNode("plain"))
-      return
-    }
+    // No list-item wrapping here. The toolbar's Code button converts the
+    // selected content, matching upstream; producing a code block *inside* a
+    // list item is the block-select "Turn into Code" affordance, which runs
+    // through BlockSelectionExtension#createBlockForCommand and is unaffected.
 
     if (this.#insertNodeIfRoot($createCodeNode("plain"))) return
 
@@ -212,8 +221,7 @@ export default class Contents {
     if (!$isRangeSelection(selection)) return
 
     // Inside a list item → wrap as a blockquote
-    const anchorNode = selection.anchor.getNode()
-    const listItem = getListItemNode(anchorNode)
+    const listItem = this.#singleSelectedListItem(selection)
     if (listItem) {
       this.#wrapListItemInBlock(listItem, $createQuoteNode())
       return

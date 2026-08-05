@@ -70,9 +70,12 @@ test.describe("Block selection", () => {
     const modifier = process.platform === "darwin" ? "Meta" : "Control"
     await page.keyboard.press(`${modifier}+Shift+ArrowUp`)
 
+    // Lexical 0.44's ListItemNode.exportDOM folds a nested-list wrapper into
+    // the preceding <li>, so the serialized form is now standards-shaped nested
+    // list markup. The editor tree still uses the sibling wrapper.
     await assertBlockHtml(
       editor,
-      '<ul><li>Parent</li><li class="lexxy-nested-listitem"><ul><li>Child</li></ul></li></ul>'
+      '<ul><li>Parent<ul><li>Child</li></ul></li></ul>'
     )
   })
 
@@ -84,7 +87,7 @@ test.describe("Block selection", () => {
 
     await assertBlockHtml(
       editor,
-      '<ul><li>First</li><li class="lexxy-nested-listitem"><ul><li>Second</li></ul></li></ul>'
+      '<ul><li>First<ul><li>Second</li></ul></li></ul>'
     )
   })
 

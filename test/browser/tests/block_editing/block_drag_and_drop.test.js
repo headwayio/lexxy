@@ -91,7 +91,7 @@ test.describe("Block drag and drop", () => {
 
     await assertBlockHtml(
       editor,
-      '<ul><li>Parent</li><li class="lexxy-nested-listitem"><ul><li>Child candidate</li></ul></li></ul>'
+      '<ul><li>Parent<ul><li>Child candidate</li></ul></li></ul>'
     )
   })
 
@@ -220,8 +220,10 @@ test.describe("Block drag and drop — list entry and exit", () => {
     const html = await editor.value()
     expect(html).toContain("Standalone")
     expect(html).toContain("List item")
-    // Should be in a nested list structure
-    expect(html).toContain("lexxy-nested-listitem")
+    // Should be in a nested list structure. Lexical 0.44 serializes the nested
+    // wrapper into the preceding <li>, so assert the shape rather than the
+    // wrapper class, which no longer survives export.
+    expect(html).toMatch(/<li[^>]*>List item<ul>/)
   })
 
   test("dragging a list item out to root level unwraps it", async ({ editor, page }) => {

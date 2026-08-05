@@ -102,7 +102,7 @@ test.describe("Code block conversion", () => {
     await editor.setValue("<p>before</p><blockquote><p>quoted</p></blockquote>")
     await editor.selectAll()
 
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await editor.flush()
 
     await assertEditorContent(editor, async (content) => {
@@ -116,7 +116,7 @@ test.describe("Code block conversion", () => {
     await editor.setValue("<ul><li>item one<ul><li>nested</li></ul></li></ul>")
     await editor.selectAll()
 
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
     await editor.flush()
 
     await assertEditorContent(editor, async (content) => {
