@@ -74,7 +74,7 @@ test.describe("Escape format", () => {
     await clickToolbarButton(page, "insertQuoteBlock")
     await assertEditorHtml(
       editor,
-      "<ul><li value=\"1\"><blockquote>Item one</blockquote></li><li value=\"2\">Item two</li><li value=\"3\">Item three</li></ul>",
+      "<ul><li value=\"1\"><blockquote><p>Item one</p></blockquote></li><li value=\"2\">Item two</li><li value=\"3\">Item three</li></ul>",
     )
 
     await editor.select("Item two")
@@ -86,7 +86,7 @@ test.describe("Escape format", () => {
 
     await assertEditorHtml(
       editor,
-      "<ul><li value=\"1\"><blockquote>Item one</blockquote></li><li value=\"2\">Item two</li></ul><p>Middle text</p><ul><li value=\"1\">Item three</li></ul>",
+      "<ul><li value=\"1\"><blockquote><p>Item one</p></blockquote></li><li value=\"2\">Item two</li></ul><p>Middle text</p><ul><li value=\"1\">Item three</li></ul>",
     )
   })
 

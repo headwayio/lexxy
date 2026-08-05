@@ -1560,7 +1560,7 @@ export class BlockSelectionExtension extends LexxyExtension {
       const newSelectedKeys = new Set()
       const replacedKeys = new Set()
       // Snapshot keys before the loop. Some branches (toggle-unwrap via
-      // #unwrapWrappedLiToRootInPlace / #wrapLiInQuoteInPlace) call
+      // #unwrapWrappedLiToRootInPlace) call
       // #updateKeyAfterUnwrap which mutates this.#selectedBlockKeys mid-
       // loop — without a snapshot, the new post-extract key gets iterated
       // next and re-wrapped through the non-list-block branch below.
@@ -1618,16 +1618,6 @@ export class BlockSelectionExtension extends LexxyExtension {
               parentList.setListType(listType)
             }
             newSelectedKeys.add(node.getKey())
-          } else if (command === "insertQuoteBlock" && $isListNode(parentList)) {
-            // LI + quote command: wrap the LI (text or wrapped) inside a
-            // blockquote while keeping it as an LI. Splits the parent list
-            // around the target so siblings stay in their original list.
-            // Works for plain text LIs (bullet + quote bar side-by-side)
-            // and for wrapped-content LIs (preserves the inner heading/
-            // code/decorator/etc.).
-            const quote = this.#wrapLiInQuoteInPlace(node)
-            if (quote) newSelectedKeys.add(quote.getKey())
-            replacedKeys.add(key)
           } else if (command === "setFormatParagraph") {
             // Turn into → Text on a list item ejects the item out of its
             // list to root as a plain paragraph, splitting the surrounding
@@ -1698,16 +1688,12 @@ export class BlockSelectionExtension extends LexxyExtension {
           } else if (command === "insertQuoteBlock") {
             // Decorator + quote command. Behavior:
             //   already in a blockquote → unwrap (return to root)
-            //   already in a list (wrapped LI) → swap list wrapper for quote
-            //   otherwise → wrap in quote
+            //   otherwise → wrap in quote where it stands, including
+            //     inside a list item, so the list is left intact
             const parent = node.getParent()
             if ($isQuoteNode(parent)) {
               parent.replace(node)
               newSelectedKeys.add(node.getKey())
-              replacedKeys.add(key)
-            } else if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
-              const quote = this.#wrapLiInQuoteInPlace(parent)
-              if (quote) newSelectedKeys.add(quote.getKey())
               replacedKeys.add(key)
             } else {
               const quote = $createQuoteNode()
@@ -1771,20 +1757,14 @@ export class BlockSelectionExtension extends LexxyExtension {
           // anything else — decorators/tables are handled earlier).
           // Behavior:
           //   already in a blockquote → unwrap (promote to root)
-          //   already in a list-wrapped LI → wrap the whole LI in a
-          //     blockquote via #wrapLiInQuoteInPlace (the LI stays an LI
-          //     inside the quote; bullet visible, quote bar spans it).
-          //   otherwise → wrap in a new blockquote, preserving the inner
+          //   otherwise → wrap in a new blockquote where it stands,
+          //     including inside a list item, preserving the inner
           //     block intact (heading keeps heading styling, paragraph
           //     stays a paragraph, code stays a code block).
           const parent = node.getParent()
           if ($isQuoteNode(parent)) {
             parent.replace(node)
             newSelectedKeys.add(node.getKey())
-            replacedKeys.add(key)
-          } else if ($isListItemNode(parent) && $isListNode(parent.getParent())) {
-            const quote = this.#wrapLiInQuoteInPlace(parent)
-            if (quote) newSelectedKeys.add(quote.getKey())
             replacedKeys.add(key)
           } else {
             const quote = $createQuoteNode()
@@ -6395,74 +6375,6 @@ export class BlockSelectionExtension extends LexxyExtension {
 
     // Remove the now-empty structural wrapper
     ownWrapper.remove()
-  }
-
-  // Swap a wrapped list item's outer list wrapper for a blockquote, splitting
-  // the parent list around it: siblings before stay in the original list,
-  // siblings after move to a new list, and a blockquote containing the
-  // wrapped block lands between them at the original vertical position.
-  // Mirrors #extractWrappedItemsInPlace but wraps the extracted content in
-  // a quote instead of leaving it at root.
-  // Wrap an LI (text or wrapped, with or without its own structural-wrapper
-  // children) inside a blockquote while KEEPING it as an LI. Splits the
-  // parent list around the target so preceding/trailing siblings stay in
-  // their original list. Result shape (for a single target LI in a
-  // multi-item list):
-  //
-  //   UL [pre]           ← preceding items (if any)
-  //   Quote
-  //     UL
-  //       LI (the target)
-  //       LI-structural-wrapper (if any, with nested children)
-  //   UL [post]          ← trailing items (if any)
-  //
-  // This is the Notion-style "wrap in quote" — the LI keeps its bullet, the
-  // quote bar spans the whole thing.
-  #wrapLiInQuoteInPlace(liNode) {
-    const parentList = liNode.getParent()
-    if (!$isListNode(parentList)) return null
-    const listType = parentList.getListType()
-    const ownWrapper = this.#getOwnStructuralWrapper(liNode)
-
-    // Snapshot trailing siblings (after the target + its own wrapper) so we
-    // can rebuild them into their own list below the quote.
-    const startAfter = ownWrapper || liNode
-    const trailing = []
-    let sib = startAfter.getNextSibling()
-    while (sib) {
-      trailing.push(sib)
-      sib = sib.getNextSibling()
-    }
-
-    // Place the quote BEFORE detaching the target LI from parentList.
-    // ListNode.canBeEmpty() is false in Lexical 0.42+, so removing the only
-    // real child triggers a cascade-remove that detaches parentList from
-    // the tree — calling parentList.insertAfter() afterwards throws
-    // "getParentOrThrow: node has no parent" (error #66) and the wrap
-    // silently fails.
-    const innerList = $createListNode(listType)
-    const quote = $createQuoteNode()
-    quote.append(innerList)
-    parentList.insertAfter(quote)
-
-    // Now safe to detach and move the LI (and its structural wrapper) into
-    // the new inner list. parentList may still be in the tree if there were
-    // other items; #cleanupEmptyList below handles the now-empty case.
-    liNode.remove()
-    innerList.append(liNode)
-    if (ownWrapper) {
-      ownWrapper.remove()
-      innerList.append(ownWrapper)
-    }
-
-    if (trailing.length > 0) {
-      const trailingList = $createListNode(listType)
-      quote.insertAfter(trailingList)
-      for (const t of trailing) trailingList.append(t)
-    }
-
-    this.#cleanupEmptyList(parentList)
-    return quote
   }
 
   // Extract wrapped items from their lists in place. Each wrapped item is

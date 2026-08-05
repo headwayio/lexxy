@@ -220,8 +220,14 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
-    // Inside a list item → wrap as a blockquote
-    const listItem = this.#singleSelectedListItem(selection)
+    // Inside a list item → wrap as a blockquote.
+    //
+    // Unlike code, quote uses the ANCHOR's item rather than requiring the
+    // whole selection to sit in one item: quoting a run of bullets means
+    // quoting the one you started from, not collapsing the run into a single
+    // quoted block. Wrapping the entire list would also destroy ordered-list
+    // numbering, since the list has to be split around the quoted part.
+    const listItem = getListItemNode(selection.anchor.getNode())
     if (listItem) {
       this.#wrapListItemInBlock(listItem, $createQuoteNode())
       return
