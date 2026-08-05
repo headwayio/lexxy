@@ -46,6 +46,7 @@ export class BlockDragAndDrop {
   #pointerStartY = 0
   #pendingNodeKey = null
   #draggedNodeKey = null
+  #wasGrabbedItemAlreadySelected = false
   #pendingExistingLIKeys = new Set()
   #pendingSourceListKey = null
   #rafId = null
@@ -706,13 +707,28 @@ export class BlockDragAndDrop {
     this.#pointerStartY = event.clientY
     this.#pendingNodeKey = nodeKey
 
+    // Snapshot whether the grabbed item was already part of a
+    // multi-block selection. Drives two decisions:
+    //   1. Below: skip the single-block enterBlockSelectMode call
+    //      so multi-selection persists visually through the drag.
+    //   2. After drop (in #onPendingDragEnd): preserve multi-selection
+    //      instead of collapsing to just the dropped block.
+    this.#wasGrabbedItemAlreadySelected =
+      this.#blockSelectionExtension.isBlockSelected(nodeKey) &&
+      this.#blockSelectionExtension.blockSelectionSize() > 1
+
     this.#handleElement.setPointerCapture(event.pointerId)
 
     // Select the block with children on next frame. Doing it synchronously
     // during pointerdown can trigger DOM mutations that disrupt pointer capture.
-    requestAnimationFrame(() => {
-      this.#blockSelectionExtension.enterBlockSelectMode(nodeKey, { keepHandles: true })
-    })
+    // Skip when the grabbed item is already part of a multi-selection — entering
+    // single-block mode would collapse the selection the user just made, which
+    // is not what they want when grabbing one item out of many.
+    if (!this.#wasGrabbedItemAlreadySelected) {
+      requestAnimationFrame(() => {
+        this.#blockSelectionExtension.enterBlockSelectMode(nodeKey, { keepHandles: true })
+      })
+    }
 
     document.addEventListener("pointermove", this.#onPendingDragMove)
     document.addEventListener("pointerup", this.#onPendingDragEnd)
@@ -783,17 +799,61 @@ export class BlockDragAndDrop {
       }
     }
 
-    // Apply visual drag state to the original block and its structural
-    // wrapper (children) so the entire subtree fades during drag
-    const el = draggedEl
-    el?.classList.add("lexxy-dragging")
-    const nextSib = el?.nextElementSibling
-    if (nextSib && nextSib.classList.contains(NESTED_LISTITEM_CLASS)) {
-      nextSib.classList.add("lexxy-dragging")
+    // Apply visual drag state to every block participating in the drag
+    // (the grabbed one + any other selected block in a multi-selection)
+    // and each one's structural-wrapper sibling, so the entire moving
+    // subtree fades during drag. The ghost shows the full selection
+    // already; matching the dim treatment in-place tells the user
+    // "all of these are going with me," not just "this one is."
+    const dragEls = []
+    if (this.#blockSelectionExtension.blockSelectionSize() > 1) {
+      const keys = this.#blockSelectionExtension.selectedBlockKeysArray()
+      for (const k of keys) {
+        const e = this.#editor.getElementByKey(k)
+        if (e) dragEls.push(e)
+      }
     }
+    if (!dragEls.includes(draggedEl)) dragEls.push(draggedEl)
 
-    // Create a floating ghost clone that follows the cursor
-    this.#ghost.create(el, event)
+    for (const el of dragEls) {
+      if (!el) continue
+      el.classList.add("lexxy-dragging")
+      const sib = el.nextElementSibling
+      if (sib && sib.classList.contains(NESTED_LISTITEM_CLASS)) {
+        sib.classList.add("lexxy-dragging")
+      }
+    }
+    const el = draggedEl // keep the original alias for code below
+
+    // Create a floating ghost clone that follows the cursor. For
+    // multi-block selections, include every selected block's element
+    // so the ghost reflects the full scope of what's being dragged.
+    // Filter out elements that are already descendants of another
+    // selected element's subtree (the parent's cloneNode already
+    // includes them — without this filter, descendants like a
+    // wrapper-takeover child get duplicated in the ghost).
+    let extraElements = []
+    if (this.#blockSelectionExtension.blockSelectionSize() > 1) {
+      const keys = this.#blockSelectionExtension.selectedBlockKeysArray()
+      const candidates = keys
+        .map(k => this.#editor.getElementByKey(k))
+        .filter(e => e && e !== el)
+
+      function subtreeContains(ownerEl, target) {
+        if (ownerEl.contains(target)) return true
+        const sib = ownerEl.nextElementSibling
+        return !!(sib && sib.classList.contains(NESTED_LISTITEM_CLASS) && sib.contains(target))
+      }
+
+      extraElements = candidates.filter(c => {
+        if (subtreeContains(el, c)) return false
+        for (const other of candidates) {
+          if (other !== c && subtreeContains(other, c)) return false
+        }
+        return true
+      })
+    }
+    this.#ghost.create(el, event, extraElements)
 
     // Hide the handle and + button during drag
     this.#handleElement?.classList.remove("lexxy-block-handle--visible")
@@ -888,12 +948,21 @@ export class BlockDragAndDrop {
       }
     }
 
+    const wasMulti = this.#wasGrabbedItemAlreadySelected
+    this.#wasGrabbedItemAlreadySelected = false
+
     this.#cleanup()
 
-    // After a successful drop, select the moved block with its children
-    // so the user sees the full scope of what landed (especially after
-    // outdenting where the block may have adopted new children).
-    if (droppedNodeKey) {
+    // After a successful drop, refresh the selection on the moved block
+    // (and its children at the new location) so the user sees the full
+    // scope of what landed — especially after outdenting where the
+    // block may have ADOPTED new children that need to enter the
+    // selection. Skip this refresh when the user grabbed one item out
+    // of an existing multi-selection: they expect the multi-selection
+    // to persist through the drag, not collapse to the moved block.
+    // (Key remapping for the dragged item is already handled by
+    // #updateKeyAfterUnwrap during the drop's editor.update.)
+    if (droppedNodeKey && !wasMulti) {
       requestAnimationFrame(() => {
         this.#blockSelectionExtension.enterBlockSelectMode(droppedNodeKey)
       })
@@ -1324,6 +1393,20 @@ export class BlockDragAndDrop {
     const target = this.#dropTarget
     const draggedKey = this.#draggedNodeKey
     if (!target || !draggedKey) return
+
+    // Multi-block drop: delegate to the extension's group-drop helper
+    // (which has access to all the wrapper/block-parent helpers needed
+    // to classify the selection and detach/re-attach subtrees as a unit).
+    // The helper handles its own pushSelectionHistory + editor.update.
+    if (this.#blockSelectionExtension.blockSelectionSize() > 1) {
+      const handled = this.#blockSelectionExtension.performMultiDrop({
+        targetKey: target.nodeKey,
+        position: target.position
+      })
+      if (handled) return
+      // Fell through (e.g., target was inside the selection) — try
+      // the single-block path as a last resort.
+    }
 
     // Snapshot the block-selection state BEFORE the drop's editor.update
     // so Lexical's UNDO can restore it. Without this, Lexical reverts the

@@ -5755,6 +5755,308 @@ export class BlockSelectionExtension extends LexxyExtension {
     this.#selectionHistory.push()
   }
 
+  // Public: is this key currently in the block-selection set?
+  // Used by drag-drop to decide whether grabbing a handle should
+  // collapse a multi-selection to a single block (it shouldn't, if
+  // the grabbed item was already part of the multi-selection).
+  isBlockSelected(key) {
+    return this.#selectedBlockKeys.has(key)
+  }
+
+  // Public: how many root blocks are currently selected. "Root" here
+  // means the user-anchored selection — children covered by
+  // parent-takeover are part of the same logical group, but for
+  // multi-vs-single decisions we want to count distinct root blocks.
+  // Drag-drop uses this to decide whether to refresh-to-dragged-block
+  // (single) or preserve the wider selection (multi) post-drop.
+  blockSelectionSize() {
+    return this.#selectedBlockKeys.size
+  }
+
+  // Public: snapshot of selected block keys (Array). Drag-drop uses
+  // this to build the multi-element drag ghost.
+  selectedBlockKeysArray() {
+    return [ ...this.#selectedBlockKeys ]
+  }
+
+  // Public: drop the entire current block selection (multi-block) at a
+  // target. Outermost-selected items (those whose block-parent isn't
+  // also in the selection) are moved with their structural-wrapper
+  // subtrees intact — so a "clean" parent+children selection drops
+  // with hierarchy preserved at the drop site, while a "ragged"
+  // selection (children of an unselected parent) drops as siblings at
+  // the drop level (each child still keeps its own deeper subtree).
+  // Returns true if the multi-drop ran, false if the caller should
+  // fall back to single-block drop logic.
+  performMultiDrop({ targetKey, position }) {
+    if (this.#selectedBlockKeys.size <= 1) return false
+    if (this.#selectedBlockKeys.has(targetKey)) return false
+
+    // Pre-flight: count how many "outermost" selected items there are.
+    // If only one, the selection is "parent + takeover children", and
+    // single-drop handles that case correctly. Bail before push so we
+    // don't pollute the undo stack with an empty snapshot. Read-only
+    // editor state read — no commit, no side effects.
+    let outermostCount = 0
+    this.editor.getEditorState().read(() => {
+      const selectedKeys = new Set(this.#selectedBlockKeys)
+      for (const k of selectedKeys) {
+        const node = $getNodeByKey(k)
+        if (!node) continue
+        const bp = this.#blockParentNode(node)
+        if (!bp || !selectedKeys.has(bp.getKey())) outermostCount++
+      }
+    })
+    if (outermostCount <= 1) return false
+
+    const scrollY = window.scrollY
+    this.#selectionHistory.push()
+
+    const movedKeys = []
+    this.editor.update(() => {
+      // 1. Resolve nodes, sort by document order.
+      const docOrder = this.#getDocumentOrderBlockKeys()
+      const docIdx = new Map(docOrder.map((k, i) => [ k, i ]))
+      const allNodes = []
+      for (const k of this.#selectedBlockKeys) {
+        const n = $getNodeByKey(k)
+        if (n) allNodes.push(n)
+      }
+      allNodes.sort((a, b) =>
+        (docIdx.get(a.getKey()) ?? Number.MAX_SAFE_INTEGER) -
+        (docIdx.get(b.getKey()) ?? Number.MAX_SAFE_INTEGER))
+
+      // 2. Filter to outermost: keep an item only if its block-parent
+      //    isn't itself in the selection. Items whose block-parent is
+      //    selected ride along inside that parent's subtree wrapper —
+      //    they don't need separate detach/reinsert work.
+      const selectedKeys = new Set(this.#selectedBlockKeys)
+      const outermost = allNodes.filter(node => {
+        const bp = this.#blockParentNode(node)
+        return !bp || !selectedKeys.has(bp.getKey())
+      })
+
+      // (Caller pre-flighted outermost count; if we reach here there
+      // are at least 2 outermost selected items.)
+
+      // 3. Capture each outermost's subtree (LI + sibling structural
+      //    wrapper, when present). We'll detach as a unit so nested
+      //    items follow their root.
+      const groupItems = []
+      for (const node of outermost) {
+        const wrapper = $isListItemNode(node) ? this.#getOwnStructuralWrapper(node) : null
+        groupItems.push({ node, wrapper })
+      }
+
+      // 4. Resolve the drop anchor BEFORE detaching anything (the
+      //    target's neighbors are about to change).
+      const targetNode = $getNodeByKey(targetKey)
+      if (!targetNode) return
+      const insertParent = targetNode.getParent()
+      const targetIsLi = $isListItemNode(targetNode)
+      const insertBeforeNode = position === "before" ? targetNode : null
+      const insertAfterNode = position === "before" ? null : targetNode
+
+      // Pre-flight type-compatibility. For LIs dropping onto a non-LI
+      // target (paragraph at root, etc.), we COERCE: each wrapped LI's
+      // inner block (heading / code / quote / table / etc.) gets
+      // extracted and dropped at root level; each plain-text LI stays
+      // a bullet but ends up in a freshly-created list at the drop
+      // level. Wrapped/plain runs preserve document order, so a
+      // [wrapped-h2, plain-bullet, plain-bullet] selection drops as
+      // [heading, <ul><li>bullet</li><li>bullet</li></ul>].
+      //
+      // For non-LI items dropping onto an LI target — rare — we still
+      // bail since the insertion-into-list-of-LIs constraint can't be
+      // satisfied without separately wrapping each block in a new LI.
+      // Caller falls back to single-drop in that case.
+      const allItemsAreLis = groupItems.every(({ node }) => $isListItemNode(node))
+      if (!allItemsAreLis && targetIsLi) return // bail: rare case
+      const coerceLisToRoot = allItemsAreLis && !targetIsLi
+
+      // 5. Track source lists for post-detach cleanup (empty lists
+      //    and orphan structural wrappers that Lexical may auto-detach).
+      const sourceLists = new Set()
+      for (const { node } of groupItems) {
+        const parent = node.getParent()
+        if ($isListNode(parent)) sourceLists.add(parent)
+      }
+
+      // 6. Detach + 7. Insert. Wrap in try/catch so a single failed
+      //    insertion doesn't leave the doc with detached orphans —
+      //    if anything throws, we abort the whole multi-drop and the
+      //    caller falls back to single-drop on the grabbed item.
+      try {
+        if (coerceLisToRoot) {
+          // Build an insertion sequence: wrapped LIs become standalone
+          // root-level blocks (the inner heading/code/etc.), plain text
+          // LIs stay LIs but get bucketed into freshly-created lists at
+          // the drop level. Document order is preserved across the runs.
+          const insertSequence = []
+          for (const { node, wrapper } of groupItems) {
+            const sourceList = node.getParent()
+            const sourceListType = $isListNode(sourceList)
+              ? sourceList.getListType() : "bullet"
+            const wrappedChild = node.getChildren().find(c =>
+              ($isElementNode(c) || $isDecoratorNode(c))
+              && !$isListNode(c) && !$isParagraphNode(c)
+            )
+            if (wrappedChild) {
+              // Detach the inner block; the surrounding LI + structural
+              // wrapper are discarded.
+              wrappedChild.remove()
+              if (wrapper && wrapper.getParent()) wrapper.remove()
+              if (node.getParent()) node.remove()
+              insertSequence.push({ kind: "block", node: wrappedChild })
+            } else {
+              // Plain text LI: keep the LI; we'll re-parent into a
+              // fresh list at the drop level. Detach from source first.
+              if (wrapper && wrapper.getParent()) wrapper.remove()
+              if (node.getParent()) node.remove()
+              insertSequence.push({ kind: "li", node, listType: sourceListType })
+            }
+          }
+
+          // Insert sequentially at the drop level, grouping consecutive
+          // "li" entries (matching listType) into one fresh ListNode.
+          let anchor = null
+          let placeAfter = null
+          let placeBefore = null
+          if (insertBeforeNode && insertBeforeNode.getParent()) {
+            placeBefore = insertBeforeNode
+          } else if (insertAfterNode && insertAfterNode.getParent()) {
+            placeAfter = insertAfterNode
+            anchor = placeAfter
+          }
+
+          let pendingList = null
+          let pendingListType = null
+          function flushPending() { pendingList = null; pendingListType = null }
+          function placeNode(n) {
+            if (anchor) {
+              anchor.insertAfter(n)
+            } else if (placeBefore) {
+              placeBefore.insertBefore(n)
+            } else if (insertParent) {
+              insertParent.append(n)
+            }
+            anchor = n
+          }
+
+          for (const item of insertSequence) {
+            if (item.kind === "block") {
+              flushPending()
+              placeNode(item.node)
+              movedKeys.push(item.node.getKey())
+            } else {
+              if (!pendingList || pendingListType !== item.listType) {
+                pendingList = $createListNode(item.listType)
+                pendingListType = item.listType
+                placeNode(pendingList)
+              }
+              pendingList.append(item.node)
+              movedKeys.push(item.node.getKey())
+            }
+          }
+        } else {
+          // Same-type drop (LIs into LI, or non-LIs into root).
+          for (const { node, wrapper } of groupItems) {
+            if (wrapper && wrapper.getParent()) wrapper.remove()
+            if (node.getParent()) node.remove()
+          }
+
+          let anchor = null
+          if (insertBeforeNode && insertBeforeNode.getParent()) {
+            const first = groupItems[0]
+            if (first) {
+              insertBeforeNode.insertBefore(first.node)
+              if (first.wrapper) first.node.insertAfter(first.wrapper)
+              anchor = first.wrapper || first.node
+              movedKeys.push(first.node.getKey())
+            }
+            for (const { node, wrapper } of groupItems.slice(1)) {
+              anchor.insertAfter(node)
+              if (wrapper) node.insertAfter(wrapper)
+              anchor = wrapper || node
+              movedKeys.push(node.getKey())
+            }
+          } else if (insertAfterNode && insertAfterNode.getParent()) {
+            anchor = insertAfterNode
+            for (const { node, wrapper } of groupItems) {
+              anchor.insertAfter(node)
+              if (wrapper) node.insertAfter(wrapper)
+              anchor = wrapper || node
+              movedKeys.push(node.getKey())
+            }
+          } else if (insertParent) {
+            for (const { node, wrapper } of groupItems) {
+              insertParent.append(node)
+              if (wrapper) node.insertAfter(wrapper)
+              movedKeys.push(node.getKey())
+            }
+          }
+        }
+
+        // 8. Cleanup empty source lists / structural wrappers.
+        for (const list of sourceLists) {
+          if (list.getParent()) this.#cleanupEmptyList(list)
+        }
+      } catch (e) {
+        console.warn("[performMultiDrop] insertion failed:", e)
+        // Signal failure to caller via empty movedKeys
+        movedKeys.length = 0
+      }
+    }, { tag: HISTORY_PUSH_TAG })
+
+    // If the multi-drop failed mid-update, treat as not handled so the
+    // caller can attempt single-drop on the grabbed item.
+    if (movedKeys.length === 0) return false
+
+    // 9. Restore selection on the moved items + their subtree children
+    //    (parent-takeover absorbs descendants visually).
+    if (movedKeys.length > 0) {
+      this.#selectedBlockKeys.clear()
+      for (const k of movedKeys) this.#selectedBlockKeys.add(k)
+      this.editor.getEditorState().read(() => {
+        for (const k of movedKeys) {
+          const node = $getNodeByKey(k)
+          if ($isListItemNode(node)) {
+            this.#collectChildKeys(node, this.#selectedBlockKeys)
+          }
+        }
+      })
+      this.#anchorKey = movedKeys[0]
+      this.#focusKey = movedKeys[movedKeys.length - 1]
+      this.#syncSelectionClasses()
+    }
+
+    queueMicrotask(() => window.scrollTo(window.scrollX, scrollY))
+    return true
+  }
+
+  // Lexical-tree walk of "block parent": returns the LI that owns
+  // this node's subtree via Lexxy's wrapper-owner relationship, or
+  // null if there's none. (Lexxy's block-parent isn't an ancestor —
+  // it's the previous sibling of a structural-wrapper LI in the
+  // outer list. See lexxy-block-parent-vs-lexical-tree-parent skill.)
+  #blockParentNode(node) {
+    let cursor = node.getParent()
+    while (cursor) {
+      if ($isListNode(cursor)) {
+        const wrapper = cursor.getParent()
+        if ($isListItemNode(wrapper) && $isStructuralWrapper(wrapper)) {
+          let owner = wrapper.getPreviousSibling()
+          while ($isListItemNode(owner) && $isStructuralWrapper(owner)) {
+            owner = owner.getPreviousSibling()
+          }
+          if ($isListItemNode(owner)) return owner
+        }
+      }
+      cursor = cursor.getParent()
+    }
+    return null
+  }
+
   // Public: apply parent highlight inheritance to a node after drop.
   inheritParentHighlight(nodeKey) {
     this.editor.update(() => {
