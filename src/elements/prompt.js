@@ -21,6 +21,7 @@ export class LexicalPromptElement extends HTMLElement {
   #popoverListeners = new ListenerBin()
   #debouncedFilterOptions = debounce(() => this.#filterOptions(), FILTER_DEBOUNCE_INTERVAL)
   #selectionAtTrigger = null
+  #triggerArmed = false
 
   constructor() {
     super()
@@ -100,8 +101,10 @@ export class LexicalPromptElement extends HTMLElement {
   }
 
   #addTriggerListener() {
+    if (this.#triggerArmed) return
     if (!this.#promptContentTypePermitted) return
 
+    this.#triggerArmed = true
     this.#popoverListeners.track(this.#editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
         if (this.#selection.isInsideCodeBlock) return
@@ -124,6 +127,7 @@ export class LexicalPromptElement extends HTMLElement {
               // trigger was deliberately typed over highlighted text, which
               // usually ends mid-sentence.
               if (this.#selectionAtTrigger || this.#onlyAtRegExp.test(textBeforeTrigger)) {
+                this.#triggerArmed = false
                 this.#popoverListeners.dispose()
                 this.#showPopover()
               }
@@ -155,10 +159,13 @@ export class LexicalPromptElement extends HTMLElement {
           const selection = $getSelection()
           if (!$isRangeSelection(selection) || selection.isCollapsed()) return
 
-          this.#selectionAtTrigger = {
-            anchor: { key: selection.anchor.key, offset: selection.anchor.offset, type: selection.anchor.type },
-            focus: { key: selection.focus.key, offset: selection.focus.offset, type: selection.focus.type }
-          }
+          // Store block key + absolute character offsets, not point node keys:
+          // typing the query and removing it splits/merges text nodes, so node
+          // keys don't survive until dispatch — the block and the character
+          // positions before the trigger do.
+          const anchor = this.#absolutePointPosition(selection.anchor)
+          const focus = this.#absolutePointPosition(selection.focus)
+          if (anchor && focus) this.#selectionAtTrigger = { anchor, focus }
         })
 
         if (this.#selectionAtTrigger) {
@@ -178,16 +185,44 @@ export class LexicalPromptElement extends HTMLElement {
     )
   }
 
+  #absolutePointPosition(point) {
+    if (point.type !== "text") return null
+
+    const node = point.getNode()
+    const block = node.getTopLevelElement()
+    if (!block) return null
+
+    let offset = 0
+    for (const textNode of block.getAllTextNodes()) {
+      if (textNode.getKey() === node.getKey()) {
+        return { blockKey: block.getKey(), offset: offset + point.offset }
+      }
+      offset += textNode.getTextContentSize()
+    }
+    return null
+  }
+
+  #resolveAbsolutePosition({ blockKey, offset }) {
+    const block = $getNodeByKey(blockKey)
+    if (!block || !$isElementNode(block)) return null
+
+    let remaining = offset
+    for (const textNode of block.getAllTextNodes()) {
+      const size = textNode.getTextContentSize()
+      if (remaining <= size) return { key: textNode.getKey(), offset: remaining }
+      remaining -= size
+    }
+    return null
+  }
+
   #restoreStashedSelection({ anchor, focus }) {
-    const anchorNode = $getNodeByKey(anchor.key)
-    const focusNode = $getNodeByKey(focus.key)
-    if (!anchorNode || !focusNode) return false
-    if ($isTextNode(anchorNode) && anchor.offset > anchorNode.getTextContentSize()) return false
-    if ($isTextNode(focusNode) && focus.offset > focusNode.getTextContentSize()) return false
+    const anchorPoint = this.#resolveAbsolutePosition(anchor)
+    const focusPoint = this.#resolveAbsolutePosition(focus)
+    if (!anchorPoint || !focusPoint) return false
 
     const selection = $createRangeSelection()
-    selection.anchor.set(anchor.key, anchor.offset, anchor.type)
-    selection.focus.set(focus.key, focus.offset, focus.type)
+    selection.anchor.set(anchorPoint.key, anchorPoint.offset, "text")
+    selection.focus.set(focusPoint.key, focusPoint.offset, "text")
     $setSelection(selection)
     return true
   }
@@ -266,11 +301,11 @@ export class LexicalPromptElement extends HTMLElement {
   async #showPopover() {
     const showId = ++this.showPopoverId
     this.popoverElement ??= await this.#buildPopover()
-    if (this.showPopoverId !== showId) return
+    if (this.showPopoverId !== showId) return this.#rearmAfterAbortedShow()
 
     this.#resetPopoverPosition()
     await this.#filterOptions()
-    if (this.showPopoverId !== showId) return
+    if (this.showPopoverId !== showId) return this.#rearmAfterAbortedShow()
 
     this.popoverElement.classList.toggle("lexxy-prompt-menu--visible", true)
     this.#selectFirstOption()
@@ -507,11 +542,20 @@ export class LexicalPromptElement extends HTMLElement {
     this.popoverElement.style.maxInlineSize = ""
   }
 
+  // A show superseded by another show/hide bails after the trigger listener
+  // already disposed itself. Without re-arming, the prompt would never open
+  // again for the rest of the editor session. Only re-arm while closed — a
+  // winning concurrent show re-arms through its own #hidePopover later.
+  #rearmAfterAbortedShow() {
+    if (this.closed) this.#addTriggerListener()
+  }
+
   async #hidePopover() {
     this.showPopoverId++
     this.#selectionAtTrigger = null
     this.#clearSelection()
-    this.popoverElement.classList.toggle("lexxy-prompt-menu--visible", false)
+    this.popoverElement?.classList.toggle("lexxy-prompt-menu--visible", false)
+    this.#triggerArmed = false
     this.#popoverListeners.dispose()
 
     await nextFrame()
@@ -533,6 +577,7 @@ export class LexicalPromptElement extends HTMLElement {
   }
 
   #removePopover() {
+    this.#triggerArmed = false
     this.#popoverListeners.dispose()
     this.popoverElement?.remove()
     this.popoverElement = null
