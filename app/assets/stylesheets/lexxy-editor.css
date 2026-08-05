@@ -1828,6 +1828,14 @@ lexxy-editor[block-handles="false"] .lexxy-editor__content {
     inset-inline-end: 1ch;
     max-inline-size: calc(100% - 1ch);
   }
+
+  /* vertical-direction="top", or a menu that would overflow the viewport:
+     #positionPopover sets --lexxy-prompt-offset-y and flags the menu, and this
+     flips it to grow upward from the caret instead of downward. */
+  &[data-clipped-at-bottom] {
+    inset-block-start: unset;
+    inset-block-end: var(--lexxy-prompt-offset-y);
+  }
 }
 
 /* Override browser default ul padding-inline-start: 40px which beats :where() specificity */

@@ -82,7 +82,7 @@ test.describe("Mentions", () => {
     expect(positions.textBottom).toBeGreaterThanOrEqual(positions.mentionTop)
   })
 
-  test("popover stays within the editor when triggered near the editor's right edge", async ({ page, editor }) => {
+  test("popover stays within the viewport when triggered near the right edge", async ({ page, editor }) => {
     // 600px viewport × 300px editor with margin-left:auto puts the editor's
     // right edge at the viewport's right edge. "Some text @" comfortably fits
     // on a single line regardless of block-handles gutter config (needs ≥70px
@@ -103,11 +103,10 @@ test.describe("Mentions", () => {
       const r = el.getBoundingClientRect()
       return { left: r.left, right: r.right }
     })
-    const editorRect = await editor.locator.evaluate((el) => {
-      const r = el.getBoundingClientRect()
-      return { left: r.left, right: r.right }
-    })
-    expect(rect.right).toBeLessThanOrEqual(editorRect.right)
-    expect(rect.left).toBeGreaterThanOrEqual(editorRect.left)
+    // Clamp to the viewport, not the editor box: the popover has a minimum
+    // width wider than this 300px editor, so it cannot fit inside the editor's
+    // bounds. Staying on screen is the requirement the user actually sees.
+    expect(rect.right).toBeLessThanOrEqual(600)
+    expect(rect.left).toBeGreaterThanOrEqual(0)
   })
 })

@@ -426,9 +426,9 @@ export class LexicalEditorElement extends HTMLElement {
     this.#attachToolbar()
     this.#applyCodeSettings()
     this.extensions.initializeEditors()
-    for (const ext of this.extensions.enabledExtensions) {
-      if (typeof ext.dispose === "function") this.#disposables.push(ext)
-    }
+    // Extension teardown is Extensions.dispose()'s job — this.extensions is
+    // already in #disposables. Registering each extension separately here
+    // would dispose every one of them twice.
     this.#resetBeforeTurboCaches()
 
     this.#setInternalFormValue(this.value, { suppressEvent: true })
