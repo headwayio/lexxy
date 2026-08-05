@@ -1,6 +1,9 @@
 import { $getSelection, $isRangeSelection } from "lexical"
 import { $getSelectionStyleValueForProperty } from "@lexical/selection"
 import { ToolbarDropdown } from "../toolbar_dropdown"
+import { colorLabel } from "../block_actions_menu"
+import { saveLastUsedColor } from "../../helpers/storage_helper"
+import { registerEventListener } from "../../helpers/listener_helper"
 
 const APPLY_HIGHLIGHT_SELECTOR = "button.lexxy-highlight-button"
 const REMOVE_HIGHLIGHT_SELECTOR = "[data-command='removeHighlight']"
@@ -12,29 +15,16 @@ const NO_STYLE = Symbol("no_style")
 
 export class HighlightDropdown extends ToolbarDropdown {
   initialize() {
+    this.track(registerEventListener(this.container, "toggle", this.#handleToggle))
     this.#setUpButtons()
     this.#registerButtonHandlers()
   }
 
-  connectedCallback() {
-    super.connectedCallback()
-    this.container.addEventListener("toggle", this.#handleToggle)
-  }
-
-  disconnectedCallback() {
-    this.container?.removeEventListener("toggle", this.#handleToggle)
-    this.#removeButtonHandlers()
-    super.disconnectedCallback()
-  }
-
   #registerButtonHandlers() {
-    this.#colorButtons.forEach(button => button.addEventListener("click", this.#handleColorButtonClick))
-    this.querySelector(REMOVE_HIGHLIGHT_SELECTOR).addEventListener("click", this.#handleRemoveHighlightClick)
-  }
-
-  #removeButtonHandlers() {
-    this.#colorButtons.forEach(button => button.removeEventListener("click", this.#handleColorButtonClick))
-    this.querySelector(REMOVE_HIGHLIGHT_SELECTOR)?.removeEventListener("click", this.#handleRemoveHighlightClick)
+    this.#colorButtons.forEach(button => {
+      this.track(registerEventListener(button, "click", this.#handleColorButtonClick))
+    })
+    this.track(registerEventListener(this.querySelector(REMOVE_HIGHLIGHT_SELECTOR), "click", this.#handleRemoveHighlightClick))
   }
 
   #setUpButtons() {
@@ -82,6 +72,7 @@ export class HighlightDropdown extends ToolbarDropdown {
     const attribute = button.dataset.style
     const value = button.dataset.value
 
+    saveLastUsedColor({ style: attribute, value, label: colorLabel(value, attribute) })
     this.editor.dispatchCommand("toggleHighlight", { [attribute]: value })
     this.close()
   }

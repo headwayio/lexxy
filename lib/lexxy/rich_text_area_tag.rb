@@ -12,7 +12,9 @@ module Lexxy
       options[:class] ||= "lexxy-content"
       options[:data] ||= {}
       options[:data][:direct_upload_url] ||= main_app.rails_direct_uploads_url
-      options[:data][:blob_url_template] ||= main_app.rails_service_blob_url(":signed_id", ":filename")
+      # Path (not URL) so saved attachment src= attributes are host-relative
+      # and survive moves between environments (different port, different host).
+      options[:data][:blob_url_template] ||= main_app.rails_service_blob_path(":signed_id", ":filename")
 
       editor_tag = content_tag("lexxy-editor", "", options, &block)
       editor_tag

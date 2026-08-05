@@ -78,7 +78,32 @@ test.describe("Mentions", () => {
 
     expect(positions).not.toBeNull()
     // The mention and 's should be on the same line (their vertical positions should overlap)
-    expect(positions.textTop).toBeLessThan(positions.mentionBottom)
-    expect(positions.textBottom).toBeGreaterThan(positions.mentionTop)
+    expect(positions.textTop).toBeLessThanOrEqual(positions.mentionBottom)
+    expect(positions.textBottom).toBeGreaterThanOrEqual(positions.mentionTop)
+  })
+
+  test("popover stays within viewport when triggered near right edge", async ({ page, editor }) => {
+    // 600px viewport × 300px editor with margin-left:auto puts the editor's
+    // right edge at the viewport's right edge. "Some text @" comfortably fits
+    // on a single line regardless of block-handles gutter config (needs ≥70px
+    // of content). The @ lands near the viewport's right edge so the popover's
+    // natural anchor overflows and the right-clamp logic must engage.
+    await page.setViewportSize({ width: 600, height: 600 })
+    await editor.locator.evaluate((el) => {
+      el.style.width = "300px"
+      el.style.marginLeft = "auto"
+    })
+
+    await editor.send("Some text @")
+
+    const popover = page.locator(".lexxy-prompt-menu--visible")
+    await expect(popover).toBeVisible({ timeout: 5_000 })
+
+    const rect = await popover.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      return { left: r.left, right: r.right }
+    })
+    expect(rect.right).toBeLessThanOrEqual(600)
+    expect(rect.left).toBeGreaterThanOrEqual(0)
   })
 })

@@ -1,4 +1,4 @@
-import { $addUpdateTag, $createParagraphNode, $getRoot, $getSelection, $isElementNode, $isLineBreakNode, $isRangeSelection, $isTextNode, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, SKIP_DOM_SELECTION_TAG, TextNode, mergeRegister } from "lexical"
+import { $addUpdateTag, $createParagraphNode, $getRoot, $getSelection, $isElementNode, $isLineBreakNode, $isRangeSelection, $isTextNode, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_NORMAL, KEY_ENTER_COMMAND, SKIP_DOM_SELECTION_TAG, TextNode } from "lexical"
 import { buildEditorFromExtensions } from "@lexical/extension"
 import { ListItemNode, ListNode, registerList } from "@lexical/list"
 import { AutoLinkNode, LinkNode } from "@lexical/link"
@@ -8,7 +8,9 @@ import { HeadingNode, QuoteNode, registerRichText } from "@lexical/rich-text"
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html"
 import { CodeHighlightNode, CodeNode, registerCodeHighlighting } from "@lexical/code"
 import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
+import { HORIZONTAL_DIVIDER } from "../editor/markdown/horizontal_divider_transformer"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
+import { registerListBlockShortcuts } from "../editor/markdown/list_heading_shortcut"
 import { createEmptyHistoryState, registerHistory } from "@lexical/history"
 
 import theme from "../config/theme"
@@ -17,7 +19,9 @@ import { CommandDispatcher } from "../editor/command_dispatcher"
 import Selection from "../editor/selection"
 import { createElement, dispatch, generateDomId, parseHtml } from "../helpers/html_helper"
 import { isAttachmentSpacerTextNode } from "../helpers/lexical_helper"
-import { sanitize } from "../helpers/sanitization_helper"
+import { sanitize, setSanitizerConfig } from "../helpers/sanitization_helper"
+import { ListenerBin, registerEventListener } from "../helpers/listener_helper"
+import { syncWrapperMarkers } from "../editor/list_wrapper_markers"
 import LexicalToolbar from "./toolbar"
 import Configuration from "../editor/configuration"
 import Contents from "../editor/contents"
@@ -25,6 +29,7 @@ import Clipboard from "../editor/clipboard"
 import Extensions from "../editor/extensions"
 import { BrowserAdapter } from "../editor/adapters/browser_adapter"
 import { getHighlightStyles } from "../helpers/format_helper"
+import { styleResolverRoot } from "../helpers/style_resolver_root"
 
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { exportTextNodeDOM } from "../helpers/text_node_export_helper"
@@ -34,6 +39,8 @@ import { TrixContentExtension } from "../extensions/trix_content_extension"
 import { TablesExtension } from "../extensions/tables_extension"
 import { AttachmentsExtension } from "../extensions/attachments_extension.js"
 import { FormatEscapeExtension } from "../extensions/format_escape_extension.js"
+import { BlockSelectionExtension } from "../extensions/block_selection_extension.js"
+import { LinkOpenerExtension } from "../extensions/link_opener_extension.js"
 
 
 export class LexicalEditorElement extends HTMLElement {
@@ -41,11 +48,13 @@ export class LexicalEditorElement extends HTMLElement {
   static debug = false
   static commands = [ "bold", "italic", "strikethrough" ]
 
-  static observedAttributes = [ "connected", "required" ]
+  static observedAttributes = [ "connected", "required", "block-handles" ]
 
   #initialValue = ""
+  #initialValueLoaded = false
   #validationTextArea = document.createElement("textarea")
   #editorInitializedRafId = null
+  #listeners = new ListenerBin()
   #disposables = []
 
   constructor() {
@@ -61,6 +70,7 @@ export class LexicalEditorElement extends HTMLElement {
 
     this.editor = this.#createEditor()
     this.#disposables.push(this.editor)
+    this.#disposables.push(this.#listeners)
 
     this.contents = new Contents(this)
     this.#disposables.push(this.contents)
@@ -99,6 +109,11 @@ export class LexicalEditorElement extends HTMLElement {
       this.#validationTextArea.required = this.hasAttribute("required")
       this.#setValidity()
     }
+
+    if (name === "block-handles" && this.isConnected) {
+      const show = newValue !== "false"
+      this.extensions?.get(BlockSelectionExtension)?.setShowHandles(show)
+    }
   }
 
   formResetCallback() {
@@ -124,6 +139,16 @@ export class LexicalEditorElement extends HTMLElement {
     return this.getAttribute("name")
   }
 
+  /** True when one or more blocks are selected via drag-handle click or Cmd+click. */
+  get hasBlockSelection() {
+    return this.extensions?.get(BlockSelectionExtension)?.hasBlockSelection ?? false
+  }
+
+  /** Enter block select mode with all blocks selected. */
+  selectAllBlocks() {
+    this.extensions?.get(BlockSelectionExtension)?.selectAll()
+  }
+
   get toolbarElement() {
     if (!this.#hasToolbar) return null
 
@@ -138,7 +163,9 @@ export class LexicalEditorElement extends HTMLElement {
       TrixContentExtension,
       TablesExtension,
       AttachmentsExtension,
-      FormatEscapeExtension
+      FormatEscapeExtension,
+      BlockSelectionExtension,
+      LinkOpenerExtension
     ]
   }
 
@@ -218,7 +245,17 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   focus() {
+    // `editor.focus()` commits a reconciler update to position the cursor.
+    // Skip if the contenteditable already owns focus — the update would be a
+    // no-op but still triggers a full style/layout pass on pages with large
+    // DOMs.
+    if (this.#isContentFocused) return
+
     this.editor.focus(() => this.#onFocus())
+  }
+
+  get #isContentFocused() {
+    return !!this.editorContentElement && this.editorContentElement.contains(document.activeElement)
   }
 
   get value() {
@@ -232,6 +269,8 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   set value(html) {
+    const wasEmpty = !this.#initialValueLoaded
+
     this.editor.update(() => {
       $addUpdateTag(SKIP_DOM_SELECTION_TAG)
       const root = $getRoot()
@@ -241,11 +280,17 @@ export class LexicalEditorElement extends HTMLElement {
 
       this.#toggleEmptyStatus()
 
-      // The first time you set the value, when the editor is empty, it seems to leave Lexical
-      // in an inconsistent state until, at least, you focus. You can type but adding attachments
-      // fails because no root node detected. This is a workaround to deal with the issue.
-      requestAnimationFrame(() => this.editor?.update(() => { }))
+      // The first time you set the value on an empty editor, Lexical can be
+      // left in an inconsistent state until the next update (adding attachments
+      // fails because no root node is detected). A no-op update works around
+      // it. Only fire on the first load — subsequent set value calls don't hit
+      // the inconsistent state and the extra reconciler cycle is pure overhead.
+      if (wasEmpty) {
+        requestAnimationFrame(() => this.editor?.update(() => { }))
+      }
     })
+
+    this.#initialValueLoaded = true
   }
 
   #parseHtmlIntoLexicalNodes(html) {
@@ -283,6 +328,12 @@ export class LexicalEditorElement extends HTMLElement {
     this.#registerFocusEvents()
     this.#attachDebugHooks()
     this.#attachToolbar()
+    this.#applyCodeSettings()
+    this.extensions.initializeEditors()
+    for (const ext of this.extensions.enabledExtensions) {
+      if (typeof ext.dispose === "function") this.#disposables.push(ext)
+    }
+    this.#configureSanitizer()
     this.#loadInitialValue()
     this.#resetBeforeTurboCaches()
   }
@@ -297,7 +348,7 @@ export class LexicalEditorElement extends HTMLElement {
       theme: theme,
       nodes: this.#lexicalNodes,
       html: {
-        export: new Map([ [ TextNode, exportTextNodeDOM ] ])
+        export: new Map([ [ TextNode, exportTextNodeDOM ], [ CodeHighlightNode, exportTextNodeDOM ] ])
       }
     },
       ...this.extensions.lexicalExtensions
@@ -381,19 +432,24 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #resetBeforeTurboCaches() {
-    document.addEventListener("turbo:before-cache", this.#handleTurboBeforeCache)
+    this.#listeners.track(
+      registerEventListener(document, "turbo:before-cache", this.#handleTurboBeforeCache)
+    )
   }
 
   #handleTurboBeforeCache = (event) => {
-    this.#reset()
+    if (!this.closest("[data-turbo-permanent]")) {
+      this.#reset()
+    }
   }
 
   #synchronizeWithChanges() {
-    this.#addUnregisterHandler(this.editor.registerUpdateListener(({ editorState }) => {
+    this.#listeners.track(this.editor.registerUpdateListener(({ editorState }) => {
       this.#clearCachedValues()
       this.#internalFormValue = this.value
       this.#toggleEmptyStatus()
       this.#setValidity()
+      syncWrapperMarkers(this.editorContentElement)
       this.#dispatchAttributesChange()
     }))
   }
@@ -401,18 +457,6 @@ export class LexicalEditorElement extends HTMLElement {
   #clearCachedValues() {
     this.cachedValue = null
     this.cachedStringValue = null
-  }
-
-  #addUnregisterHandler(handler) {
-    this.unregisterHandlers = this.unregisterHandlers || []
-    this.unregisterHandlers.push(handler)
-  }
-
-  #unregisterHandlers() {
-    this.unregisterHandlers?.forEach((handler) => {
-      handler()
-    })
-    this.unregisterHandlers = null
   }
 
   #registerComponents() {
@@ -426,9 +470,11 @@ export class LexicalEditorElement extends HTMLElement {
       this.#registerTableComponents()
       this.#registerCodeHiglightingComponents()
       if (this.supportsMarkdown) {
-          registered.push(
-            registerMarkdownShortcuts(this.editor, TRANSFORMERS),
-            registerMarkdownLeadingTagHandler(this.editor, TRANSFORMERS)
+        const transformers = [ ...TRANSFORMERS, HORIZONTAL_DIVIDER ]
+        registered.push(
+          registerMarkdownShortcuts(this.editor, transformers),
+          registerMarkdownLeadingTagHandler(this.editor, transformers),
+          registerListBlockShortcuts(this.editor)
         )
       }
     } else {
@@ -437,7 +483,7 @@ export class LexicalEditorElement extends HTMLElement {
     this.historyState = createEmptyHistoryState()
     registered.push(registerHistory(this.editor, this.historyState, 20))
 
-    this.#addUnregisterHandler(mergeRegister(...registered))
+    this.#listeners.track(...registered)
   }
 
   #registerTableComponents() {
@@ -457,7 +503,7 @@ export class LexicalEditorElement extends HTMLElement {
 
   #handleEnter() {
     // We can't prevent these externally using regular keydown because Lexical handles it first.
-    this.#addUnregisterHandler(this.editor.registerCommand(
+    this.#listeners.track(this.editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event) => {
         // Prevent CTRL+ENTER
@@ -479,13 +525,10 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #registerFocusEvents() {
-    this.addEventListener("focusin", this.#handleFocusIn)
-    this.addEventListener("focusout", this.#handleFocusOut)
-
-    this.#addUnregisterHandler(() => {
-      this.removeEventListener("focusin", this.#handleFocusIn)
-      this.removeEventListener("focusout", this.#handleFocusOut)
-    })
+    this.#listeners.track(
+      registerEventListener(this, "focusin", this.#handleFocusIn),
+      registerEventListener(this, "focusout", this.#handleFocusOut)
+    )
   }
 
   #handleFocusIn(event) {
@@ -525,12 +568,19 @@ export class LexicalEditorElement extends HTMLElement {
   #attachDebugHooks() {
     if (!LexicalEditorElement.debug) return
 
-    this.#addUnregisterHandler(this.editor.registerUpdateListener(({ editorState }) => {
+    this.#listeners.track(this.editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
         console.debug("HTML: ", this.value, "String:", this.toString())
         console.debug("empty", this.isEmpty, "blank", this.isBlank)
       })
     }))
+  }
+
+  #applyCodeSettings() {
+    const tabSize = this.config.get("code.tabSize")
+    if (tabSize) {
+      this.style.setProperty("--lexxy-code-tab-size", tabSize)
+    }
   }
 
   #attachToolbar() {
@@ -559,7 +609,7 @@ export class LexicalEditorElement extends HTMLElement {
 
   #createDefaultToolbar() {
     const toolbar = createElement("lexxy-toolbar")
-    toolbar.innerHTML = LexicalToolbar.defaultTemplate
+    toolbar.appendChild(LexicalToolbar.cloneDefaultTemplate())
     toolbar.setAttribute("data-attachments", this.supportsAttachments) // Drives toolbar CSS styles
     toolbar.configure(this.config.get("toolbar"))
     this.prepend(toolbar)
@@ -576,6 +626,19 @@ export class LexicalEditorElement extends HTMLElement {
     } else {
       this.internals.setValidity(this.#validationTextArea.validity, this.#validationTextArea.validationMessage, this.editorContentElement)
     }
+  }
+
+  #configureSanitizer() {
+    setSanitizerConfig(this.#allowedElements)
+  }
+
+  get #allowedElements() {
+    return this.#importableTags.concat(this.extensions.allowedElements)
+  }
+
+  get #importableTags() {
+    const tags = Array.from(this.editor._htmlConversions.keys())
+    return tags.filter(tag => !tag.startsWith("#"))
   }
 
   #dispatchAttributesChange() {
@@ -666,19 +729,30 @@ export class LexicalEditorElement extends HTMLElement {
     ]
   }
 
+  // Builds one resolver element per CSS value inside a hidden container, attaches
+  // the container in a single DOM write, then reads all computed values in one pass
+  // — triggering at most one forced reflow. The previous implementation interleaved
+  // setProperty/getComputedStyle/removeProperty on the same element, forcing a style
+  // recalc on every iteration during editor initialization.
   #resolveColors(property, cssValues) {
-    const resolver = document.createElement("span")
-    resolver.style.display = "none"
-    this.appendChild(resolver)
+    const container = document.createElement("span")
+    container.style.display = "none"
 
-    const resolved = cssValues.map(cssValue => {
-      resolver.style.setProperty(property, cssValue)
-      const value = window.getComputedStyle(resolver).getPropertyValue(property)
-      resolver.style.removeProperty(property)
-      return { name: cssValue, value }
+    const resolvers = cssValues.map(cssValue => {
+      const element = document.createElement("span")
+      element.style.setProperty(property, cssValue)
+      container.appendChild(element)
+      return { element, name: cssValue }
     })
 
-    resolver.remove()
+    styleResolverRoot().appendChild(container)
+
+    const resolved = resolvers.map(({ element, name }) => ({
+      name,
+      value: window.getComputedStyle(element).getPropertyValue(property)
+    }))
+
+    container.remove()
     return resolved
   }
 
@@ -694,10 +768,6 @@ export class LexicalEditorElement extends HTMLElement {
   }
 
   #dispose() {
-    this.#unregisterHandlers()
-    this.adapter = null
-    document.removeEventListener("turbo:before-cache", this.#handleTurboBeforeCache)
-
     while (this.#disposables.length) {
       this.#disposables.pop().dispose()
     }

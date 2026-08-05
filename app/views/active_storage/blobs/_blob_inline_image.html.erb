@@ -1,0 +1,11 @@
+<%# Animated (gif/webp/avif) and vector (svg) formats — serve directly since %>
+<%# blob.representation would strip animation or rasterize. %>
+<% extension = blob.filename.extension.downcase %>
+
+<figure class="attachment attachment--preview attachment--<%= extension %>">
+  <div class="attachment__media">
+    <%= lexxy_attachment_image_tag(blob) %>
+  </div>
+  <%= lexxy_attachment_preview_caption(blob, extension.upcase) %>
+  <%= lexxy_attachment_actions(blob) %>
+</figure>

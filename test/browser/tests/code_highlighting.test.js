@@ -12,7 +12,7 @@ test.describe("Code highlighting", () => {
   test("ruby code is highlighted in editor", async ({ page, editor }) => {
     await editor.send("def hello_world")
     await editor.select("dev")
-    await page.getByRole("button", { name: "Code" }).click()
+    await page.getByRole("button", { name: "Code", exact: true }).click()
 
     const languageSelect = page.locator("select[name=lexxy-code-language]")
     await expect(languageSelect).toHaveValue("plain")

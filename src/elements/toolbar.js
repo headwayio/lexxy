@@ -4,11 +4,14 @@ import {
   SKIP_DOM_SELECTION_TAG
 } from "lexical"
 import { getNonce } from "../helpers/csp_helper"
+import { ListenerBin, registerEventListener } from "../helpers/listener_helper"
 import { handleRollingTabIndex } from "../helpers/accessibility_helper"
 import ToolbarIcons from "./toolbar_icons"
+import { isActiveAndVisible } from "../helpers/html_helper"
 
 export class LexicalToolbarElement extends HTMLElement {
   static observedAttributes = [ "connected" ]
+  #listeners = new ListenerBin()
 
   constructor() {
     super()
@@ -29,12 +32,7 @@ export class LexicalToolbarElement extends HTMLElement {
   }
 
   dispose() {
-    this.#uninstallResizeObserver()
-    this.#unbindButtons()
-    this.#unbindHotkeys()
-    this.#unbindFocusListeners()
-    this.unregisterSelectionListener?.()
-    this.unregisterHistoryListener?.()
+    this.#listeners.dispose()
 
     this.editorElement = null
     this.editor = null
@@ -93,23 +91,13 @@ export class LexicalToolbarElement extends HTMLElement {
   }
 
   #installResizeObserver() {
-    this.resizeObserver = new ResizeObserver(() => this.#refreshToolbarOverflow())
-    this.resizeObserver.observe(this)
-  }
-
-  #uninstallResizeObserver() {
-    if (this.resizeObserver) {
-      this.resizeObserver.disconnect()
-      this.resizeObserver = null
-    }
+    const resizeObserver = new ResizeObserver(() => this.#refreshToolbarOverflow())
+    resizeObserver.observe(this)
+    this.#listeners.track(() => resizeObserver.disconnect())
   }
 
   #bindButtons() {
-    this.addEventListener("click", this.#handleButtonClicked)
-  }
-
-  #unbindButtons() {
-    this.removeEventListener("click", this.#handleButtonClicked)
+    this.#listeners.track(registerEventListener(this, "click", this.#handleButtonClicked))
   }
 
   #handleButtonClicked = (event) => {
@@ -130,15 +118,14 @@ export class LexicalToolbarElement extends HTMLElement {
       this.editor.dispatchCommand(command, payload)
     }, { tag: isKeyboard ? SKIP_DOM_SELECTION_TAG : undefined })
 
-    if (!isKeyboard) this.editor.focus()
+    // Skip editor.focus() in block-select mode — the root is already focused
+    // and Lexical's focus() would create a selection at root.selectEnd(),
+    // triggering scrollIntoViewIfNeeded and jumping the page.
+    if (!isKeyboard && !this.editorElement.hasBlockSelection) this.editor.focus()
   }
 
   #bindHotkeys() {
-    this.editorElement.addEventListener("keydown", this.#handleHotkey)
-  }
-
-  #unbindHotkeys() {
-    this.editorElement?.removeEventListener("keydown", this.#handleHotkey)
+    this.#listeners.track(registerEventListener(this.editorElement, "keydown", this.#handleHotkey))
   }
 
   #handleHotkey = (event) => {
@@ -166,19 +153,16 @@ export class LexicalToolbarElement extends HTMLElement {
   }
 
   #bindFocusListeners() {
-    this.editorElement.addEventListener("lexxy:focus", this.#handleEditorFocus)
-    this.editorElement.addEventListener("lexxy:blur", this.#handleEditorBlur)
-    this.addEventListener("keydown", this.#handleKeydown)
-  }
-
-  #unbindFocusListeners() {
-    this.editorElement?.removeEventListener("lexxy:focus", this.#handleEditorFocus)
-    this.editorElement?.removeEventListener("lexxy:blur", this.#handleEditorBlur)
-    this.removeEventListener("keydown", this.#handleKeydown)
+    this.#listeners.track(
+      registerEventListener(this.editorElement, "lexxy:focus", this.#handleEditorFocus),
+      registerEventListener(this.editorElement, "lexxy:blur", this.#handleEditorBlur),
+      registerEventListener(this, "keydown", this.#handleKeydown)
+    )
   }
 
   #handleEditorFocus = () => {
-    this.#focusableItems[0].tabIndex = 0
+    const firstVisible = this.#focusableItems.find(isActiveAndVisible)
+    if (firstVisible) firstVisible.tabIndex = 0
   }
 
   #handleEditorBlur = () => {
@@ -197,18 +181,18 @@ export class LexicalToolbarElement extends HTMLElement {
   }
 
   #monitorSelectionChanges() {
-    this.unregisterSelectionListener = this.editor.registerUpdateListener(() => {
+    this.#listeners.track(this.editor.registerUpdateListener(() => {
       this.editor.getEditorState().read(() => {
         this.#updateButtonStates()
         this.#closeDropdowns()
       })
-    })
+    }))
   }
 
   #monitorHistoryChanges() {
-    this.unregisterHistoryListener = this.editor.registerUpdateListener(() => {
+    this.#listeners.track(this.editor.registerUpdateListener(() => {
       this.#updateUndoRedoButtonStates()
-    })
+    }))
   }
 
   #updateUndoRedoButtonStates() {
@@ -223,7 +207,12 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #updateButtonStates() {
     const selection = $getSelection()
-    if (!$isRangeSelection(selection)) return
+    // In block select mode, the selection is an internal implementation detail
+    // (used temporarily for commands like color/highlight). Don't reflect it.
+    if (!$isRangeSelection(selection) || this.editor.getRootElement()?.classList.contains("lexxy-editor--block-selection-active")) {
+      this.#clearAllPressedStates()
+      return
+    }
 
     const anchorNode = selection.anchor.getNode()
     if (!anchorNode.getParent()) { return }
@@ -271,12 +260,6 @@ export class LexicalToolbarElement extends HTMLElement {
     }
   }
 
-  #toolbarIsOverflowing() {
-    // Safari can report inconsistent clientWidth values on more than 100% window zoom level,
-    // that was affecting the toolbar overflow calculation. We're adding +1 to get around this issue.
-    return (this.scrollWidth - this.#overflow.clientWidth) > this.clientWidth + 1
-  }
-
   #refreshToolbarOverflow = () => {
     this.#resetToolbarOverflow()
     this.#compactMenu()
@@ -289,18 +272,35 @@ export class LexicalToolbarElement extends HTMLElement {
     this.#overflowMenu.toggleAttribute("disabled", !isOverflowing)
   }
 
+  // Separates layout reads from DOM writes to avoid forced reflows during init.
+  // Measures every button's right edge in a single read pass, figures out which
+  // buttons overflow using math, and then moves them in a single write pass.
+  // The previous implementation interleaved `scrollWidth`/`clientWidth` reads with
+  // `prepend()` writes inside a loop, forcing one full browser reflow per button.
   #compactMenu() {
-    const buttons = this.#buttons.reverse()
-    let movedToOverflow = false
+    const buttons = this.#buttons
+    if (buttons.length === 0) return
 
-    for (const button of buttons) {
-      if (this.#toolbarIsOverflowing()) {
-        this.#overflowMenu.prepend(button)
-        movedToOverflow = true
-      } else {
-        if (movedToOverflow) this.#overflowMenu.prepend(button)
+    const availableWidth = this.clientWidth + 1 // +1 for Safari zoom rounding
+    const buttonRightEdges = buttons.map(button => button.offsetLeft + button.offsetWidth)
+
+    let firstOverflowing = -1
+    for (let i = 0; i < buttons.length; i++) {
+      if (buttonRightEdges[i] > availableWidth) {
+        firstOverflowing = i
         break
       }
+    }
+
+    if (firstOverflowing === -1) return
+
+    // Move one extra button to reserve space for the overflow control, which is
+    // `display: none` until we show it — matching the previous implementation's
+    // "move one more after it stops overflowing" behaviour.
+    const overflowIndex = Math.max(0, firstOverflowing - 1)
+    const overflowButtons = buttons.slice(overflowIndex).reverse()
+    for (const button of overflowButtons) {
+      this.#overflowMenu.prepend(button)
     }
   }
 
@@ -308,10 +308,10 @@ export class LexicalToolbarElement extends HTMLElement {
     const items = Array.from(this.#overflowMenu.children)
     items.sort((a, b) => this.#itemPosition(b) - this.#itemPosition(a))
 
-    items.forEach((item) => {
+    for (const item of items) {
       const nextItem = this.querySelector(`[data-position="${this.#itemPosition(item) + 1}"]`) ?? this.#overflow
       this.insertBefore(item, nextItem)
-    })
+    }
   }
 
   #itemPosition(item) {
@@ -328,9 +328,17 @@ export class LexicalToolbarElement extends HTMLElement {
 
   #closeDropdowns() {
    this.#dropdowns.forEach((details) => {
-     details.open = false
+     if (!details.hasAttribute("data-pinned")) {
+       details.open = false
+     }
    })
  }
+
+  #clearAllPressedStates() {
+    for (const button of this.querySelectorAll("[aria-pressed='true']")) {
+      button.setAttribute("aria-pressed", "false")
+    }
+  }
 
   get #dropdowns() {
     return this.querySelectorAll("details")
@@ -356,7 +364,21 @@ export class LexicalToolbarElement extends HTMLElement {
     return Array.from(this.querySelectorAll(":scope > *:not(.lexxy-editor__toolbar-overflow)"))
   }
 
-  static get defaultTemplate() {
+  // Parsing the default template string into DOM is one of the biggest fixed
+  // per-editor costs (14+ buttons, nested dropdowns, inline SVG icons). Cache
+  // a <template> element so additional editors clone the parsed fragment
+  // instead of re-parsing the HTML.
+  static #templateNode = null
+
+  static cloneDefaultTemplate() {
+    if (!this.#templateNode) {
+      this.#templateNode = document.createElement("template")
+      this.#templateNode.innerHTML = this.#defaultTemplate
+    }
+    return this.#templateNode.content.cloneNode(true)
+  }
+
+  static get #defaultTemplate() {
     return `
       <button class="lexxy-editor__toolbar-button" type="button" name="image" data-command="uploadImage" data-prevent-overflow="true" title="Add images and video">
         ${ToolbarIcons.image}
@@ -398,6 +420,10 @@ export class LexicalToolbarElement extends HTMLElement {
           <button type="button" name="underline" data-command="underline" title="Underline">
             ${ToolbarIcons.underline} <span>Underline</span>
           </button>
+          <div class="lexxy-editor__toolbar-separator" role="separator"></div>
+          <button type="button" name="clear-formatting" data-command="clearFormatting" title="Clear formatting">
+            ${ToolbarIcons.clearFormatting} <span>Clear formatting</span>
+          </button>
         </div>
       </details>
 
@@ -416,13 +442,11 @@ export class LexicalToolbarElement extends HTMLElement {
           ${ToolbarIcons.link}
         </summary>
         <lexxy-link-dropdown class="lexxy-editor__toolbar-dropdown-content">
-          <form method="dialog">
-            <input type="url" placeholder="Enter a URL…" class="input">
-            <div class="lexxy-editor__toolbar-dropdown-actions">
-              <button type="submit" class="lexxy-editor__toolbar-button" value="link">Link</button>
-              <button type="button" class="lexxy-editor__toolbar-button" value="unlink">Unlink</button>
-            </div>
-          </form>
+          <input type="url" placeholder="Enter a URL…" class="input">
+          <div class="lexxy-editor__toolbar-dropdown-actions">
+            <button type="button" class="lexxy-editor__toolbar-button" value="link">Link</button>
+            <button type="button" class="lexxy-editor__toolbar-button" value="unlink">Unlink</button>
+          </div>
         </lexxy-link-dropdown>
       </details>
 

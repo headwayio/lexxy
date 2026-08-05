@@ -27,7 +27,7 @@ test.describe("Inline code escape with arrow keys", () => {
     await editor.send("ArrowRight")
     await editor.send(" more")
 
-    await assertEditorHtml(editor, "<ul><li>item <code>code</code> more</li></ul>")
+    await assertEditorHtml(editor, '<ul><li value="1">item <code>code</code> more</li></ul>')
   })
 
   test("right arrow escapes inline code when code is only content in paragraph", async ({ page, editor }) => {
@@ -45,7 +45,7 @@ test.describe("Inline code escape with arrow keys", () => {
     await editor.send("ArrowRight")
     await editor.send(" plain")
 
-    const codeButton = editor.page.getByRole("button", { name: "Code" })
+    const codeButton = editor.page.getByRole("button", { name: "Code", exact: true })
     await expect(codeButton).toHaveAttribute("aria-pressed", "false")
   })
 })

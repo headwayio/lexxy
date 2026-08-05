@@ -12,10 +12,43 @@ export default class Extensions {
     return this.enabledExtensions.map(ext => ext.lexicalExtension).filter(Boolean)
   }
 
+  // Look up an enabled extension instance by its class. Returns null if not
+  // enabled. Lets elements dispatch to an extension without re-running an
+  // instanceof filter at every call site.
+  get(klass) {
+    return this.enabledExtensions.find(ext => ext instanceof klass) ?? null
+  }
+
+  initializeEditors() {
+    this.enabledExtensions.forEach(ext => ext.initializeEditor?.())
+  }
+
   initializeToolbars() {
-    if (this.#lexxyToolbar) {
-      this.enabledExtensions.forEach(ext => ext.initializeToolbar(this.#lexxyToolbar))
-    }
+    const toolbar = this.#lexxyToolbar
+    if (!toolbar) return
+
+    this.#clearPreviousExtensionToolbarButtons(toolbar)
+    this.#addExtensionToolbarButtons(toolbar)
+  }
+
+  #clearPreviousExtensionToolbarButtons(toolbar) {
+    toolbar.querySelectorAll("[data-lexxy-extension]").forEach(el => el.remove())
+  }
+
+  #addExtensionToolbarButtons(toolbar) {
+    this.enabledExtensions.forEach(ext => {
+      const childrenBefore = new Set(toolbar.children)
+      ext.initializeToolbar(toolbar)
+      for (const child of toolbar.children) {
+        if (!childrenBefore.has(child)) {
+          child.setAttribute("data-lexxy-extension", "")
+        }
+      }
+    })
+  }
+
+  get allowedElements() {
+    return this.enabledExtensions.flatMap(ext => ext.allowedElements)
   }
 
   get #lexxyToolbar() {

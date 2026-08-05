@@ -1,3 +1,5 @@
+import { extractFileExtension } from "./storage_helper"
+
 export function createElement(name, properties, content = "") {
   const element = document.createElement(name)
   for (const [ key, value ] of Object.entries(properties || {})) {
@@ -19,23 +21,46 @@ export function parseHtml(html) {
 }
 
 export function createAttachmentFigure(contentType, isPreviewable, fileName) {
-  const extension = fileName ? fileName.split(".").pop().toLowerCase() : "unknown"
+  const extension = extractFileExtension(fileName) || "unknown"
   return createElement("figure", {
     className: `attachment attachment--${isPreviewable ? "preview" : "file"} attachment--${extension}`,
     "data-content-type": contentType
   })
 }
 
-export function isPreviewableImage(contentType) {
-  return contentType.startsWith("image/") && !contentType.includes("svg")
+// Extension → short label shown inside .attachment__icon. Any extension not in
+// this map falls back to its uppercased form (".sql" → "SQL"). Keep in sync
+// with Lexxy::AttachmentIconHelper on the Ruby side — the show-page
+// _blob.html.erb partial uses the same labels.
+const ICON_LABELS = {
+  md: "M\u2193",
+  markdown: "M\u2193",
+  png: "IMG",
+  jpg: "IMG",
+  jpeg: "IMG",
+  webp: "IMG",
+  svg: "SVG",
+  bmp: "IMG",
+  tiff: "IMG",
+  tif: "IMG",
+  ico: "IMG",
+  avif: "IMG",
+  heic: "IMG",
+  docx: "DOC",
+  xlsx: "XLS",
+  pptx: "PPT",
+  rar: "ZIP",
+  webm: "VID",
+  avi: "VID"
 }
 
-export function dispatchCustomEvent(element, name, detail) {
-  const event = new CustomEvent(name, {
-    detail: detail,
-    bubbles: true,
-  })
-  element.dispatchEvent(event)
+export function attachmentIconLabel(extension) {
+  if (!extension) return ""
+  return ICON_LABELS[extension] || extension.toUpperCase()
+}
+
+export function isPreviewableImage(contentType) {
+  return contentType.startsWith("image/")
 }
 
 export function dispatch(element, eventName, detail = null, cancelable = false) {
@@ -58,4 +83,8 @@ export function generateDomId(prefix) {
 
 export function extractPlainTextFromHtml(innerHtml = "") {
   return parseHtml(innerHtml).body.textContent.trim()
+}
+
+export function isActiveAndVisible(element) {
+  return element && !element.disabled && element.checkVisibility()
 }

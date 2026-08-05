@@ -206,11 +206,43 @@ export class EditorHandle {
 
   async #ensureFirstInteraction() {
     if (!this.#firstInteraction) {
-      const isActive = await this.content.evaluate(
-        (el) => document.activeElement === el,
-      )
-      if (!isActive) {
-        await this.content.click()
+      const state = await this.content.evaluate((el) => {
+        const isActive = document.activeElement === el
+        const sel = window.getSelection()
+        const hasRange = sel?.rangeCount > 0
+            && el.contains(sel.anchorNode)
+        return { isActive, hasRange }
+      })
+      if (!state.isActive && !state.hasRange) {
+        // No focus and no selection yet. Plant a caret at the end of the
+        // existing text content and focus the contenteditable. Avoids
+        // Playwright's default center-click landing on a decorator node
+        // (image, HR figure, attachment) and promoting the editor into
+        // block-select / node-selection modes before the caller's action.
+        // Falls back to click() if the editor has no text nodes at all.
+        const fallbackToClick = await this.content.evaluate((el) => {
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+          let last = null
+          let node
+          while ((node = walker.nextNode())) {
+            if (node.nodeValue?.trim() !== "") last = node
+          }
+          if (!last) return true
+          const range = document.createRange()
+          range.setStart(last, last.nodeValue.length)
+          range.setEnd(last, last.nodeValue.length)
+          const sel = window.getSelection()
+          sel.removeAllRanges()
+          sel.addRange(range)
+          el.focus()
+          return false
+        })
+        if (fallbackToClick) await this.content.click()
+      } else if (!state.isActive) {
+        // A selection is already set (e.g. caller clicked an attachment to
+        // node-select it). Focus the contenteditable without disturbing the
+        // selection so subsequent key events route to the editor.
+        await this.content.evaluate((el) => el.focus())
       }
       this.#firstInteraction = true
     }

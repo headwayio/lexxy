@@ -3,6 +3,7 @@ import {
   $getNodeByKey,
   $getSelection,
   $isParagraphNode,
+  $isRangeSelection,
   COMMAND_PRIORITY_HIGH,
   KEY_BACKSPACE_COMMAND,
   KEY_ENTER_COMMAND
@@ -17,11 +18,17 @@ import {
   TableCellNode,
   TableNode,
 } from "@lexical/table"
+import { $createListItemNode, $isListItemNode } from "@lexical/list"
+import { $findMatchingParent } from "@lexical/utils"
+import { $provisionalTableEscapeKeys } from "../../nodes/wrapped_table_node"
 
 import { upcaseFirst } from "../../helpers/string_helper"
 import { nextFrame } from "../../helpers/timing_helpers"
+import { ListenerBin } from "../../helpers/listener_helper"
 
 export class TableController {
+  #listeners = new ListenerBin()
+
   constructor(editorElement) {
     this.editor = editorElement.editor
     this.contents = editorElement.contents
@@ -37,7 +44,7 @@ export class TableController {
     this.currentTableNodeKey = null
     this.currentCellKey = null
 
-    this.#unregisterKeyHandlers()
+    this.#listeners.dispose()
   }
 
   get currentCell() {
@@ -270,6 +277,16 @@ export class TableController {
     this.executeTableCommand({ action: "delete", childType: "row" })
 
     this.editor.update(() => {
+      // Table in a list item: create a provisional sibling list item
+      const parentListItem = tableNode?.getParent()
+      if ($isListItemNode(parentListItem)) {
+        const newItem = $createListItemNode()
+        parentListItem.insertAfter(newItem)
+        $provisionalTableEscapeKeys(this.editor).add(newItem.getKey())
+        newItem.select()
+        return
+      }
+
       const next = tableNode?.getNextSibling()
       if ($isParagraphNode(next)) {
         next.selectStart()
@@ -319,16 +336,10 @@ export class TableController {
 
   #registerKeyHandlers() {
     // We can't prevent these externally using regular keydown because Lexical handles it first.
-    this.unregisterBackspaceKeyHandler = this.editor.registerCommand(KEY_BACKSPACE_COMMAND, (event) => this.#handleBackspaceKey(event), COMMAND_PRIORITY_HIGH)
-    this.unregisterEnterKeyHandler = this.editor.registerCommand(KEY_ENTER_COMMAND, (event) => this.#handleEnterKey(event), COMMAND_PRIORITY_HIGH)
-  }
-
-  #unregisterKeyHandlers() {
-    this.unregisterBackspaceKeyHandler?.()
-    this.unregisterEnterKeyHandler?.()
-
-    this.unregisterBackspaceKeyHandler = null
-    this.unregisterEnterKeyHandler = null
+    this.#listeners.track(
+      this.editor.registerCommand(KEY_BACKSPACE_COMMAND, (event) => this.#handleBackspaceKey(event), COMMAND_PRIORITY_HIGH),
+      this.editor.registerCommand(KEY_ENTER_COMMAND, (event) => this.#handleEnterKey(event), COMMAND_PRIORITY_HIGH)
+    )
   }
 
   #handleBackspaceKey(event) {
@@ -352,7 +363,12 @@ export class TableController {
   #handleEnterKey(event) {
     if ((event.ctrlKey || event.metaKey) || event.shiftKey || !this.currentTableNode) return false
 
-    if (this.selection.isInsideList || this.selection.isInsideCodeBlock) return false
+    if (this.selection.isInsideCodeBlock) return false
+
+    // Only bail for lists INSIDE a table cell (nested lists), not for the
+    // list that wraps the table itself. A nested list's ListItemNode is a
+    // descendant of the table; the wrapper list item is an ancestor.
+    if (this.selection.isInsideList && this.#isListNestedInCell()) return false
 
     event.preventDefault()
 
@@ -365,5 +381,14 @@ export class TableController {
     }
 
     return true
+  }
+
+  #isListNestedInCell() {
+    return this.editor.getEditorState().read(() => {
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection)) return false
+      const listItem = $findMatchingParent(selection.anchor.getNode(), $isListItemNode)
+      return listItem && this.currentTableNode?.getLatest().isParentOf(listItem)
+    })
   }
 }

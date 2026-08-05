@@ -1,20 +1,24 @@
 import {
-  $createLineBreakNode, $createParagraphNode, $createTextNode, $getNodeByKey, $getRoot, $getSelection,
+  $createLineBreakNode, $createParagraphNode, $createTextNode, $getChildCaretAtIndex, $getNodeByKey, $getRoot, $getSelection,
+  $hasUpdateTag,
   $isElementNode, $isLineBreakNode, $isNodeSelection, $isParagraphNode, $isRangeSelection, $isRootNode, $isRootOrShadowRoot, $isTextNode, $setSelection,
   HISTORY_MERGE_TAG,
   PASTE_TAG
- } from "lexical"
+} from "lexical"
 
 import { $generateNodesFromDOM } from "@lexical/html"
-import { $createCodeNode, $isCodeNode } from "@lexical/code"
-import { $createHeadingNode, $createQuoteNode, $isQuoteNode } from "@lexical/rich-text"
+import { $createCodeNode, $isCodeNode, CodeNode } from "@lexical/code"
+import { $createHeadingNode, $createQuoteNode, $isQuoteNode, QuoteNode } from "@lexical/rich-text"
+import { $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from "@lexical/list"
 import { CustomActionTextAttachmentNode } from "../nodes/custom_action_text_attachment_node"
 import { $createLinkNode, $toggleLink } from "@lexical/link"
 import { dispatch, parseHtml } from "../helpers/html_helper"
-import { $setBlocksType } from "@lexical/selection"
+import { getListItemNode } from "../helpers/lexical_helper"
+import { $ensureForwardRangeSelection, $forEachSelectedTextNode, $setBlocksType } from "@lexical/selection"
 import Uploader from "./contents/uploader"
 import { $isActionTextAttachmentNode } from "../nodes/action_text_attachment_node"
 import { ActionTextAttachmentUploadNode } from "../nodes/action_text_attachment_upload_node"
+import { $getNearestBlockElementAncestorOrThrow, $getNearestNodeOfType } from "@lexical/utils"
 
 export default class Contents {
   constructor(editorElement) {
@@ -27,43 +31,30 @@ export default class Contents {
     this.editor = null
   }
 
+  get selection() { return this.editorElement.selection }
+
   insertHtml(html, { tag } = {}) {
     this.insertDOM(parseHtml(html), { tag })
   }
 
   insertDOM(doc, { tag } = {}) {
     this.#unwrapPlaceholderAnchors(doc)
-    if (tag === PASTE_TAG) this.#stripTableCellColorStyles(doc)
 
     this.editor.update(() => {
-      const selection = $getSelection()
-      if (!$isRangeSelection(selection)) return
+      if ($hasUpdateTag(PASTE_TAG)) this.#stripTableCellColorStyles(doc)
 
       const nodes = $generateNodesFromDOM(this.editor, doc)
       if (!this.#insertUploadNodes(nodes)) {
-        selection.insertNodes(nodes)
+        this.insertAtCursor(...nodes)
       }
     }, { tag })
   }
 
-  insertAtCursor(node) {
-    let selection = $getSelection() ?? $getRoot().selectEnd()
-    const selectedNodes = selection?.getNodes()
+  insertAtCursor(...nodes) {
+    const selection = $getSelection() ?? $getRoot().selectEnd()
+    const inserter = NodeInserter.for(selection)
 
-    if ($isRangeSelection(selection)) {
-      const anchorNode = selection.anchor.getNode()
-      if ($isShadowRoot(anchorNode)) {
-        const paragraph = $createParagraphNode()
-        anchorNode.append(paragraph)
-        selection = paragraph.selectStart()
-      }
-      selection.insertNodes([ node ])
-    } else if ($isNodeSelection(selection) && selectedNodes.length > 0) {
-      // Overrides Lexical's default behavior of _removing_ the currently selected nodes
-      // https://github.com/facebook/lexical/blob/v0.38.2/packages/lexical/src/LexicalSelection.ts#L412
-      const lastNode = selectedNodes.at(-1)
-      lastNode.insertAfter(node)
-    }
+    inserter.insertNodes(nodes)
   }
 
   insertAtCursorEnsuringLineBelow(node) {
@@ -75,6 +66,23 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    // When inside a wrapped block in a list item, unwrap back to regular content
+    const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
+    if (listItem) {
+      const children = listItem.getChildren()
+      const wrappedChild = children.find(c =>
+        $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+      )
+      if (wrappedChild) {
+        for (const child of [ ...wrappedChild.getChildren() ]) {
+          listItem.append(child)
+        }
+        wrappedChild.remove()
+        return
+      }
+    }
+
     $setBlocksType(selection, () => $createParagraphNode())
   }
 
@@ -82,34 +90,110 @@ export default class Contents {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    // When the cursor is inside a list item, wrap the content in a heading
+    // node (creating a wrapped block) instead of replacing the LI container.
+    const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
+    if (listItem) {
+      this.#wrapListItemInBlock(listItem, $createHeadingNode(tag))
+      return
+    }
+
     $setBlocksType(selection, () => $createHeadingNode(tag))
   }
 
-  #applyCodeBlockFormat() {
+  // Wrap a list item's inline content in a block element (heading, quote, code).
+  // If the item already contains a wrapped block, swaps the block type.
+  #wrapListItemInBlock(listItem, block) {
+    const children = listItem.getChildren()
+
+    const existingWrapped = children.find(c =>
+      $isElementNode(c) && !$isListNode(c) && !$isParagraphNode(c)
+    )
+    if (existingWrapped) {
+      for (const child of [ ...existingWrapped.getChildren() ]) {
+        block.append(child)
+      }
+      existingWrapped.replace(block)
+    } else {
+      for (const child of [ ...children ]) {
+        if ($isListNode(child)) continue
+        block.append(child)
+      }
+      const firstChild = listItem.getFirstChild()
+      if (firstChild) {
+        firstChild.insertBefore(block)
+      } else {
+        listItem.append(block)
+      }
+    }
+    block.selectEnd()
+  }
+
+  applyUnorderedListFormat() {
+    this.#splitParagraphsAtLineBreaksUnlessInsideList()
+    this.editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
+  }
+
+  applyOrderedListFormat() {
+    this.#splitParagraphsAtLineBreaksUnlessInsideList()
+    this.editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
+  }
+
+  clearFormatting() {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
-    $setBlocksType(selection, () => $createCodeNode("plain"))
+    $forEachSelectedTextNode(node => {
+      node.setFormat(0)
+      node.setStyle("")
+    })
+
+    $toggleLink(null)
+
+    this.#topLevelElementsInSelection(selection).filter($isQuoteNode).forEach(node => this.#unwrap(node))
+
+    $setBlocksType(selection, () => $createParagraphNode())
   }
 
   toggleCodeBlock() {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
 
+    // Inside a list item → wrap as a code block
+    const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
+    if (listItem) {
+      this.#wrapListItemInBlock(listItem, $createCodeNode("plain"))
+      return
+    }
+
     if (this.#insertNodeIfRoot($createCodeNode("plain"))) return
 
-    const topLevelElement = selection.anchor.getNode().getTopLevelElementOrThrow()
+    const blockElements = this.#blockLevelElementsInSelection(selection)
+    const allCode = blockElements.every($isCodeNode)
 
-    if (topLevelElement && !$isCodeNode(topLevelElement)) {
-      this.#applyCodeBlockFormat()
+    if (allCode) {
+      blockElements.forEach(node => this.#unwrapCodeBlock(node))
     } else {
-      this.applyParagraphFormat()
+      const codeNode = $createCodeNode("plain")
+      blockElements.at(-1).insertAfter(codeNode)
+      codeNode.selectEnd()
+      this.insertAtCursor(...blockElements)
     }
   }
 
   toggleBlockquote() {
     const selection = $getSelection()
     if (!$isRangeSelection(selection)) return
+
+    // Inside a list item → wrap as a blockquote
+    const anchorNode = selection.anchor.getNode()
+    const listItem = getListItemNode(anchorNode)
+    if (listItem) {
+      this.#wrapListItemInBlock(listItem, $createQuoteNode())
+      return
+    }
 
     if (this.#insertNodeIfRoot($createQuoteNode())) return
 
@@ -352,9 +436,42 @@ export default class Contents {
     return false
   }
 
+  #unwrapCodeBlock(codeNode) {
+    const children = codeNode.getChildren()
+    const groups = [ [] ]
+
+    for (const child of children) {
+      if ($isLineBreakNode(child)) {
+        groups.push([])
+      } else {
+        groups[groups.length - 1].push(child.getTextContent())
+      }
+    }
+
+    for (const group of groups) {
+      const paragraph = $createParagraphNode()
+      const text = group.join("")
+      if (text) {
+        paragraph.append($createTextNode(text))
+      }
+      codeNode.insertBefore(paragraph)
+    }
+
+    codeNode.remove()
+  }
+
+  #splitParagraphsAtLineBreaksUnlessInsideList() {
+    if (this.selection.isInsideList) return
+
+    const selection = $getSelection()
+    if (!$isRangeSelection(selection)) return
+
+    this.#splitParagraphsAtLineBreaks(selection)
+  }
+
   #splitParagraphsAtLineBreaks(selection) {
-    const anchorKey = selection.anchor.getNode().getKey()
-    const focusKey = selection.focus.getNode().getKey()
+    const anchorTopLevel = selection.anchor.getNode().getTopLevelElement()
+    const focusTopLevel = selection.focus.getNode().getTopLevelElement()
     const topLevelElements = this.#topLevelElementsInSelection(selection)
 
     for (const element of topLevelElements) {
@@ -366,10 +483,9 @@ export default class Contents {
       // Check whether this paragraph needs splitting: skip only if neither
       // selection endpoint is inside it (meaning it's a middle paragraph
       // fully between anchor and focus with no partial lines to split off).
-      const hasEndpoint = children.some(child =>
-        child.getKey() === anchorKey || child.getKey() === focusKey
-      )
-      if (!hasEndpoint) continue
+      // Compare top-level elements so endpoints inside nested inline nodes
+      // (e.g. text inside a LinkNode) are still recognized.
+      if (element !== anchorTopLevel && element !== focusTopLevel) continue
 
       const groups = [ [] ]
       for (const child of children) {
@@ -389,6 +505,15 @@ export default class Contents {
       }
       if (groups.some(group => group.length > 0)) element.remove()
     }
+  }
+
+  #blockLevelElementsInSelection(selection) {
+    const blocks = new Set()
+    for (const node of selection.getNodes()) {
+      blocks.add($getNearestBlockElementAncestorOrThrow(node))
+    }
+
+    return Array.from(blocks)
   }
 
   #topLevelElementsInSelection(selection) {
@@ -576,4 +701,107 @@ export default class Contents {
 
 function $isShadowRoot(node) {
   return $isElementNode(node) && $isRootOrShadowRoot(node) && !$isRootNode(node)
+}
+
+class NodeInserter {
+  static for(selection) {
+    const INSERTERS = [
+      CodeNodeInserter,
+      QuoteNodeInserter,
+      ShadowRootNodeInserter,
+      NodeSelectionNodeInserter
+    ]
+    const Inserter = INSERTERS.find(inserter => inserter.handles(selection))
+    return Inserter ? new Inserter(selection) : selection
+  }
+
+  constructor(selection) {
+    this.selection = selection
+  }
+}
+
+class CodeNodeInserter extends NodeInserter {
+  static handles(selection) {
+    return $getNearestNodeOfType(selection.anchor?.getNode(), CodeNode)
+  }
+
+  insertNodes(nodes) {
+    if (!this.selection.isCollapsed()) { this.selection.removeText() }
+
+    $ensureForwardRangeSelection(this.selection)
+    const focusNode = this.selection.focus.getNode()
+    const codeNode = $getNearestNodeOfType(focusNode, CodeNode)
+    const insertionIndex = focusNode.is(codeNode) ? 0 : focusNode.getIndexWithinParent()
+
+    const caret = $getChildCaretAtIndex(codeNode, insertionIndex + 1, "previous")
+
+    for (const node of nodes) {
+      if (!node.isAttached()) continue
+      if (caret.getNodeAtCaret() && $isElementNode(node)) { caret.insert($createLineBreakNode()) }
+
+      caret.insert(this.#convertNodeToCodeChild(node))
+    }
+
+    caret.getNodeAtCaret().selectEnd()
+  }
+
+  #convertNodeToCodeChild(node) {
+    if ($isLineBreakNode(node)) {
+      return node
+    } else {
+      node.remove()
+      return $createTextNode(node.getTextContent())
+    }
+  }
+
+}
+
+// Lexical will split a QuoteNode when inserting other Elements - we want them simply inserted as-is
+class QuoteNodeInserter extends NodeInserter {
+  static handles(selection) {
+    return $getNearestNodeOfType(selection.anchor?.getNode(), QuoteNode)
+  }
+
+  insertNodes(nodes) {
+    if (!this.selection.isCollapsed()) { this.selection.removeText() }
+
+    $ensureForwardRangeSelection(this.selection)
+    let lastNode = this.selection.focus.getNode()
+    for (const node of nodes) {
+      lastNode = lastNode.insertAfter(node)
+    }
+
+    lastNode.selectEnd()
+  }
+}
+
+class ShadowRootNodeInserter extends NodeInserter {
+  static handles(selection) {
+    return $isShadowRoot(selection?.anchor.getNode())
+  }
+
+  insertNodes(nodes) {
+    const anchorNode = this.selection.anchor.getNode()
+    const paragraph = $createParagraphNode()
+    anchorNode.append(paragraph)
+
+    paragraph.selectStart().insertNodes(nodes)
+  }
+}
+
+class NodeSelectionNodeInserter extends NodeInserter {
+  static handles(selection) {
+    return $isNodeSelection(selection)
+  }
+
+  insertNodes(nodes) {
+    const selectedNodes = this.selection.getNodes()
+
+    // Overrides Lexical's default behavior of _removing_ the currently selected nodes
+    // https://github.com/facebook/lexical/blob/v0.38.2/packages/lexical/src/LexicalSelection.ts#L412
+    let lastNode = selectedNodes.at(-1)
+    for (const node of nodes) {
+      lastNode = lastNode.insertAfter(node)
+    }
+  }
 }

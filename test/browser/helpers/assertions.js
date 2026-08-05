@@ -42,3 +42,28 @@ export async function assertEditorTableStructure(editor, cols, rows) {
     editor.content.locator("table tr").first().locator("td, th"),
   ).toHaveCount(cols)
 }
+
+// Strip attributes whose value is derived from transient block-selection state
+// (bullet depth, list-item type, wrap origin). Also strip Lexical ListItemNode's
+// serialized `value="N"` attribute — it reflects internal counter state, not
+// structure. Tests assert on structure, not on these decorations.
+export function stripDynamicAttrs(html) {
+  return html
+    .replace(/\s*data-bullet-depth="[^"]*"/g, "")
+    .replace(/\s*data-list-item-type="[^"]*"/g, "")
+    .replace(/\s*data-block-movement-wrapped="[^"]*"/g, "")
+    .replace(/(<li)\s+value="[^"]*"/g, "$1")
+}
+
+// Like assertEditorHtml but also strips dynamic block-selection attrs.
+export async function assertBlockHtml(editor, expected) {
+  await expect
+    .poll(
+      async () => {
+        await editor.flush()
+        return stripDynamicAttrs(normalizeHtml(await editor.value()))
+      },
+      { timeout: 5_000 },
+    )
+    .toBe(stripDynamicAttrs(normalizeHtml(expected)))
+}

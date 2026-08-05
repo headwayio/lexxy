@@ -1,10 +1,10 @@
-import { $isRootOrShadowRoot, SKIP_DOM_SELECTION_TAG } from "lexical"
+import { $getSelection, $isRangeSelection, $isRootOrShadowRoot } from "lexical"
 import Lexxy from "../config/lexxy"
-import { SILENT_UPDATE_TAGS } from "../helpers/lexical_helper"
 import { ActionTextAttachmentNode } from "./action_text_attachment_node"
-import { createElement, dispatch } from "../helpers/html_helper"
+import { $isProvisionalParagraphNode } from "./provisional_paragraph_node"
+import { attachmentIconLabel, createElement, dispatch } from "../helpers/html_helper"
 import { loadFileIntoImage } from "../helpers/upload_helper"
-import { bytesToHumanSize } from "../helpers/storage_helper"
+import { bytesToHumanSize, extractFileExtension } from "../helpers/storage_helper"
 
 export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   static getType() {
@@ -38,7 +38,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   }
 
   createDOM() {
-    if (this.uploadError) return this.#createDOMForError()
+    if (this.uploadError) return this.createDOMForError()
 
     // This side-effect is trigged on DOM load to fire only once and avoid multiple
     // uploads through cloning. The upload is guarded from restarting in case the
@@ -98,25 +98,18 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
     return this.progress !== null
   }
 
-  #createDOMForError() {
-    const figure = this.createAttachmentFigure()
-    figure.classList.add("attachment--error")
-    figure.appendChild(createElement("div", { innerText: `Error uploading ${this.file?.name ?? "file"}` }))
-    return figure
-  }
-
   #createDOMForImage() {
     return createElement("img")
   }
 
   #createDOMForFile() {
     const extension = this.#getFileExtension()
-    const span = createElement("span", { className: "attachment__icon", textContent: extension })
+    const span = createElement("span", { className: "attachment__icon", textContent: attachmentIconLabel(extension) })
     return span
   }
 
   #getFileExtension() {
-    return this.file.name.split(".").pop().toLowerCase()
+    return extractFileExtension(this.file.name)
   }
 
   #createCaption() {
@@ -141,7 +134,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
       const writable = this.getWritable()
       writable.width = width
       writable.height = height
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
   }
 
   get #hasDimensions() {
@@ -169,7 +162,7 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
         this.#dispatchEvent("lexxy:upload-end", { file: this.file, error: null })
         this.editor.update(() => {
           this.showUploadedAttachment(blob)
-        }, { tag: this.#backgroundUpdateTags })
+        }, { tag: this.backgroundUpdateTags })
       }
     })
   }
@@ -203,46 +196,46 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
   #setProgress(progress) {
     this.editor.update(() => {
       this.getWritable().progress = progress
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
   }
 
   #handleUploadError(error) {
     console.warn(`Upload error for ${this.file?.name ?? "file"}: ${error}`)
     this.editor.update(() => {
       this.getWritable().uploadError = true
-    }, { tag: this.#backgroundUpdateTags })
+    }, { tag: this.backgroundUpdateTags })
   }
 
   showUploadedAttachment(blob) {
-    const replacementNode = this.#toActionTextAttachmentNodeWith(blob)
+    const previewSrc = this.isPreviewableImage && this.file ? URL.createObjectURL(this.file) : null
+
+    const replacementNode = this.#toActionTextAttachmentNodeWith(blob, previewSrc)
+    const shouldSelectAfterReplacement = this.#selectionIncludesUploadNode
     this.replace(replacementNode)
 
-    if ($isRootOrShadowRoot(replacementNode.getParent())) {
+    if (shouldSelectAfterReplacement && $isRootOrShadowRoot(replacementNode.getParent())) {
       replacementNode.selectNext()
     }
 
     return replacementNode.getKey()
   }
 
-  // Upload lifecycle methods (progress, completion, errors) run asynchronously and may
-  // fire while the user is focused on another element (e.g., a title field). Without
-  // SKIP_DOM_SELECTION_TAG, Lexical's reconciler would move the DOM selection back into
-  // the editor, stealing focus from wherever the user is currently typing.
-  get #backgroundUpdateTags() {
-    if (this.#editorHasFocus) {
-      return SILENT_UPDATE_TAGS
-    } else {
-      return [ ...SILENT_UPDATE_TAGS, SKIP_DOM_SELECTION_TAG ]
-    }
+  get #selectionIncludesUploadNode() {
+    const selection = $getSelection()
+    if (selection === null) return false
+
+    if (selection.getNodes().some((node) => node.is(this))) return true
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false
+
+    const anchorNode = selection.anchor.getNode()
+    if (!$isProvisionalParagraphNode(anchorNode) || !anchorNode.isEmpty()) return false
+
+    const previousSibling = anchorNode.getPreviousSibling()
+    return previousSibling !== null && previousSibling.is(this)
   }
 
-  get #editorHasFocus() {
-    const rootElement = this.editor.getRootElement()
-    return rootElement !== null && rootElement.contains(document.activeElement)
-  }
-
-  #toActionTextAttachmentNodeWith(blob) {
-    const conversion = new AttachmentNodeConversion(this, blob)
+  #toActionTextAttachmentNodeWith(blob, previewSrc) {
+    const conversion = new AttachmentNodeConversion(this, blob, previewSrc)
     return conversion.toAttachmentNode()
   }
 
@@ -253,16 +246,20 @@ export class ActionTextAttachmentUploadNode extends ActionTextAttachmentNode {
 }
 
 class AttachmentNodeConversion {
-  constructor(uploadNode, blob) {
+  constructor(uploadNode, blob, previewSrc) {
     this.uploadNode = uploadNode
     this.blob = blob
+    this.previewSrc = previewSrc
   }
 
   toAttachmentNode() {
     return new ActionTextAttachmentNode({
       ...this.uploadNode,
       ...this.#propertiesFromBlob,
-      src: this.#src
+      src: this.#src,
+      blobUrl: this.#blobSrc,
+      previewSrc: this.previewSrc,
+      pendingPreview: this.blob.previewable && !this.uploadNode.isPreviewableImage
     })
   }
 
@@ -283,6 +280,8 @@ class AttachmentNodeConversion {
   }
 
   get #blobSrc() {
+    if (!this.uploadNode.blobUrlTemplate) return null
+
     return this.uploadNode.blobUrlTemplate
       .replace(":signed_id", this.blob.signed_id)
       .replace(":filename", encodeURIComponent(this.blob.filename))

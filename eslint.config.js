@@ -43,7 +43,15 @@ export default [
         customElements: "readonly",
         Prism: "readonly",
         ResizeObserver: "readonly",
-        PointerEvent: "readonly"
+        PointerEvent: "readonly",
+        getComputedStyle: "readonly",
+        localStorage: "readonly",
+        NodeFilter: "readonly",
+        queueMicrotask: "readonly",
+        requestIdleCallback: "readonly",
+        cancelIdleCallback: "readonly",
+        performance: "readonly",
+        Image: "readonly"
       }
     },
     rules: {

@@ -1,7 +1,8 @@
 import { $createParagraphNode } from "lexical"
 import { CodeNode } from "@lexical/code"
+import { $createListItemNode, $isListItemNode } from "@lexical/list"
 import { $getNearestNodeOfType } from "@lexical/utils"
-import { $isCursorOnLastLine, $trimTrailingBlankNodes } from "../helpers/lexical_helper"
+import { $isAtNodeStart, $isCursorOnLastLine, $trimTrailingBlankNodes } from "../helpers/lexical_helper"
 
 export class EarlyEscapeCodeNode extends CodeNode {
   $config() {
@@ -17,8 +18,24 @@ export class EarlyEscapeCodeNode extends CodeNode {
   insertNewAfter(selection, restoreSelection) {
     if (!selection.isCollapsed()) return super.insertNewAfter(selection, restoreSelection)
 
+    if (this.#isCursorAtStart(selection)) {
+      this.insertBefore($createParagraphNode())
+      return null
+    }
+
     if (this.#isCursorOnEmptyLastLine(selection)) {
       $trimTrailingBlankNodes(this)
+
+      // If the code block is wrapped inside a ListItemNode, create a new
+      // sibling list item (not a paragraph inside the wrapper) so the new
+      // item is a proper list citizen that inherits parent highlighting.
+      const parentListItem = this.getParent()
+      if ($isListItemNode(parentListItem)) {
+        const newItem = $createListItemNode()
+        parentListItem.insertAfter(newItem)
+        newItem.select()
+        return newItem
+      }
 
       const paragraph = $createParagraphNode()
       this.insertAfter(paragraph)
@@ -26,6 +43,14 @@ export class EarlyEscapeCodeNode extends CodeNode {
     }
 
     return super.insertNewAfter(selection, restoreSelection)
+  }
+
+  #isCursorAtStart(selection) {
+    const { anchor } = selection
+    if (!$isAtNodeStart(anchor)) return false
+
+    const anchorNode = anchor.getNode()
+    return this.is(anchorNode) || this.getFirstChild()?.is(anchorNode)
   }
 
   #isCursorOnEmptyLastLine(selection) {
