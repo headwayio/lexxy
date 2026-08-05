@@ -30,7 +30,7 @@ test.describe("Escape format", () => {
 
     await assertEditorHtml(
       editor,
-      "<ul><li value=\"1\"><blockquote>First line</blockquote></li></ul><p><br></p><p>Outside quote</p>",
+      "<ul><li value=\"1\"><blockquote><p>First line</p></blockquote></li></ul><p><br></p><p>Outside quote</p>",
     )
   })
 
@@ -111,7 +111,7 @@ test.describe("Escape format", () => {
 
     await assertEditorHtml(
       editor,
-      "<ul><li value=\"1\"><blockquote>Item one</blockquote></li></ul><p><br></p><p>After escape</p>",
+      "<ul><li value=\"1\"><blockquote><p>Item one</p></blockquote></li></ul><p><br></p><p>After escape</p>",
     )
   })
 
