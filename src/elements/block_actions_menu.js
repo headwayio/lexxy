@@ -103,11 +103,16 @@ export class BlockActionsMenu extends HTMLElement {
 
   // Two independent axes determine what shows and how it's labeled:
   //
-  //   Content-shape restriction (controls turn-into enablement + color):
-  //     code:      Text + Headings convert; no color
-  //     table:     No turn-into (every conversion wipes cell data); color
-  //     decorator: No turn-into (no text to convert to); no color
-  //     null:      All turn-into enabled; color allowed
+  //   Content-shape restriction (controls turn-into enablement, whether the
+  //   block can be wrapped at all, and color):
+  //     code:      Text + Headings convert; cannot be wrapped; no color
+  //     table:     No turn-into (every conversion wipes cell data); cannot
+  //                be wrapped from the single-block menu; color
+  //     decorator: No turn-into (no text to convert to), but CAN be wrapped
+  //                in a list or quote — and stays wrappable wherever it
+  //                already sits, since the command targets its container;
+  //                no color
+  //     null:      All turn-into enabled; wrapping per the matrix; color
   //
   //   Wrap state (controls wrap-command label + enablement, independent of
   //   content shape):
@@ -141,6 +146,17 @@ export class BlockActionsMenu extends HTMLElement {
       decorator: new Set(),
     }
 
+    // Whether the wrap commands (lists, quote) are offered at all, per content
+    // shape. This is a separate axis from turnIntoAllowed because the two
+    // disagree: a decorator has no text to convert but sits inside a list or
+    // quote perfectly well, whereas a code block converts to text fine but
+    // cannot host one. A table can do neither — every conversion loses cells.
+    const wrapAllowed = {
+      code:      false,
+      table:     false,
+      decorator: true,
+    }
+
     const inQuote = currentWrap.inQuote
     const isPlainParagraph = currentWrap.isPlainParagraph
 
@@ -154,13 +170,16 @@ export class BlockActionsMenu extends HTMLElement {
     //              or wrapping it would create an unsupported combo)
     function wrapDecision(command) {
       if (command === "insertUnorderedList") {
-        if (currentWrap.listType === "bullet") return "disabled"
+        // Already a plain bullet → nothing to do. But a WRAPPED block sitting
+        // in a bullet (heading, code, quote, …) can still be turned into a
+        // plain bullet, which unwraps it, so it stays enabled.
+        if (currentWrap.listType === "bullet") return isPlainParagraph ? "disabled" : "convert"
         if (currentWrap.listType === "number") return "swap"
         if (inQuote) return "disabled"
         return isPlainParagraph ? "convert" : "wrap"
       }
       if (command === "insertOrderedList") {
-        if (currentWrap.listType === "number") return "disabled"
+        if (currentWrap.listType === "number") return isPlainParagraph ? "disabled" : "convert"
         if (currentWrap.listType === "bullet") return "swap"
         if (inQuote) return "disabled"
         return isPlainParagraph ? "convert" : "wrap"
@@ -187,7 +206,18 @@ export class BlockActionsMenu extends HTMLElement {
         // Wrap commands always render (never hidden) so the Turn into
         // menu's layout stays stable across selections.
         button.hidden = false
-        const disable = decision === "disabled"
+        // Three cases, in order: a shape that can't be wrapped at all; a
+        // decorator, where the current wrapper is irrelevant because the
+        // command acts on the decorator's container rather than on text it
+        // doesn't have; and everything else, decided by the wrap matrix.
+        let disable
+        if (restriction && wrapAllowed[restriction] === false) {
+          disable = true
+        } else if (restriction === "decorator") {
+          disable = false
+        } else {
+          disable = decision === "disabled"
+        }
         button.toggleAttribute("disabled", disable)
         button.setAttribute("aria-disabled", String(disable))
         if (label && option) {
