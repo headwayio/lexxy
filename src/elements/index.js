@@ -6,8 +6,6 @@ import HighlightDropdown from "./dropdown/highlight"
 import LinkDropdown from "./dropdown/link"
 import Editor from "./editor"
 import BlockActionsMenu from "./block_actions_menu"
-import DropdownLink from "./dropdown/link"
-import DropdownHighlight from "./dropdown/highlight"
 import Prompt from "./prompt"
 import CodeLanguagePicker from "./code_language_picker"
 import AttachmentControls from "./attachment_controls"
@@ -25,13 +23,10 @@ export function defineElements() {
 
     "lexxy-editor": Editor,
     "lexxy-block-actions": BlockActionsMenu,
-    "lexxy-link-dropdown": DropdownLink,
-    "lexxy-highlight-dropdown": DropdownHighlight,
 
     // Prompt must be registered AFTER Editor
     "lexxy-prompt": Prompt,
     "lexxy-code-language-picker": CodeLanguagePicker,
-    "lexxy-node-delete-button": NodeDeleteButton,
     "lexxy-attachment-controls": AttachmentControls,
     "lexxy-table-tools": TableTools
   }

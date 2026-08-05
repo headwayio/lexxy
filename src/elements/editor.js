@@ -13,7 +13,6 @@ import { TRANSFORMERS, registerMarkdownShortcuts } from "@lexical/markdown"
 import { HORIZONTAL_DIVIDER } from "../editor/markdown/horizontal_divider_transformer"
 import { registerMarkdownLeadingTagHandler } from "../editor/markdown/leading_tag_handler"
 import { registerListBlockShortcuts } from "../editor/markdown/list_heading_shortcut"
-import { createEmptyHistoryState, registerHistory } from "@lexical/history"
 
 import theme from "../config/theme"
 import { HorizontalDividerNode } from "../nodes/horizontal_divider_node"

@@ -1,6 +1,5 @@
 import Lexxy from "../config/lexxy"
 import { ActionTextAttachmentNode } from "./action_text_attachment_node"
-import { $isProvisionalParagraphNode } from "./provisional_paragraph_node"
 import { attachmentIconLabel, createElement, dispatch } from "../helpers/html_helper"
 import { loadFileIntoImage } from "../helpers/upload_helper"
 import { bytesToHumanSize, extractFileExtension } from "../helpers/storage_helper"
