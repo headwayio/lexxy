@@ -1,13 +1,16 @@
 // Mocks the Active Storage direct upload endpoints using Playwright route interception.
 // Returns a handle for asserting that the expected calls were made.
 
-// Fallback preview image. Must be byte-valid — Firefox rejects malformed data and
-// fires <img> onerror, reverting the preview swap to the file icon (a flake). Must
-// also be wider than the figure's min-inline-size (10ch); a sub-figure image leaves
-// the figure chrome on top of the click point, so Firefox reports the figure as
-// intercepting pointer events when tests click the preview img.
+// Fallback preview image: a 200x150 valid PNG.
+//
+// Must be byte-valid — Firefox rejects malformed data and fires <img> onerror,
+// reverting the preview swap to the file icon (a flake).
+//
+// Must also be large enough that the hover-activated floating controls
+// (~165px wide) don't cover the image's centre point, or Playwright's click
+// on the image lands on a control button instead and the click is intercepted.
 const FALLBACK_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAHgAAABaCAYAAABzAJLvAAAA6ElEQVR4nO3RwQkAIBDAMMe+Ed1KxxBqHvkXumb2oWu9DsBgDMbgTxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcdwGOw47/2hYVfQAAAABJRU5ErkJggg==",
+  "iVBORw0KGgoAAAANSUhEUgAAAMgAAACWCAIAAAAUvlBOAAABIUlEQVR42u3SsQkAAAgEsd9/OSvBcVzA0jKQCY7LdMG7SICxMBbGAmNhLIwFxsJYGAuMhbEwFhgLY2EsMBbGwlhgLIyFscBYGAtjgbEwFsYCY2EsjAXGwlgYC4yFsTAWGAtjYSwwFsbCWGAsjIWxwFgYC2OBsTAWxgJjYSyMBcbCWBgLjIWxMBYYC2NhLDAWxsJYYCyMhbHAWBgLY4GxMBbGAmNhLIwFxsJYGAuMhbEwFhgLY2EsjKUCxsJYGAuMhbEwFhgLY2EsMBbGwlhgLIyFscBYGAtjgbEwFsYCY2EsjAXGwlgYC4yFsTAWGAtjYSwwFsbCWGAsjIWxwFgYC2OBsTAWxgJjYSyMBcbCWBgLjIWxMBYYC2NhLDAWxsJYcFtsjTROmIXgwgAAAABJRU5ErkJggg==",
   "base64"
 )
 
