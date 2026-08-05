@@ -6710,11 +6710,18 @@ export class BlockSelectionExtension extends LexxyExtension {
           }
 
           if ($isListItemNode(node)) {
+            const before = currentKey
             this.#splitAndExtractToRoot(node)
-            // After split-and-extract, the LI is gone and the extracted
-            // content lives at root. There's no further wrapper above
-            // an extracted root paragraph/heading/etc., so we're done
-            // with this item.
+            // The LI is gone and its content now sits at root — but that
+            // content can itself be a wrapper. An LI holding a blockquote
+            // leaves <blockquote> behind at root, and "Remove Bullet" is
+            // the only unwrap button the menu offers when both wrappers are
+            // present, so stopping here strands the quote. Follow the
+            // extracted node and let the loop peel whatever remains.
+            if (this.#focusKey && this.#focusKey !== before) {
+              currentKey = this.#focusKey
+              continue
+            }
             break
           }
 

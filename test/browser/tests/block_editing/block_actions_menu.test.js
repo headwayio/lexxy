@@ -4,6 +4,28 @@ import { assertBlockHtml, stripDynamicAttrs } from "../../helpers/assertions.js"
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control"
 
+// Walk the menu with the keyboard until the highlighted item is the one we
+// want, then activate it. Counting arrow presses is brittle: disabled items
+// are skipped and contextual items appear or vanish with the selection, so a
+// fixed count silently lands on Duplicate or Delete when the layout shifts.
+async function activateMenuAction(page, action) {
+  const highlighted = () => page.evaluate(() =>
+    document.querySelector(".lexxy-block-actions__item--focused")?.dataset?.action ?? null
+  )
+
+  // The menu highlights its first enabled item as soon as it opens, so check
+  // before stepping. Highlight is a class, not DOM focus.
+  for (let i = 0; i < 12; i++) {
+    if (await highlighted() === action) {
+      await page.keyboard.press("Enter")
+      return
+    }
+    await page.keyboard.press("ArrowDown")
+  }
+  throw new Error(`menu item [data-action='${action}'] was never highlighted`)
+}
+
+
 test.describe("Block actions menu (Cmd+/)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
@@ -422,11 +444,10 @@ test.describe("Block actions menu (Cmd+/)", () => {
     const menu = page.locator("lexxy-block-actions")
     await expect(menu).toBeVisible({ timeout: 2000 })
 
-    // Remove Bullet: Turn into, Color, Remove Quote, Remove Bullet (positions 0..3)
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("Enter")
+    // Only one unwrap button appears even though both wrappers are present:
+    // the menu reports the OUTERMOST wrapper, because #extractContentToRoot
+    // strips the whole chain whichever label is used.
+    await activateMenuAction(page, "remove-list")
 
     const html = await editor.value()
     expect(html).toContain("<hr>")
@@ -444,10 +465,11 @@ test.describe("Block actions menu (Cmd+/)", () => {
     const menu = page.locator("lexxy-block-actions")
     await expect(menu).toBeVisible({ timeout: 2000 })
 
-    // Remove Quote: Turn into, Color, Remove Quote (position 2)
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("Enter")
+    // The outermost wrapper here is the list item, so the menu offers
+    // Remove Bullet rather than Remove Quote — and it unwraps the blockquote
+    // too, which is what this test is really asserting.
+    await expect(menu.locator("[data-action='remove-quote']")).toBeHidden()
+    await activateMenuAction(page, "remove-list")
 
     const html = await editor.value()
     expect(html).toContain("<hr>")
