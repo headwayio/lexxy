@@ -1728,27 +1728,36 @@ export class BlockDragAndDrop {
     // normalization may have inserted (e.g., replacing a removed
     // structural wrapper with an empty paragraph LI). Use setTimeout
     // to ensure transforms from the drop update have fully committed.
+    // Wrap in try/catch — Lexical reconciliation can throw if the
+    // post-cleanup tree leaves a list-item without a ListNode parent
+    // (error #40 from $getTopListNode); swallowing the error prevents
+    // an uncaught throw from breaking subsequent interactions, even
+    // though the document state may end up slightly inconsistent.
     if (this.#pendingSourceListKey) {
       const sourceKey = this.#pendingSourceListKey
       const priorKeys = this.#pendingExistingLIKeys
       setTimeout(() => {
-        this.#editor.update(() => {
-          const list = $getNodeByKey(sourceKey)
-          if ($isListNode(list)) {
-            for (const child of [ ...list.getChildren() ]) {
-              if (!$isListItemNode(child)) continue
-              // Only remove empty LIs that are NEW (not in the pre-drop snapshot).
-              // This preserves user-created empty list items.
-              if (priorKeys.has(child.getKey())) continue
-              if (child.getTextContentSize() === 0 && child.getChildrenSize() <= 1) {
-                const kids = child.getChildren()
-                if (kids.every(k => $isParagraphNode(k))) {
-                  child.remove()
+        try {
+          this.#editor.update(() => {
+            const list = $getNodeByKey(sourceKey)
+            if ($isListNode(list)) {
+              for (const child of [ ...list.getChildren() ]) {
+                if (!$isListItemNode(child)) continue
+                // Only remove empty LIs that are NEW (not in the pre-drop snapshot).
+                // This preserves user-created empty list items.
+                if (priorKeys.has(child.getKey())) continue
+                if (child.getTextContentSize() === 0 && child.getChildrenSize() <= 1) {
+                  const kids = child.getChildren()
+                  if (kids.every(k => $isParagraphNode(k))) {
+                    child.remove()
+                  }
                 }
               }
             }
-          }
-        })
+          })
+        } catch (e) {
+          console.warn("[BlockDragAndDrop] post-drop cleanup failed:", e)
+        }
         this.#pendingSourceListKey = null
         this.#pendingExistingLIKeys = new Set()
       }, 0)
