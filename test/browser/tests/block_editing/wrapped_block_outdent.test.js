@@ -22,7 +22,7 @@ test.describe("Wrapped block outdent at root", () => {
     await page.keyboard.press("Escape")
     await page.keyboard.press("Shift+Tab")
 
-    await assertBlockHtml(editor, "<blockquote>A quote</blockquote><p>After</p>")
+    await assertBlockHtml(editor, "<blockquote><p>A quote</p></blockquote><p>After</p>")
   })
 
   test("Shift+Tab on two wrapped blocks (heading + blockquote) in their own list unwraps both", async ({ editor, page }) => {
@@ -36,7 +36,7 @@ test.describe("Wrapped block outdent at root", () => {
 
     await assertBlockHtml(
       editor,
-      "<h2>Wrapped heading</h2><blockquote>Wrapped quote</blockquote><p>After</p>"
+      "<h2>Wrapped heading</h2><blockquote><p>Wrapped quote</p></blockquote><p>After</p>"
     )
   })
 
@@ -75,13 +75,13 @@ test.describe("Wrapped block outdent at root", () => {
   })
 
   test("Shift+Tab on a text-only blockquote is a no-op (use Turn into Text instead)", async ({ editor, page }) => {
-    await editor.setValue("<p>Before</p><blockquote>Plain quote</blockquote><p>After</p>")
+    await editor.setValue("<p>Before</p><blockquote><p>Plain quote</p></blockquote><p>After</p>")
     await editor.select("Before")
     await page.keyboard.press("Escape")
     await page.keyboard.press("ArrowDown")
     await page.keyboard.press("Shift+Tab")
 
-    await assertBlockHtml(editor, "<p>Before</p><blockquote>Plain quote</blockquote><p>After</p>")
+    await assertBlockHtml(editor, "<p>Before</p><blockquote><p>Plain quote</p></blockquote><p>After</p>")
   })
 
   test("Shift+Tab on wrapped heading between regular bullets keeps bullets in naturally-formed segments", async ({ editor, page }) => {
