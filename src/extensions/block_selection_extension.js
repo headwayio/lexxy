@@ -5546,11 +5546,19 @@ export class BlockSelectionExtension extends LexxyExtension {
               if (empty) empty.remove()
               const li = $getNodeByKey(listItemKey)
               if (!li || !$isListItemNode(li)) return
-              const newItem = $createListItemNode()
-              const ownWrapper = this.#getOwnStructuralWrapper(li)
-              if (ownWrapper) ownWrapper.insertAfter(newItem)
-              else li.insertAfter(newItem)
-              newItem.select()
+
+              // Land at root, after the whole list. A sibling list item would
+              // still be inside the list, so the caret would sit on a fresh
+              // bullet and need a third Enter to actually get out — which is
+              // not what "escape the quote" means to someone holding Enter.
+              const anchor = this.#getOwnStructuralWrapper(li) || li
+              const list = li.getParent()
+              const paragraph = $createParagraphNode()
+
+              if ($isListNode(list)) list.insertAfter(paragraph)
+              else anchor.insertAfter(paragraph)
+
+              paragraph.select()
             })
           })
           return true
