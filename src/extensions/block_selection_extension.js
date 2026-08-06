@@ -1,6 +1,5 @@
 import LexxyExtension from "./lexxy_extension"
 import {
-  $createNodeSelection,
   $createParagraphNode,
   $createTextNode,
   $getNodeByKey,
@@ -6764,21 +6763,12 @@ export class BlockSelectionExtension extends LexxyExtension {
       }
     }
 
-    // Clicking a decorator block (HR, attachments, galleries) enters
-    // block-select mode AND gives the node a Lexical NodeSelection.
-    //
-    // Block selection is meant to replace node selection outright, but until
-    // that lands upstream both have to work: Lexical's own decorator
-    // affordances and the upstream test suite still expect a NodeSelection
-    // and the node--selected class it drives. Setting it explicitly here
-    // rather than falling through to Selection's CLICK_COMMAND handler,
-    // because this fork's figure markup means the click target often
-    // resolves to an inner element rather than the decorator itself.
-    if (this.#isDecoratorBlock(blockElement) && !this.#isDecoratorControlTarget(target)) {
+    // Clicking on a decorator block (HR, images) enters block-select mode
+    // rather than using Lexical's default decorator selection.
+    if (this.#isDecoratorBlock(blockElement)) {
       const nodeKey = getNodeKeyFromElement(blockElement)
       if (nodeKey) {
         this.enterBlockSelectMode(nodeKey)
-        this.#alsoSelectDecoratorInLexical(nodeKey)
         return true
       }
     }
@@ -6792,39 +6782,10 @@ export class BlockSelectionExtension extends LexxyExtension {
   }
 
   #isDecoratorBlock(element) {
-    if (!element) return false
-
-    // The block element itself being a decorator covers attachments, image
-    // galleries and anything else rendered through a DecoratorNode. The
-    // horizontal-divider checks stay because an HR's block element can be a
-    // wrapper around the decorator rather than the decorator itself.
-    return element.classList?.contains("horizontal-divider")
-      || element.closest?.(".horizontal-divider") !== null
-      || element.matches?.("[data-lexical-decorator]")
+    return element?.classList?.contains("horizontal-divider") ||
+           element?.closest?.(".horizontal-divider") !== null
   }
 
-  // A decorator's own controls — caption fields, the rename input, the
-  // floating control buttons — own their clicks. Selecting the block here
-  // would pull focus out of the field the user just clicked into.
-  #isDecoratorControlTarget(target) {
-    return Boolean(
-      target?.closest?.("textarea, input, select, button, a, [contenteditable='true'], lexxy-attachment-controls")
-    )
-  }
-
-  // Companion to the block-select entry above: re-establish the Lexical
-  // NodeSelection that enterBlockSelectMode cleared, so a decorator carries
-  // both selections at once. Runs after, not instead of, block-select.
-  #alsoSelectDecoratorInLexical(nodeKey) {
-    this.editor.update(() => {
-      const node = $getNodeByKey(nodeKey)
-      if (!$isDecoratorNode(node)) return
-
-      const selection = $createNodeSelection()
-      selection.add(nodeKey)
-      $setSelection(selection)
-    })
-  }
 
   #findBlockElementFromDOM(element) {
     const rootElement = this.root
