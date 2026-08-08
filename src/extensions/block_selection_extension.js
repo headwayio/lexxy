@@ -1602,6 +1602,18 @@ export class BlockSelectionExtension extends LexxyExtension {
             // Lexical error #66 from a stale rootList.insertAfter.
             if (parentList.getListType() !== listType) {
               parentList.setListType(listType)
+            } else {
+              // Already this kind of list, so swapping is meaningless and the
+              // useful action is to unwrap: a wrapped heading becomes a plain
+              // bullet. Strip the wrapper in place rather than peeling the
+              // item out to root — nothing about the list itself changes, so
+              // this stays safe when several items in the same list are
+              // selected, which is what made the old peel-out path unsafe.
+              for (const child of [ ...wrappedChild.getChildren() ]) {
+                node.append(child)
+              }
+              wrappedChild.remove()
+              this.#wrappedOrigins.untrack(node)
             }
             newSelectedKeys.add(node.getKey())
           } else if (isListCommand) {

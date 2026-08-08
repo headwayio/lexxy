@@ -25,6 +25,24 @@ async function activateMenuAction(page, action) {
   throw new Error(`menu item [data-action='${action}'] was never highlighted`)
 }
 
+// Same idea for the Turn into submenu, which is keyed by data-command.
+async function activateTurnInto(page, command) {
+  const highlighted = () => page.evaluate(() =>
+    document.querySelector(".lexxy-block-actions__item--focused")?.dataset?.command ?? null
+  )
+
+  await page.keyboard.press("ArrowRight")   // open the submenu
+
+  for (let i = 0; i < 16; i++) {
+    if (await highlighted() === command) {
+      await page.keyboard.press("Enter")
+      return
+    }
+    await page.keyboard.press("ArrowDown")
+  }
+  throw new Error(`turn-into item [data-command='${command}'] was never highlighted`)
+}
+
 
 test.describe("Block actions menu (Cmd+/)", () => {
   test.beforeEach(async ({ page }) => {
@@ -335,13 +353,7 @@ test.describe("Block actions menu (Cmd+/)", () => {
     const menu = page.locator("lexxy-block-actions")
     await expect(menu).toBeVisible({ timeout: 2000 })
 
-    // Open Turn into submenu, then navigate: Text, H2, H3, H4, Bullet list
-    await page.keyboard.press("ArrowRight")
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("Enter")
+    await activateTurnInto(page, "insertUnorderedList")
 
     await assertBlockHtml(
       editor,
