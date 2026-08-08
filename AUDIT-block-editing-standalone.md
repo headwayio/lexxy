@@ -51,100 +51,28 @@ P2 and P3 tests were not implemented — see `PLAN-block-editing-regression-test
 
 ---
 
-## 1. Things basecamp added after the fork point — pick what you want
+## 1. Things basecamp added after the fork point — RESOLVED, struck 2026-08-08
 
-(Not "you're behind." This branch developed in parallel with basecamp's
-own line of work. These are upstream items worth considering on their own
-merits, not because of any rebase pressure.)
+All eight items in this section (1A–1H) were verified present on
+`rebase/standalone-onto-v0.9.28` and have been removed rather than left to
+be re-investigated. They arrived either with the rebase onto upstream
+v0.9.28 or, in 1A's case, before it.
 
-### 1A — XSS in `CustomActionTextAttachmentNode` (HIGH severity, security)
+| Item | Status |
+|---|---|
+| 1A — XSS in `CustomActionTextAttachmentNode` | `sanitize(this.innerHtml)` present. It was already fixed on `block-editing-standalone` BEFORE the rebase, so this section's "currently a security hole / fix immediately" was already stale when written. |
+| 1B — `link_opener_extension.js` | present |
+| 1C — `clearFormatting` command + button | registered in the dispatcher |
+| 1D — `listener_helper.js` | present |
+| 1E — Markdown `---` shorthand for HR | `HORIZONTAL_DIVIDER` wired in `editor.js` |
+| 1F — Lexical dependency bump | asked for 0.41 → 0.42; the branch is now on **0.44**, which also changed nested-list export serialization |
+| 1G — Rails `ActionText::Editor` adapter | `lib/action_text/editor/lexxy_editor.rb` present |
+| 1H — Smaller upstream changes | carried in with the rebase |
 
-`src/nodes/custom_action_text_attachment_node.js:77`
-
-```js
-createDOM() {
-  const figure = createElement(this.tagName, { "content-type": ..., "data-lexxy-decorator": true })
-  figure.insertAdjacentHTML("beforeend", this.innerHtml)   // unsanitized
-  ...
-}
-```
-
-basecamp commit `2ef7d8bc` wraps the call in `sanitize(...)`. `this.innerHtml` originates from `parseAttachmentContent(attachment.getAttribute("content"))` in `importDOM`, which does no sanitization. So `<action-text-attachment content="<img onerror=alert(1)>">` survives import and executes when the node renders. `CustomActionTextAttachmentNode` is registered at `src/elements/editor.js:338` and instantiated by mention/prompt insertion at `src/elements/prompt.js:459`.
-
-**Fix:** import `sanitize` from `src/helpers/sanitization_helper.js` and wrap the `insertAdjacentHTML` call. Cherry-pick `2ef7d8bc` if the surrounding context still applies. Worth doing regardless of any rebase strategy.
-
-### 1B — `link_opener_extension.js` (Cmd/Ctrl+click to open links) — MEDIUM
-
-basecamp commit `20c95582` adds an extension that watches the modifier key and conditionally adds `target="_blank" rel="noopener noreferrer"` to anchors so plain Cmd+click opens links. Searching `src/` for `link-opener|LinkOpener|linkOpener` returns zero matches in our fork.
-
-User-visible: Cmd+click on a link does nothing in our fork (or moves the caret).
-
-**Fix:** cherry-pick the upstream extension. It depends on `registerEventListener` from basecamp's `listener_helper.js` (1D below) so either restore that helper or rewrite the extension to use raw listeners.
-
-### 1C — `clearFormatting` command + button — MEDIUM
-
-basecamp commit `3b683785` adds a "Clear formatting" toolbar button and `dispatchClearFormatting` to the dispatcher. Our `src/editor/command_dispatcher.js` has neither in its `COMMANDS` array nor a method. Users on our fork have no built-in way to strip inline styling from a selection.
-
-### 1D — `listener_helper.js` (`registerEventListener` + `ListenerBin`) — MEDIUM
-
-basecamp introduced a memory-safe listener registration helper:
-
-```js
-export function registerEventListener(element, type, listener, options) {
-  element.addEventListener(type, listener, options)
-  const elementRef = new WeakRef(element)
-  const listenerRef = new WeakRef(listener)
-  return () => {
-    const listener = listenerRef.deref()
-    if (listener) elementRef.deref()?.removeEventListener(type, listener, options)
-  }
-}
-
-export class ListenerBin { ... }
-```
-
-Then converted every element/extension to use it (basecamp commits `3a9f25b2` through `b9457a32`). Our fork:
-
-- Doesn't have the helper (it was added on basecamp's side after our fork point).
-- Has **97 raw `addEventListener` calls** vs **63 raw `removeEventListener` calls** across `src/`. The 34-call gap suggests at least *some* listeners are never removed.
-- Risky callers: `src/editor/block_drag_and_drop.js` (17 add — needs eyeballing); `src/elements/block_actions_menu.js` (8 add, 8 remove — balanced); `src/extensions/block_selection_extension.js` (7 add — most go through `cleanupFns`).
-
-**Fix:** import the helper and migrate, or audit the 34-call gap to confirm none are leaks. Without `WeakRef` semantics, even paired add/remove can leak if an exception in between skips removal.
-
-### 1E — Markdown `---` shorthand for HR — MEDIUM
-
-basecamp has `src/editor/markdown/horizontal_divider_transformer.js`:
-
-```js
-export const HORIZONTAL_DIVIDER = {
-  dependencies: [HorizontalDividerNode],
-  regExpStart: /^-{3,}\s?$/,
-  replace: (parentNode, ...) => { parentNode.replace(new HorizontalDividerNode()); ... }
-}
-```
-
-We don't have it. We added a *different* transformer (`src/editor/markdown/list_heading_shortcut.js`) for `# `, `## `, `### `, `#### `, `> ` inside list items — additive, not a replacement. Users on our fork who type `---` and Enter get a literal `---` paragraph.
-
-**Fix:** restore the transformer (basecamp commit `6f3344cc`).
-
-### 1F — Lexical 0.41 → 0.42 dependency bump
-
-Our `package.json` pins `^0.41.0`; basecamp uses `^0.42.0` (commit `f78352e7`, 16 lexical packages). Pinning to 0.41 is a defensible choice if we've validated against it; this is informational. Lexical 0.42 reportedly requires Node 22+ (Iterator helpers).
-
-### 1G — Rails 8.2 `ActionText::Editor` adapter (#778)
-
-basecamp commit `b9457a32` switches the engine to use Rails 8.2's `ActionText::Editor` adapter API when available, falling back to the prepend/monkey-patch on older Rails. Our `lib/lexxy/engine.rb` is still prepend-only. On Rails 8.2, our gem still works (prepend wins) but uses the deprecated path. Will eventually break.
-
-### 1H — Smaller upstream changes
-
-| Change | basecamp commit | Notes |
-|---|---|---|
-| Unwrap link dialog form | `9a4b622f` | UX polish on the link toolbar dropdown |
-| Toolbar focus fix | `ae6c2757` | Prevents toolbar buttons from stealing focus |
-| Link-change unwraps autolink | `3d3b62eb` | Edge case in `dropdown/link.js` |
-| Prompt filtering tweaks | `7cef7351` | Empty-string-instead-of-null for link URL |
-
----
+Sections 2–4 below describe this branch's OWN code and were re-verified as
+still accurate on the same date: the `"history-push"` literal, the
+silent-ignore `catch` blocks, `data-block-movement-wrapped`, and the size of
+`block_selection_extension.js` are all still there.
 
 ## 2. Suspected regressions and bugs in our own code
 
@@ -258,7 +186,10 @@ Confirm it doesn't conflict with basecamp's "keep cursor location when upload co
 
 ## 4. Style/pattern divergences from basecamp
 
-### 4A — Raw `addEventListener`/`removeEventListener` everywhere — see 1D.
+### 4A — Raw `addEventListener`/`removeEventListener` everywhere
+
+The upstream `listener_helper.js` this pointed at is now present (was 1D);
+what remains is migrating this branch's own raw listener calls onto it.
 
 ### 4B — `#scrollY` capture + `queueMicrotask(() => window.scrollTo(...))`
 
@@ -288,9 +219,9 @@ P1 items in the regression-test plan are now covered. Remaining work — see
 - **Capybara round-trip** (9 tests in `test/system/`)
 
 Audit-driven tests not in the plan that would also be valuable:
-- A regression test that asserts `<action-text-attachment content="<img src=x onerror=...>">` cannot execute when imported (locks down 1A even after the fix lands).
-- A test that types `---` followed by Enter and asserts a horizontal divider appears (will lock in the fix for 1E).
-- A leak-detection test that creates and disposes 100 editors and asserts the listener count stays bounded (catches 1D regression).
+- A regression test that asserts `<action-text-attachment content="<img src=x onerror=...>">` cannot execute when imported (locks down the sanitize call, which is in place but untested).
+- A test that types `---` followed by Enter and asserts a horizontal divider appears (the transformer is wired but untested here).
+- A leak-detection test that creates and disposes 100 editors and asserts the listener count stays bounded. Upstream now ships `editor/leak.test.js` covering reconnect cycles; this would extend it.
 
 ---
 
@@ -298,12 +229,9 @@ Audit-driven tests not in the plan that would also be valuable:
 
 If this branch is being prepared for upstream contribution or for a release:
 
-1. **Fix 1A (XSS) immediately.** One-line patch. Currently a security hole.
-2. **Fix 2A** (string-tag literals) — trivial and removes a foot-gun.
-3. **Pick up the small basecamp commits you want** (link-opener, clearFormatting, markdown HR shorthand) — each is small, additive, low-risk.
-4. **Land the P2/P3 tests** (the rest of the regression plan).
-5. **Decide on Lexical 0.42** and Rails 8.2 adapter strategy (1F, 1G).
-6. **Refactor 4C / 2B / 2C** as part of a cleanup pass once the surface is stable.
+1. **Fix 2A** (string-tag literals) — trivial and removes a foot-gun.
+2. **Land the P2/P3 tests** (the rest of the regression plan).
+3. **Refactor 4C / 2B / 2C** as part of a cleanup pass once the surface is stable.
 
 ---
 
